@@ -1,3 +1,4 @@
+import { countWords } from "./engine.js";
 // Geometry-based reading order. Every retained line carries its source rectangle.
 function bounds(items) {
   return {
@@ -224,7 +225,7 @@ export function composePdf(
       const join = !paragraph ? previous?.joinNext : false;
       if (join === "remove") text = text.slice(0, -1);
       if (text && !join) text += paragraph ? "\n\n" : " ";
-      const count = line.text.split(/\s+/).length;
+      const count = countWords(line.text);
       locations.push({
         page: page.number,
         start: wordIndex - (join ? 1 : 0),

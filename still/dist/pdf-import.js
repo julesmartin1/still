@@ -1,3 +1,4 @@
+import { loadPdfjs } from "./pdfjs.js";
 import { suggestTitle } from "./document.js";
 import { layoutPage, composePdf } from "./pdf-layout.js";
 // Text extraction only. PDF bytes stay on the device; PDF scripts are never run.
@@ -81,11 +82,7 @@ export async function extractPdf(
       "This file could not be read as a PDF. Try another PDF or paste its text.",
     );
   if (!getDocument) {
-    const pdfjs = await import("./vendor/pdfjs/pdf.min.mjs");
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-      "./vendor/pdfjs/pdf.worker.min.mjs",
-      import.meta.url,
-    ).href;
+    const pdfjs = await loadPdfjs();
     getDocument = pdfjs.getDocument;
   }
   signal?.throwIfAborted();

@@ -1,3 +1,4 @@
+import { loadPdfjs } from "./pdfjs.js";
 import { sourceLocation } from "./pdf-layout.js";
 const $ = (id) => document.getElementById(id);
 export function createPdfViewer({ getIndex, onRead }) {
@@ -165,11 +166,7 @@ export function createPdfViewer({ getIndex, onRead }) {
       $("pdfCanvas").width = 0;
       const version = ++generation;
       try {
-        const pdfjs = await import("./vendor/pdfjs/pdf.min.mjs");
-        pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-          "./vendor/pdfjs/pdf.worker.min.mjs",
-          import.meta.url,
-        ).href;
+        const pdfjs = await loadPdfjs();
         const bytes = new Uint8Array(await source.blob.arrayBuffer());
         if (version !== generation) return;
         const root = new URL("./vendor/pdfjs/", import.meta.url).href;

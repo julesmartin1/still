@@ -1,4 +1,9 @@
-import { parseText } from "./engine.js";
+import {
+  parseText,
+  sourceWords,
+  buildTokens,
+  textDifficulty,
+} from "./engine.js";
 const year = "(?:18|19|20)\\d{2}[a-z]?";
 const author =
   "(?:(?:van|von|de|der|la)\\s+)*[\\p{Lu}][\\p{L}’'\\-]+(?:\\s+(?:[\\p{Lu}][\\p{L}’'\\-]+|van|von|de|der|la))*";
@@ -89,11 +94,11 @@ export function filteredReading(text, options = {}) {
   const mask = new Uint8Array(text.length);
   if (options.skipCitations)
     for (const s of spans) mask.fill(1, s.start, s.end);
-  const sourceWords = [...text.matchAll(/\S+/g)];
+  const words = sourceWords(text);
   const retained = [];
   let skipped = 0;
-  for (let sourceIndex = 0; sourceIndex < sourceWords.length; sourceIndex++) {
-    const m = sourceWords[sourceIndex],
+  for (let sourceIndex = 0; sourceIndex < words.length; sourceIndex++) {
+    const m = words[sourceIndex],
       paragraph = original.tokens[sourceIndex].paragraph;
     const inReferences =
       options.skipReferences &&
@@ -102,13 +107,13 @@ export function filteredReading(text, options = {}) {
       paragraph + 1 <= range.end;
     let value = "";
     if (!inReferences)
-      for (let j = 0; j < m[0].length; j++)
-        if (!mask[m.index + j]) value += m[0][j];
+      for (let j = 0; j < m.text.length; j++)
+        if (!mask[m.index + j]) value += m.text[j];
     if (!value) {
       skipped++;
       continue;
     }
-    if (/^[.,;:!?…“”‘’"\')\]]+$/.test(value) && value !== m[0]) {
+    if (/^[.,;:!?…“”‘’"\')\]]+$/.test(value) && value !== m.text) {
       if (retained.length && retained.at(-1).originalParagraph === paragraph) {
         retained.at(-1).text += value;
         retained.at(-1).sourceEnd = sourceIndex;
@@ -134,7 +139,13 @@ export function filteredReading(text, options = {}) {
     paragraphs.at(-1).push(t.text);
     origins.push(t);
   }
-  const visible = parseText(paragraphs.map((p) => p.join(" ")).join("\n\n"));
+  // Build tokens straight from the retained words (no re-splitting), so each
+  // visible token lines up with its source word even for segmented scripts.
+  const visible = {
+    tokens: buildTokens(paragraphs),
+    paragraphs: paragraphs.map((p) => p.join(" ")),
+  };
+  visible.difficulty = textDifficulty(visible.tokens);
   visible.tokens.forEach((t, i) =>
     Object.assign(t, {
       sourceIndex: origins[i].sourceIndex,

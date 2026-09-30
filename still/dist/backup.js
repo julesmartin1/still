@@ -1,5 +1,11 @@
 import { normalizeMarks } from "./reading-features.js";
 import { normalizeSections } from "./document.js";
+import { countWords } from "./engine.js";
+// Longest reading Still keeps, in characters (about 350,000 English words).
+// Paste, text-file, EPUB and PDF imports all stop at this size, and restore
+// skips any longer reading instead of rejecting the whole backup.
+export const MAX_READING_CHARACTERS = 2000000;
+export const MAX_BACKUP_READINGS = 1000;
 export async function encodeBackup(snapshot) {
   const sources = [];
   for (const s of snapshot.sources) {
@@ -35,11 +41,13 @@ export function decodeBackup(value) {
     data.version !== 1 ||
     !Array.isArray(data.readings) ||
     !Array.isArray(data.sources) ||
-    data.readings.length > 1000 ||
+    data.readings.length > MAX_BACKUP_READINGS ||
     data.sources.length > 1000
   )
     bad();
   const ids = new Set(),
+    skippedIds = new Set(),
+    skipped = [],
     readings = [];
   for (const r of data.readings) {
     if (
@@ -49,14 +57,20 @@ export function decodeBackup(value) {
       ids.has(r.id) ||
       typeof r.text !== "string" ||
       !r.text.trim() ||
-      r.text.length > 2000000 ||
       typeof r.title !== "string" ||
       !Number.isInteger(r.index) ||
       r.index < 0
     )
       bad();
     ids.add(r.id);
-    const count = r.text.trim().split(/\s+/).length;
+    if (r.text.length > MAX_READING_CHARACTERS) {
+      // Readings this long could only come from an older version that let
+      // pasted text exceed the limit. Keep the rest of the backup usable.
+      skippedIds.add(r.id);
+      skipped.push(r.title.slice(0, 240) || "Untitled reading");
+      continue;
+    }
+    const count = countWords(r.text);
     const opts = r.readingOptions || {};
     const type = ["book", "academic", "other"].includes(opts.documentType)
       ? opts.documentType
@@ -117,7 +131,8 @@ export function decodeBackup(value) {
     });
   }
   const sourceIds = new Set();
-  const sources = data.sources.map((s) => {
+  const sources = data.sources.flatMap((s) => {
+    if (s && skippedIds.has(s.id)) return [];
     if (
       !s ||
       !ids.has(s.id) ||
@@ -138,7 +153,7 @@ export function decodeBackup(value) {
     if (!new TextDecoder().decode(bytes.slice(0, 1024)).includes("%PDF-"))
       bad();
     const reading = readings.find((r) => r.id === s.id),
-      count = reading.text.trim().split(/\s+/).length;
+      count = countWords(reading.text);
     let previous = -1;
     for (const l of s.locations) {
       if (
@@ -161,13 +176,15 @@ export function decodeBackup(value) {
         bad();
       previous = l.start;
     }
-    return {
-      id: s.id,
-      blob: new Blob([bytes], { type: "application/pdf" }),
-      locations: s.locations,
-      fingerprint:
-        typeof s.fingerprint === "string" ? s.fingerprint : undefined,
-    };
+    return [
+      {
+        id: s.id,
+        blob: new Blob([bytes], { type: "application/pdf" }),
+        locations: s.locations,
+        fingerprint:
+          typeof s.fingerprint === "string" ? s.fingerprint : undefined,
+      },
+    ];
   });
-  return { readings, sources };
+  return { readings, sources, skipped };
 }

@@ -1,7 +1,8 @@
+import { sentenceEnd } from "./engine.js";
 export function previousSentence(tokens, index) {
   if (!tokens.length || index <= 0) return 0;
   const end = (t) =>
-    /[.!?][”’"')\]]*$/.test(t.text) &&
+    sentenceEnd.test(t.text) &&
     !/^(?:Mr|Mrs|Ms|Dr|Prof|St|vs|etc|e\.g|i\.e)\.$/i.test(t.text) &&
     !/^\p{L}\.$/u.test(t.text);
   let start = index;

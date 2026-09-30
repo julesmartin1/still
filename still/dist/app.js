@@ -9,7 +9,12 @@ import {
   normalizeSections,
   fileFingerprint,
 } from "./document.js";
-import { encodeBackup, decodeBackup } from "./backup.js";
+import {
+  encodeBackup,
+  decodeBackup,
+  MAX_READING_CHARACTERS,
+  MAX_BACKUP_READINGS,
+} from "./backup.js";
 import { filteredReading, visibleIndex } from "./citations.js";
 import { composePdf, markLineJoins } from "./pdf-layout.js";
 import { createPdfViewer } from "./pdf-viewer.js";
@@ -44,6 +49,9 @@ import {
   clamp,
 } from "./engine.js";
 const $ = (id) => document.getElementById(id);
+// "1 reading", "3 readings"; pass the plural form when it isn't just "+s".
+const plural = (n, one, many = one + "s") =>
+  `${n.toLocaleString()} ${n === 1 ? one : many}`;
 const SAMPLE = `There is a kind of quiet that only arrives in the early morning. Before the messages, before the traffic, before the day begins asking things of you. The room is still. Light moves slowly across the floor.
 
 On the windowsill, a small bird lands and tilts its head. You have walked past this window a thousand times. Today, for no particular reason, you stop. The bird stays for a moment, then disappears into the blue.
@@ -445,6 +453,13 @@ $("inputForm").onsubmit = (e) => {
   e.preventDefault();
   if (!$("textInput").value.trim()) {
     $("textInput").setCustomValidity("Add some text to read.");
+    $("textInput").reportValidity();
+    return;
+  }
+  if ($("textInput").value.length > MAX_READING_CHARACTERS) {
+    $("textInput").setCustomValidity(
+      `This text is too long for one reading (${$("textInput").value.length.toLocaleString()} characters; the limit is ${MAX_READING_CHARACTERS.toLocaleString()}). Split it into parts, such as one reading per chapter.`,
+    );
     $("textInput").reportValidity();
     return;
   }
@@ -1293,7 +1308,12 @@ $("exportLibrary").onclick = async () => {
   $("backupStatus").textContent = "Preparing backup…";
   try {
     await checkpoint();
-    const payload = await encodeBackup(await librarySnapshot());
+    const snapshot = await librarySnapshot();
+    if (snapshot.readings.length > MAX_BACKUP_READINGS)
+      throw Error(
+        `Backups can hold up to ${MAX_BACKUP_READINGS} readings and you have ${snapshot.readings.length}. Delete readings from Trash first.`,
+      );
+    const payload = await encodeBackup(snapshot);
     const downloadBlob = new Blob([payload], { type: "application/json" });
     if (downloadBlob.size > 250 * 1024 * 1024)
       throw Error("Backup is larger than the 250 MB restore limit.");
@@ -1319,8 +1339,11 @@ $("restoreFile").onchange = async () => {
     if (file.size > 250 * 1024 * 1024)
       throw Error("Choose a backup smaller than 250 MB.");
     restorePending = decodeBackup(await file.text());
+    const skipped = restorePending.skipped.length
+      ? ` ${plural(restorePending.skipped.length, "reading is", "readings are")} too long to restore and will be skipped: ${restorePending.skipped.join(", ")}.`
+      : "";
     $("backupStatus").textContent =
-      `Ready to restore ${restorePending.readings.length} readings and ${restorePending.sources.length} PDFs. Existing readings will be kept; matching entries become separate restored copies.`;
+      `Ready to restore ${plural(restorePending.readings.length, "reading")} and ${plural(restorePending.sources.length, "PDF")}. Existing readings will be kept; matching entries become separate restored copies.${skipped}`;
     $("restoreConfirm").hidden = !restorePending.readings.length;
   } catch (error) {
     $("backupStatus").textContent =
@@ -1775,10 +1798,15 @@ $("textFile").onchange = async () => {
   const file = $("textFile").files[0];
   if (!file) return;
   try {
-    if (file.size > 2000000)
-      throw Error("Choose a text file smaller than 2 MB.");
+    // UTF-8 uses up to 4 bytes per character, so check characters after reading.
+    if (file.size > MAX_READING_CHARACTERS * 4)
+      throw Error("This text file is too large to read in Still.");
     const value = await file.text();
     if (!value.trim()) throw Error("This text file is empty.");
+    if (value.length > MAX_READING_CHARACTERS)
+      throw Error(
+        `This file is too long for one reading (${value.length.toLocaleString()} characters; the limit is ${MAX_READING_CHARACTERS.toLocaleString()}). Split it into parts first.`,
+      );
     pdfDraft = null;
     epubDraft = null;
     $("textInput").value = value;
