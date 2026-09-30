@@ -1,7 +1,84 @@
-import test from 'node:test';import assert from 'node:assert/strict';
-const disk=new Map(),transactions=[];
-globalThis.CapacitorCustomPlatform={name:'ios'};
-globalThis.Capacitor={PluginHeaders:[{name:'StillVault',methods:['get','list','commit','shareBackup'].map(name=>({name,rtype:'promise'}))}],nativePromise:async(_,method,options)=>{if(method==='get')return {value:disk.get(options.key)??null};if(method==='list')return {values:[...disk].filter(([key])=>key.startsWith(options.prefix)).map(([,value])=>value)};if(method==='commit'){transactions.push(options);for(const key of options.deletes)disk.delete(key);for(const w of options.writes)disk.set(w.key,w.value);return {};}}};
-const runtime=await import('../dist/native-runtime.js');const library=await import('../dist/library.js');
-test('native adapter preserves PDFs, atomic restore batches, collision copies and deletion',async()=>{const record={id:'a',title:'A',text:'one two',wordCount:2,index:1,updatedAt:1};await library.saveReading(record);await library.saveSource('a',{blob:new Blob(['%PDF-fixture']),locations:[]});assert.equal((await library.getReading('a')).index,1);assert.equal(await (await library.getSource('a')).blob.text(),'%PDF-fixture');const snapshot=await library.librarySnapshot();assert.equal(snapshot.readings.length,1);await library.restoreLibrary(snapshot);assert.equal((await library.listReadings()).length,2);assert.equal(transactions.at(-1).writes.length,3);await library.deleteReading('a');assert.equal(await library.getSource('a'),undefined);await library.eraseLibrary();assert.equal((await library.listReadings()).length,0);});
-test('native preference persistence excludes document text and reload hydrates from durable reading',async()=>{await library.saveReading({id:'b',text:'private words',title:'B',index:1});runtime.storage.setItem('still-reader-v1',JSON.stringify({documentId:'b',text:'private words',index:1}));await runtime.flushStorage();assert.doesNotMatch(disk.get('preferences'),/private words/);await runtime.initializeStorage();assert.equal(JSON.parse(runtime.storage.getItem('still-reader-v1')).text,'private words');runtime.storage.removeItem('still-reader-v1');await runtime.flushStorage();assert.deepEqual(JSON.parse(disk.get('preferences')),{});});
+import test from "node:test";
+import assert from "node:assert/strict";
+const disk = new Map(),
+  transactions = [];
+globalThis.CapacitorCustomPlatform = { name: "ios" };
+globalThis.Capacitor = {
+  PluginHeaders: [
+    {
+      name: "StillVault",
+      methods: ["get", "list", "commit", "shareBackup"].map((name) => ({
+        name,
+        rtype: "promise",
+      })),
+    },
+  ],
+  nativePromise: async (_, method, options) => {
+    if (method === "get") return { value: disk.get(options.key) ?? null };
+    if (method === "list")
+      return {
+        values: [...disk]
+          .filter(([key]) => key.startsWith(options.prefix))
+          .map(([, value]) => value),
+      };
+    if (method === "commit") {
+      transactions.push(options);
+      for (const key of options.deletes) disk.delete(key);
+      for (const w of options.writes) disk.set(w.key, w.value);
+      return {};
+    }
+  },
+};
+const runtime = await import("../dist/native-runtime.js");
+const library = await import("../dist/library.js");
+test("native adapter preserves PDFs, atomic restore batches, collision copies and deletion", async () => {
+  const record = {
+    id: "a",
+    title: "A",
+    text: "one two",
+    wordCount: 2,
+    index: 1,
+    updatedAt: 1,
+  };
+  await library.saveReading(record);
+  await library.saveSource("a", {
+    blob: new Blob(["%PDF-fixture"]),
+    locations: [],
+  });
+  assert.equal((await library.getReading("a")).index, 1);
+  assert.equal(
+    await (await library.getSource("a")).blob.text(),
+    "%PDF-fixture",
+  );
+  const snapshot = await library.librarySnapshot();
+  assert.equal(snapshot.readings.length, 1);
+  await library.restoreLibrary(snapshot);
+  assert.equal((await library.listReadings()).length, 2);
+  assert.equal(transactions.at(-1).writes.length, 3);
+  await library.deleteReading("a");
+  assert.equal(await library.getSource("a"), undefined);
+  await library.eraseLibrary();
+  assert.equal((await library.listReadings()).length, 0);
+});
+test("native preference persistence excludes document text and reload hydrates from durable reading", async () => {
+  await library.saveReading({
+    id: "b",
+    text: "private words",
+    title: "B",
+    index: 1,
+  });
+  runtime.storage.setItem(
+    "still-reader-v1",
+    JSON.stringify({ documentId: "b", text: "private words", index: 1 }),
+  );
+  await runtime.flushStorage();
+  assert.doesNotMatch(disk.get("preferences"), /private words/);
+  await runtime.initializeStorage();
+  assert.equal(
+    JSON.parse(runtime.storage.getItem("still-reader-v1")).text,
+    "private words",
+  );
+  runtime.storage.removeItem("still-reader-v1");
+  await runtime.flushStorage();
+  assert.deepEqual(JSON.parse(disk.get("preferences")), {});
+});

@@ -1,5 +1,54 @@
-import {readFile,readdir,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';
-const artifacts=[];async function walk(root){for(const e of await readdir(root,{withFileTypes:true})){const p=root+'/'+e.name;if(e.isDirectory())await walk(p);else artifacts.push({path:p,sha256:createHash('sha256').update(await readFile(p)).digest('hex')});}}await walk('dist/vendor');await walk('dist/dictionary');
-const lock=JSON.parse(await readFile('package-lock.json','utf8'));
-const packages=Object.entries(lock.packages).filter(([p])=>p).map(([path,v])=>({path,version:v.version,license:v.license,resolved:v.resolved,integrity:v.integrity,development:!!v.dev}));
-await writeFile('../app-store-release/DEPENDENCY_INVENTORY.json',JSON.stringify({generatedAt:new Date().toISOString(),note:'Inventory with file hashes; not an independent security assessment or complete SPDX document.',packages,bundled:[{name:'PDF.js',version:'6.3.289',source:'https://github.com/mozilla/pdf.js'},{name:'WordNet',version:'3.1 (wordnet-db 3.1.14)',source:'https://wordnet.princeton.edu/'}],artifacts},null,2));
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+const artifacts = [];
+async function walk(root) {
+  for (const e of await readdir(root, { withFileTypes: true })) {
+    const p = root + "/" + e.name;
+    if (e.isDirectory()) await walk(p);
+    else
+      artifacts.push({
+        path: p,
+        sha256: createHash("sha256")
+          .update(await readFile(p))
+          .digest("hex"),
+      });
+  }
+}
+await walk("dist/vendor");
+await walk("dist/dictionary");
+const lock = JSON.parse(await readFile("package-lock.json", "utf8"));
+const packages = Object.entries(lock.packages)
+  .filter(([p]) => p)
+  .map(([path, v]) => ({
+    path,
+    version: v.version,
+    license: v.license,
+    resolved: v.resolved,
+    integrity: v.integrity,
+    development: !!v.dev,
+  }));
+await writeFile(
+  "../app-store-release/DEPENDENCY_INVENTORY.json",
+  JSON.stringify(
+    {
+      generatedAt: new Date().toISOString(),
+      note: "Inventory with file hashes; not an independent security assessment or complete SPDX document.",
+      packages,
+      bundled: [
+        {
+          name: "PDF.js",
+          version: "6.3.289",
+          source: "https://github.com/mozilla/pdf.js",
+        },
+        {
+          name: "WordNet",
+          version: "3.1 (wordnet-db 3.1.14)",
+          source: "https://wordnet.princeton.edu/",
+        },
+      ],
+      artifacts,
+    },
+    null,
+    2,
+  ),
+);

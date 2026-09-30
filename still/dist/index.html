@@ -1,12 +1,595 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Read one word at a time, with a pace that adjusts to you."><title>Still — Your reading space</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151d30'/%3E%3Cpath d='M10 9v14m12-14v14' stroke='%23bbd2ff' stroke-width='4'/%3E%3C/svg%3E"><link rel="stylesheet" href="style.css"></head><body>
-<header><a class="brand" href="./" aria-label="Still home"><span class="mark">ıı</span> still<span class="brand-note">a little room to read</span></a><nav class="header-actions" aria-label="Readings"><button id="library" class="outline">Bookshelf</button><button id="newText" class="outline">＋ Add reading</button></nav></header>
-<main><div class="topline"><div><p class="eyebrow">YOUR READING SPACE</p><h1 id="title">The art of noticing</h1></div><span id="saved" class="muted">Saved on this device</span></div>
-<section id="wordReader" class="reader" aria-label="Word reader"><div class="reader-top"><span id="mode">READY WHEN YOU ARE</span><span id="count">1 / 200 words</span></div><div class="stage"><div class="focal-line"></div><div id="word" aria-label="Current word">There</div><div class="focal-line"></div></div><p id="status" class="status" aria-live="polite">Settle in. Start when you’re ready.</p><div class="controls"><button id="review" class="secondary">↶ <span>Review paragraph</span></button><button id="play" class="primary">▶ <span>Start reading</span></button></div><div class="progress-track"><div id="progress"></div></div></section><section id="normalReader" class="normal-reader" hidden aria-label="Normal text reader"><div class="normal-toolbar"><p class="muted">Tap a word to set your place. Select passage lets you choose a start and end word.</p><button id="selectPassage" class="outline" aria-pressed="false">Select passage</button><button id="markPassage" class="outline">Save passage</button></div><div id="normalPane" class="normal-pane" tabindex="0"><button id="normalEarlier" class="text-button">Load earlier text</button><div id="normalText" class="normal-text"></div><button id="normalLater" class="text-button">Load more text</button></div><p id="normalPosition" class="muted" role="status"></p></section>
-<div class="source-link"><button id="viewSource" class="outline" hidden>View original PDF</button><span id="sourceNote" class="muted" role="status"></span></div><div class="reading-tools"><button id="readingMode" class="outline">Normal text</button><button id="quickRewind" class="outline" title="Left arrow: rewind a sentence">↶ Sentence</button><button id="bookmarks" class="outline">Bookmarks &amp; notes</button><button id="readingSettings" class="outline">Reading settings</button><button id="contents" class="outline">Sections &amp; chapters</button></div><div class="settings"><div class="pace"><label for="speed">Your average pace</label><div class="pace-value"><button id="slower" class="pace-step" aria-label="Slow down 10 words per minute">−</button><input id="speedValue" type="number" min="80" max="600" step="1" value="260" aria-label="Average words per minute"><button id="faster" class="pace-step" aria-label="Speed up 10 words per minute">+</button><span>words / min</span></div><input id="speed" type="range" min="80" max="600" step="1" value="260"><div class="range-labels"><span>Take your time</span><span>Pick up the pace</span></div></div><div class="adapt"><div class="adapt-title"><span class="spark">✦</span><h2>A pace that follows you</h2></div><p>Longer words get more time. Shorter words move faster. Pauses fit within your paragraph’s average pace.</p><div class="adapt-bottom"><span id="learning">Learning as you read</span><button id="reset" class="text-button">Reset adjustments</button></div></div></div><footer><span>Space: play / pause · R: review · ←: sentence</span><span>One word. A little more room.</span></footer></main>
-<dialog id="libraryDialog" aria-labelledby="libraryTitle"><div class="dialog-heading"><div><p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p><h2 id="libraryTitle">Your bookshelf</h2></div><button data-close="libraryDialog" class="close" aria-label="Close bookshelf">×</button></div><p class="muted">Readings and their places are saved in this browser, on this device.</p><label class="sr-only" for="shelfSearch">Search bookshelf</label><input id="shelfSearch" type="search" placeholder="Search bookshelf…"><label class="sr-only" for="shelfView">Bookshelf view</label><select id="shelfView"><option value="active">Reading</option><option value="archived">Archived</option><option value="trash">Trash</option></select><p id="libraryStatus" role="status"></p><button id="undoShelf" class="text-button" hidden>Undo last move</button><div id="libraryList" class="library-list"></div><details class="backup-controls"><summary>Backup &amp; restore</summary><p class="muted">Backups contain your readings, original PDFs, saved places and preferences. Existing readings stay intact when restoring.</p><button id="exportLibrary" class="outline">Download bookshelf backup</button><label for="restoreFile">Restore a Still backup</label><input id="restoreFile" type="file" accept=".json,application/json"><p id="backupStatus" role="status"></p><button id="restoreConfirm" class="primary" hidden>Restore readings</button></details><div class="dialog-actions"><button id="libraryAdd" class="primary">＋ Add reading</button></div></dialog><dialog id="inputDialog"><form id="inputForm"><div class="dialog-heading"><div><p class="eyebrow">MAKE YOURSELF AT HOME</p><h2>What are you reading?</h2></div><button type="button" data-close="inputDialog" class="close" aria-label="Close new text">×</button></div><div class="pdf-upload"><label for="epubFile">Import an EPUB book</label><input id="epubFile" type="file" accept=".epub,application/epub+zip"><p id="epubStatus" class="muted" role="status"></p><label for="pdfFile" class="pdf-label">Import a PDF <span>Choose file ↗</span></label><label for="pdfLayout">Reading order</label><select id="pdfLayout"><option value="auto">Detect columns automatically</option><option value="single">Across the page (one column)</option><option value="two">Left column, then right column</option></select><input id="pdfFile" type="file" accept="application/pdf,.pdf" aria-describedby="pdfHint pdfStatus"><p id="pdfHint" class="muted">PDFs with selectable text · up to 50 MB · processed on your device</p><p id="pdfStatus" role="status" aria-live="polite" hidden></p><button type="button" id="retryPdf" class="text-button" hidden>Retry this PDF</button><details id="pdfErrorDetails" hidden><summary>Error details</summary><p id="pdfErrorDetailText"></p></details><button type="button" id="cancelPdf" class="text-button" hidden>Cancel import</button></div><fieldset id="pdfOptions" hidden><legend>Pages to read</legend><div class="pdf-range"><label>From <input id="pdfFrom" type="number" min="1" value="1"></label><label>To <input id="pdfTo" type="number" min="1" value="1"></label><button type="button" id="applyPdfRange" class="outline">Apply</button></div><label class="check-label"><input id="pdfMargins" type="checkbox"> Remove repeated page headers and footers</label><p id="pdfRangeStatus" class="muted" role="status"></p></fieldset><div class="import-divider">or paste text</div><div id="duplicateNotice" hidden><p id="duplicateMessage" role="status"></p><button type="button" id="duplicateOpen" class="primary">Reopen saved reading</button><button type="button" id="duplicateCopy" class="outline">Import separate copy</button></div><label for="importType">Reading type</label><select id="importType"><option value="book">Book</option><option value="academic">Academic paper</option><option value="other" selected>Other</option></select><p id="typeHint" class="muted">You can change this later in Reading settings.</p><div id="importAcademic" hidden><label class="check-label"><input id="importSkipCitations" type="checkbox"> Skip inline citations</label><label class="check-label"><input id="importSkipReferences" type="checkbox"> Skip reference list</label></div><label for="textTitle">Title</label><input id="textTitle" maxlength="240" placeholder="Untitled reading"><label for="textInput">Text to read</label><textarea id="textInput" required placeholder="Paste a chapter, an article, or a few paragraphs…"></textarea><details id="startOptions"><summary>Choose where to start</summary><label for="startSection">Section or chapter</label><select id="startSection"><option value="1">Beginning</option></select><label for="startParagraph">Starting paragraph</label><input id="startParagraph" type="number" min="1" value="1"><p id="startPreview" class="muted"></p><p class="muted">Earlier pages stay available in review and the original PDF.</p></details><p class="muted">Your readings and saved places stay on this device. Definitions come from the included English dictionary.</p><div class="dialog-actions"><button type="button" id="sample" class="secondary">Use sample text</button><button class="primary" type="submit">Open in reader</button></div></form></dialog>
-<dialog id="reviewDialog"><div class="dialog-heading"><div><p class="eyebrow">A LITTLE CONTEXT</p><h2>Take another look</h2></div><button data-close="reviewDialog" class="close" aria-label="Close paragraph review">×</button></div><p class="muted">Choose a word to restart from, or look it up.</p><div class="paragraph-nav"><button id="prevPara" class="text-button">← Previous</button><form id="jumpForm" class="paragraph-jump"><label for="jumpParagraph">Paragraph</label><input id="jumpParagraph" type="number" min="1" step="1" required><span id="paraNumber"></span><button class="text-button" type="submit">Go</button></form><button id="nextPara" class="text-button">Next →</button></div><label for="findText" class="sr-only">Find in this reading</label><input id="findText" type="search" placeholder="Find in this reading…" autocomplete="off"><div id="searchResults" class="search-results" hidden></div><p id="searchStatus" class="muted" role="status" hidden></p><div id="paragraph" class="paragraph"></div><details id="originalContext" hidden><summary>Show original paragraph with citations</summary><p id="originalParagraph"></p></details><div class="selection"><span>Selected: <strong id="selectedWord"></strong></span><button id="define" class="outline">Look up word</button></div><div id="definition" class="definition" aria-live="polite" hidden></div><div class="dialog-actions review-actions"><button id="returnToPlace" class="text-button">Back to my place</button><button id="resume" class="primary">Read from here ▶</button></div></dialog>
-<dialog id="sourceDialog" aria-labelledby="sourceTitle"><div class="dialog-heading"><div><p class="eyebrow">IN CONTEXT</p><h2 id="sourceTitle">Original PDF</h2></div><button data-close="sourceDialog" class="close" aria-label="Close original PDF">×</button></div><div class="source-toolbar"><button id="sourcePrev" class="outline" aria-label="Previous PDF page">←</button><form id="sourcePageForm"><label for="sourcePage">Page</label><input id="sourcePage" type="number" min="1" required><span id="sourceTotal"></span><button class="text-button">Go</button></form><button id="sourceNext" class="outline" aria-label="Next PDF page">→</button><label for="sourceZoom" class="sr-only">PDF zoom</label><select id="sourceZoom"><option value="1">Fit page width</option><option value="1.5">150%</option><option value="2">200%</option><option value="3">300%</option></select><button id="sourceCurrent" class="text-button">My reading place</button></div><p id="sourceStatus" class="muted" role="status"></p><div id="pdfScroll"><div id="pdfPageSurface"><canvas id="pdfCanvas" role="img" aria-label="Original PDF page. Select a line to restart reading."></canvas><div id="pdfHighlights"></div></div></div><p id="sourceSelection"></p><div class="dialog-actions"><button data-close="sourceDialog" class="text-button">Back to reader</button><button id="sourceRead" class="primary">Read from selected line</button></div></dialog>
-<dialog id="settingsDialog" aria-labelledby="settingsTitle"><div class="dialog-heading"><h2 id="settingsTitle">Reading settings</h2><button data-close="settingsDialog" class="close" aria-label="Close reading settings">×</button></div><label for="readingTitle">Title</label><input id="readingTitle" maxlength="240"><label for="readingType">Reading type</label><select id="readingType"><option value="book">Book</option><option value="academic">Academic paper</option><option value="other">Other</option></select><details id="citationSettings"><summary>Citation options</summary><section class="reading-filters" aria-label="Reading content"><label class="check-label"><input id="skipCitations" type="checkbox"> Skip inline citations</label><label class="check-label"><input id="skipReferences" type="checkbox"> Skip reference list</label><p id="filterStatus" class="muted" role="status"></p><details><summary>Reference section and original text</summary><p class="muted">Original text stays intact. Skipping pauses playback and keeps your place. Mixed explanatory parentheses stay visible.</p><p id="referencePreview" class="muted"></p><div class="pdf-range"><label>First original paragraph <input id="referenceStart" type="number" min="1"></label><label>Last original paragraph <input id="referenceEnd" type="number" min="1"></label><button id="referenceApply" class="outline">Set range</button></div></details></section></details><p class="muted">Your pace is saved separately for this reading.</p><details><summary>Appearance &amp; offline reading</summary><label for="appearanceTheme">Theme</label><select id="appearanceTheme"><option value="light">Light</option><option value="dark">Dark</option><option value="system">Follow device</option></select><label for="appearanceFont">Reading font</label><select id="appearanceFont"><option value="serif">Serif</option><option value="sans">Sans serif</option><option value="mono">Monospace</option></select><label for="appearanceSize">Text size</label><input id="appearanceSize" type="range" min="80" max="150" step="5" value="100"><span id="appearanceSizeLabel">100%</span><p class="muted">Appearance applies to all readings on this device.</p><button id="prepareOffline" class="outline">Make available offline</button><p id="offlineStatus" class="muted" role="status">Save the app, dictionary and PDF reader for offline use. Your readings are already stored on this device.</p></details><button id="saveReadingDetails" class="primary">Save settings</button></dialog>
-<dialog id="contentsDialog" aria-labelledby="contentsTitle"><div class="dialog-heading"><h2 id="contentsTitle">Sections &amp; chapters</h2><button data-close="contentsDialog" class="close" aria-label="Close sections and chapters">×</button></div><p class="muted">Choose a heading to move there. Suggested headings can be edited below.</p><div id="sectionList" class="library-list"></div><details><summary>Edit headings</summary><p class="muted">Paragraph numbers refer to the original text, including skipped citations.</p><div id="sectionEditor"></div><button id="addSection" class="outline">Add heading</button><button id="saveSections" class="primary">Save headings</button><p id="sectionStatus" role="status"></p></details></dialog>
-<dialog id="marksDialog" aria-labelledby="marksTitle"><div class="dialog-heading"><h2 id="marksTitle">Bookmarks &amp; notes</h2><button data-close="marksDialog" class="close" aria-label="Close bookmarks">×</button></div><button id="markCurrent" class="outline">Save current paragraph</button><p id="marksStatus" class="muted" role="status"></p><div id="marksList"></div></dialog><dialog id="markDialog" aria-labelledby="markTitle"><div class="dialog-heading"><h2 id="markTitle">Save passage</h2><button data-close="markDialog" class="close" aria-label="Close passage note">×</button></div><blockquote id="markQuote"></blockquote><label for="markNote">Note (optional)</label><textarea id="markNote" maxlength="4000" placeholder="What would you like to remember?"></textarea><button id="saveMark" class="primary">Save passage</button></dialog>
-<script type="module" src="app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Read one word at a time, with a pace that adjusts to you."
+    />
+    <title>Still — Your reading space</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151d30'/%3E%3Cpath d='M10 9v14m12-14v14' stroke='%23bbd2ff' stroke-width='4'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="./" aria-label="Still home"
+        ><span class="mark">ıı</span> still<span class="brand-note"
+          >a little room to read</span
+        ></a
+      >
+      <nav class="header-actions" aria-label="Readings">
+        <button id="library" class="outline">Bookshelf</button
+        ><button id="newText" class="outline">＋ Add reading</button>
+      </nav>
+    </header>
+    <main>
+      <div class="topline">
+        <div>
+          <p class="eyebrow">YOUR READING SPACE</p>
+          <h1 id="title">The art of noticing</h1>
+        </div>
+        <span id="saved" class="muted">Saved on this device</span>
+      </div>
+      <section id="wordReader" class="reader" aria-label="Word reader">
+        <div class="reader-top">
+          <span id="mode">READY WHEN YOU ARE</span
+          ><span id="count">1 / 200 words</span>
+        </div>
+        <div class="stage">
+          <div class="focal-line"></div>
+          <div id="word" aria-label="Current word">There</div>
+          <div class="focal-line"></div>
+        </div>
+        <p id="status" class="status" aria-live="polite">
+          Settle in. Start when you’re ready.
+        </p>
+        <div class="controls">
+          <button id="review" class="secondary">
+            ↶ <span>Review paragraph</span></button
+          ><button id="play" class="primary">
+            ▶ <span>Start reading</span>
+          </button>
+        </div>
+        <div class="progress-track"><div id="progress"></div></div>
+      </section>
+      <section
+        id="normalReader"
+        class="normal-reader"
+        hidden
+        aria-label="Normal text reader"
+      >
+        <div class="normal-toolbar">
+          <p class="muted">
+            Tap a word to set your place. Select passage lets you choose a start
+            and end word.
+          </p>
+          <button id="selectPassage" class="outline" aria-pressed="false">
+            Select passage</button
+          ><button id="markPassage" class="outline">Save passage</button>
+        </div>
+        <div id="normalPane" class="normal-pane" tabindex="0">
+          <button id="normalEarlier" class="text-button">
+            Load earlier text
+          </button>
+          <div id="normalText" class="normal-text"></div>
+          <button id="normalLater" class="text-button">Load more text</button>
+        </div>
+        <p id="normalPosition" class="muted" role="status"></p>
+      </section>
+      <div class="source-link">
+        <button id="viewSource" class="outline" hidden>View original PDF</button
+        ><span id="sourceNote" class="muted" role="status"></span>
+      </div>
+      <div class="reading-tools">
+        <button id="readingMode" class="outline">Normal text</button
+        ><button
+          id="quickRewind"
+          class="outline"
+          title="Left arrow: rewind a sentence"
+        >
+          ↶ Sentence</button
+        ><button id="bookmarks" class="outline">Bookmarks &amp; notes</button
+        ><button id="readingSettings" class="outline">Reading settings</button
+        ><button id="contents" class="outline">Sections &amp; chapters</button>
+      </div>
+      <div class="settings">
+        <div class="pace">
+          <label for="speed">Your average pace</label>
+          <div class="pace-value">
+            <button
+              id="slower"
+              class="pace-step"
+              aria-label="Slow down 10 words per minute"
+            >
+              −</button
+            ><input
+              id="speedValue"
+              type="number"
+              min="80"
+              max="600"
+              step="1"
+              value="260"
+              aria-label="Average words per minute"
+            /><button
+              id="faster"
+              class="pace-step"
+              aria-label="Speed up 10 words per minute"
+            >
+              +</button
+            ><span>words / min</span>
+          </div>
+          <input
+            id="speed"
+            type="range"
+            min="80"
+            max="600"
+            step="1"
+            value="260"
+          />
+          <div class="range-labels">
+            <span>Take your time</span><span>Pick up the pace</span>
+          </div>
+        </div>
+        <div class="adapt">
+          <div class="adapt-title">
+            <span class="spark">✦</span>
+            <h2>A pace that follows you</h2>
+          </div>
+          <p>
+            Longer words get more time. Shorter words move faster. Pauses fit
+            within your paragraph’s average pace.
+          </p>
+          <div class="adapt-bottom">
+            <span id="learning">Learning as you read</span
+            ><button id="reset" class="text-button">Reset adjustments</button>
+          </div>
+        </div>
+      </div>
+      <footer>
+        <span>Space: play / pause · R: review · ←: sentence</span
+        ><span>One word. A little more room.</span>
+      </footer>
+    </main>
+    <dialog id="libraryDialog" aria-labelledby="libraryTitle">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p>
+          <h2 id="libraryTitle">Your bookshelf</h2>
+        </div>
+        <button
+          data-close="libraryDialog"
+          class="close"
+          aria-label="Close bookshelf"
+        >
+          ×
+        </button>
+      </div>
+      <p class="muted">
+        Readings and their places are saved in this browser, on this device.
+      </p>
+      <label class="sr-only" for="shelfSearch">Search bookshelf</label
+      ><input
+        id="shelfSearch"
+        type="search"
+        placeholder="Search bookshelf…"
+      /><label class="sr-only" for="shelfView">Bookshelf view</label
+      ><select id="shelfView">
+        <option value="active">Reading</option>
+        <option value="archived">Archived</option>
+        <option value="trash">Trash</option>
+      </select>
+      <p id="libraryStatus" role="status"></p>
+      <button id="undoShelf" class="text-button" hidden>Undo last move</button>
+      <div id="libraryList" class="library-list"></div>
+      <details class="backup-controls">
+        <summary>Backup &amp; restore</summary>
+        <p class="muted">
+          Backups contain your readings, original PDFs, saved places and
+          preferences. Existing readings stay intact when restoring.
+        </p>
+        <button id="exportLibrary" class="outline">
+          Download bookshelf backup</button
+        ><label for="restoreFile">Restore a Still backup</label
+        ><input id="restoreFile" type="file" accept=".json,application/json" />
+        <p id="backupStatus" role="status"></p>
+        <button id="restoreConfirm" class="primary" hidden>
+          Restore readings
+        </button>
+      </details>
+      <div class="dialog-actions">
+        <button id="libraryAdd" class="primary">＋ Add reading</button>
+      </div>
+    </dialog>
+    <dialog id="inputDialog">
+      <form id="inputForm">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">MAKE YOURSELF AT HOME</p>
+            <h2>What are you reading?</h2>
+          </div>
+          <button
+            type="button"
+            data-close="inputDialog"
+            class="close"
+            aria-label="Close new text"
+          >
+            ×
+          </button>
+        </div>
+        <div class="pdf-upload">
+          <label for="epubFile">Import an EPUB book</label
+          ><input
+            id="epubFile"
+            type="file"
+            accept=".epub,application/epub+zip"
+          />
+          <p id="epubStatus" class="muted" role="status"></p>
+          <label for="pdfFile" class="pdf-label"
+            >Import a PDF <span>Choose file ↗</span></label
+          ><label for="pdfLayout">Reading order</label
+          ><select id="pdfLayout">
+            <option value="auto">Detect columns automatically</option>
+            <option value="single">Across the page (one column)</option>
+            <option value="two">Left column, then right column</option></select
+          ><input
+            id="pdfFile"
+            type="file"
+            accept="application/pdf,.pdf"
+            aria-describedby="pdfHint pdfStatus"
+          />
+          <p id="pdfHint" class="muted">
+            PDFs with selectable text · up to 50 MB · processed on your device
+          </p>
+          <p id="pdfStatus" role="status" aria-live="polite" hidden></p>
+          <button type="button" id="retryPdf" class="text-button" hidden>
+            Retry this PDF
+          </button>
+          <details id="pdfErrorDetails" hidden>
+            <summary>Error details</summary>
+            <p id="pdfErrorDetailText"></p>
+          </details>
+          <button type="button" id="cancelPdf" class="text-button" hidden>
+            Cancel import
+          </button>
+        </div>
+        <fieldset id="pdfOptions" hidden>
+          <legend>Pages to read</legend>
+          <div class="pdf-range">
+            <label
+              >From
+              <input id="pdfFrom" type="number" min="1" value="1" /></label
+            ><label
+              >To <input id="pdfTo" type="number" min="1" value="1" /></label
+            ><button type="button" id="applyPdfRange" class="outline">
+              Apply
+            </button>
+          </div>
+          <label class="check-label"
+            ><input id="pdfMargins" type="checkbox" /> Remove repeated page
+            headers and footers</label
+          >
+          <p id="pdfRangeStatus" class="muted" role="status"></p>
+        </fieldset>
+        <div class="import-divider">or paste text</div>
+        <div id="duplicateNotice" hidden>
+          <p id="duplicateMessage" role="status"></p>
+          <button type="button" id="duplicateOpen" class="primary">
+            Reopen saved reading</button
+          ><button type="button" id="duplicateCopy" class="outline">
+            Import separate copy
+          </button>
+        </div>
+        <label for="importType">Reading type</label
+        ><select id="importType">
+          <option value="book">Book</option>
+          <option value="academic">Academic paper</option>
+          <option value="other" selected>Other</option>
+        </select>
+        <p id="typeHint" class="muted">
+          You can change this later in Reading settings.
+        </p>
+        <div id="importAcademic" hidden>
+          <label class="check-label"
+            ><input id="importSkipCitations" type="checkbox" /> Skip inline
+            citations</label
+          ><label class="check-label"
+            ><input id="importSkipReferences" type="checkbox" /> Skip reference
+            list</label
+          >
+        </div>
+        <label for="textTitle">Title</label
+        ><input
+          id="textTitle"
+          maxlength="240"
+          placeholder="Untitled reading"
+        /><label for="textInput">Text to read</label
+        ><textarea
+          id="textInput"
+          required
+          placeholder="Paste a chapter, an article, or a few paragraphs…"
+        ></textarea>
+        <details id="startOptions">
+          <summary>Choose where to start</summary>
+          <label for="startSection">Section or chapter</label
+          ><select id="startSection">
+            <option value="1">Beginning</option></select
+          ><label for="startParagraph">Starting paragraph</label
+          ><input id="startParagraph" type="number" min="1" value="1" />
+          <p id="startPreview" class="muted"></p>
+          <p class="muted">
+            Earlier pages stay available in review and the original PDF.
+          </p>
+        </details>
+        <p class="muted">
+          Your readings and saved places stay on this device. Definitions come
+          from the included English dictionary.
+        </p>
+        <div class="dialog-actions">
+          <button type="button" id="sample" class="secondary">
+            Use sample text</button
+          ><button class="primary" type="submit">Open in reader</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="reviewDialog">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">A LITTLE CONTEXT</p>
+          <h2>Take another look</h2>
+        </div>
+        <button
+          data-close="reviewDialog"
+          class="close"
+          aria-label="Close paragraph review"
+        >
+          ×
+        </button>
+      </div>
+      <p class="muted">Choose a word to restart from, or look it up.</p>
+      <div class="paragraph-nav">
+        <button id="prevPara" class="text-button">← Previous</button>
+        <form id="jumpForm" class="paragraph-jump">
+          <label for="jumpParagraph">Paragraph</label
+          ><input
+            id="jumpParagraph"
+            type="number"
+            min="1"
+            step="1"
+            required
+          /><span id="paraNumber"></span
+          ><button class="text-button" type="submit">Go</button>
+        </form>
+        <button id="nextPara" class="text-button">Next →</button>
+      </div>
+      <label for="findText" class="sr-only">Find in this reading</label
+      ><input
+        id="findText"
+        type="search"
+        placeholder="Find in this reading…"
+        autocomplete="off"
+      />
+      <div id="searchResults" class="search-results" hidden></div>
+      <p id="searchStatus" class="muted" role="status" hidden></p>
+      <div id="paragraph" class="paragraph"></div>
+      <details id="originalContext" hidden>
+        <summary>Show original paragraph with citations</summary>
+        <p id="originalParagraph"></p>
+      </details>
+      <div class="selection">
+        <span>Selected: <strong id="selectedWord"></strong></span
+        ><button id="define" class="outline">Look up word</button>
+      </div>
+      <div id="definition" class="definition" aria-live="polite" hidden></div>
+      <div class="dialog-actions review-actions">
+        <button id="returnToPlace" class="text-button">Back to my place</button
+        ><button id="resume" class="primary">Read from here ▶</button>
+      </div>
+    </dialog>
+    <dialog id="sourceDialog" aria-labelledby="sourceTitle">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">IN CONTEXT</p>
+          <h2 id="sourceTitle">Original PDF</h2>
+        </div>
+        <button
+          data-close="sourceDialog"
+          class="close"
+          aria-label="Close original PDF"
+        >
+          ×
+        </button>
+      </div>
+      <div class="source-toolbar">
+        <button id="sourcePrev" class="outline" aria-label="Previous PDF page">
+          ←
+        </button>
+        <form id="sourcePageForm">
+          <label for="sourcePage">Page</label
+          ><input id="sourcePage" type="number" min="1" required /><span
+            id="sourceTotal"
+          ></span
+          ><button class="text-button">Go</button>
+        </form>
+        <button id="sourceNext" class="outline" aria-label="Next PDF page">
+          →</button
+        ><label for="sourceZoom" class="sr-only">PDF zoom</label
+        ><select id="sourceZoom">
+          <option value="1">Fit page width</option>
+          <option value="1.5">150%</option>
+          <option value="2">200%</option>
+          <option value="3">300%</option></select
+        ><button id="sourceCurrent" class="text-button">
+          My reading place
+        </button>
+      </div>
+      <p id="sourceStatus" class="muted" role="status"></p>
+      <div id="pdfScroll">
+        <div id="pdfPageSurface">
+          <canvas
+            id="pdfCanvas"
+            role="img"
+            aria-label="Original PDF page. Select a line to restart reading."
+          ></canvas>
+          <div id="pdfHighlights"></div>
+        </div>
+      </div>
+      <p id="sourceSelection"></p>
+      <div class="dialog-actions">
+        <button data-close="sourceDialog" class="text-button">
+          Back to reader</button
+        ><button id="sourceRead" class="primary">
+          Read from selected line
+        </button>
+      </div>
+    </dialog>
+    <dialog id="settingsDialog" aria-labelledby="settingsTitle">
+      <div class="dialog-heading">
+        <h2 id="settingsTitle">Reading settings</h2>
+        <button
+          data-close="settingsDialog"
+          class="close"
+          aria-label="Close reading settings"
+        >
+          ×
+        </button>
+      </div>
+      <label for="readingTitle">Title</label
+      ><input id="readingTitle" maxlength="240" /><label for="readingType"
+        >Reading type</label
+      ><select id="readingType">
+        <option value="book">Book</option>
+        <option value="academic">Academic paper</option>
+        <option value="other">Other</option>
+      </select>
+      <details id="citationSettings">
+        <summary>Citation options</summary>
+        <section class="reading-filters" aria-label="Reading content">
+          <label class="check-label"
+            ><input id="skipCitations" type="checkbox" /> Skip inline
+            citations</label
+          ><label class="check-label"
+            ><input id="skipReferences" type="checkbox" /> Skip reference
+            list</label
+          >
+          <p id="filterStatus" class="muted" role="status"></p>
+          <details>
+            <summary>Reference section and original text</summary>
+            <p class="muted">
+              Original text stays intact. Skipping pauses playback and keeps
+              your place. Mixed explanatory parentheses stay visible.
+            </p>
+            <p id="referencePreview" class="muted"></p>
+            <div class="pdf-range">
+              <label
+                >First original paragraph
+                <input id="referenceStart" type="number" min="1" /></label
+              ><label
+                >Last original paragraph
+                <input id="referenceEnd" type="number" min="1" /></label
+              ><button id="referenceApply" class="outline">Set range</button>
+            </div>
+          </details>
+        </section>
+      </details>
+      <p class="muted">Your pace is saved separately for this reading.</p>
+      <details>
+        <summary>Appearance &amp; offline reading</summary>
+        <label for="appearanceTheme">Theme</label
+        ><select id="appearanceTheme">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+          <option value="system">Follow device</option></select
+        ><label for="appearanceFont">Reading font</label
+        ><select id="appearanceFont">
+          <option value="serif">Serif</option>
+          <option value="sans">Sans serif</option>
+          <option value="mono">Monospace</option></select
+        ><label for="appearanceSize">Text size</label
+        ><input
+          id="appearanceSize"
+          type="range"
+          min="80"
+          max="150"
+          step="5"
+          value="100"
+        /><span id="appearanceSizeLabel">100%</span>
+        <p class="muted">Appearance applies to all readings on this device.</p>
+        <button id="prepareOffline" class="outline">
+          Make available offline
+        </button>
+        <p id="offlineStatus" class="muted" role="status">
+          Save the app, dictionary and PDF reader for offline use. Your readings
+          are already stored on this device.
+        </p>
+      </details>
+      <button id="saveReadingDetails" class="primary">Save settings</button>
+    </dialog>
+    <dialog id="contentsDialog" aria-labelledby="contentsTitle">
+      <div class="dialog-heading">
+        <h2 id="contentsTitle">Sections &amp; chapters</h2>
+        <button
+          data-close="contentsDialog"
+          class="close"
+          aria-label="Close sections and chapters"
+        >
+          ×
+        </button>
+      </div>
+      <p class="muted">
+        Choose a heading to move there. Suggested headings can be edited below.
+      </p>
+      <div id="sectionList" class="library-list"></div>
+      <details>
+        <summary>Edit headings</summary>
+        <p class="muted">
+          Paragraph numbers refer to the original text, including skipped
+          citations.
+        </p>
+        <div id="sectionEditor"></div>
+        <button id="addSection" class="outline">Add heading</button
+        ><button id="saveSections" class="primary">Save headings</button>
+        <p id="sectionStatus" role="status"></p>
+      </details>
+    </dialog>
+    <dialog id="marksDialog" aria-labelledby="marksTitle">
+      <div class="dialog-heading">
+        <h2 id="marksTitle">Bookmarks &amp; notes</h2>
+        <button
+          data-close="marksDialog"
+          class="close"
+          aria-label="Close bookmarks"
+        >
+          ×
+        </button>
+      </div>
+      <button id="markCurrent" class="outline">Save current paragraph</button>
+      <p id="marksStatus" class="muted" role="status"></p>
+      <div id="marksList"></div>
+    </dialog>
+    <dialog id="markDialog" aria-labelledby="markTitle">
+      <div class="dialog-heading">
+        <h2 id="markTitle">Save passage</h2>
+        <button
+          data-close="markDialog"
+          class="close"
+          aria-label="Close passage note"
+        >
+          ×
+        </button>
+      </div>
+      <blockquote id="markQuote"></blockquote>
+      <label for="markNote">Note (optional)</label
+      ><textarea
+        id="markNote"
+        maxlength="4000"
+        placeholder="What would you like to remember?"
+      ></textarea
+      ><button id="saveMark" class="primary">Save passage</button>
+    </dialog>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

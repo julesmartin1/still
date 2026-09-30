@@ -1,2 +1,18 @@
-import {readdir,readFile,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';
-const files=[];async function walk(path){for(const e of await readdir(path,{withFileTypes:true})){const p=path+'/'+e.name;if(e.isDirectory())await walk(p);else if(!['sw.js','offline-assets.js'].includes(e.name))files.push(p);}}await walk('dist');files.sort();const hash=createHash('sha256');for(const file of files)hash.update(await readFile(file));await writeFile('dist/offline-assets.js',`self.STILL_VERSION=${JSON.stringify(hash.digest('hex').slice(0,16))};self.STILL_ASSETS=${JSON.stringify(files.map(f=>'./'+f.slice(5)))};\n`);
+import { readdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+const files = [];
+async function walk(path) {
+  for (const e of await readdir(path, { withFileTypes: true })) {
+    const p = path + "/" + e.name;
+    if (e.isDirectory()) await walk(p);
+    else if (!["sw.js", "offline-assets.js"].includes(e.name)) files.push(p);
+  }
+}
+await walk("dist");
+files.sort();
+const hash = createHash("sha256");
+for (const file of files) hash.update(await readFile(file));
+await writeFile(
+  "dist/offline-assets.js",
+  `self.STILL_VERSION=${JSON.stringify(hash.digest("hex").slice(0, 16))};self.STILL_ASSETS=${JSON.stringify(files.map((f) => "./" + f.slice(5)))};\n`,
+);
