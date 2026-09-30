@@ -1,0 +1,3 @@
+ios/App/App/Info.plist: OK
+ios/App/App/PrivacyInfo.xcprivacy: OK
+ios/App/App.xcodeproj/project.pbxproj: OK

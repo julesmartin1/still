@@ -1,0 +1,1 @@
+{"appId":"com.example.still.development","appName":"Still","webDir":"www","server":{"hostname":"localhost","iosScheme":"capacitor","allowNavigation":[]},"ios":{"contentInset":"always","allowsLinkPreview":false,"webContentsDebuggingEnabled":false},"loggingBehavior":"none"}

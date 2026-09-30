@@ -1,0 +1,69 @@
+
+> still-ios@0.1.0 test
+> node --test tests/*.test.mjs
+
+Citation fixtures: 108 positive, 63 negative; no false removals.
+✔ labelled citation fixtures: author-year, numbered, narrative and substantive distractors (17.222541ms)
+✔ filtering preserves source anchors, punctuation, paragraph order and exact unfiltered text tokens (4.419458ms)
+✔ reference range ends before appendix, and overrides do not delete original text (0.427708ms)
+✔ citation-only passages have no tokens and a source selection after the last visible word finishes (0.110083ms)
+✔ closing quotes attach to the preceding word after a citation is skipped (0.839084ms)
+✔ legacy PDF digit-one parentheses, page-range encoding and see-also groups are recognized (0.23275ms)
+✔ ordinary years before a broken citation do not swallow the citation match (0.10075ms)
+✔ document type suggestions and section anchors distinguish papers from books (4.42125ms)
+✔ title prefers useful metadata and otherwise large first-page text over a filename (0.379125ms)
+✔ fingerprints identify identical bytes regardless of filename (9.120459ms)
+✔ backup round trip retains PDF, original mapping, pace, preferences, headings and position (2.014708ms)
+✔ invalid backup or source positions fail before any restore is attempted (0.288417ms)
+✔ text order, punctuation and paragraph mapping are preserved (1.688708ms)
+✔ rewinds need distinct paragraphs; gradual adjustment is capped (0.188166ms)
+✔ pause/resume preserves current word and no duplicate timer advances (0.646667ms)
+✔ seek resumes at exact selection; end stops and replay restarts (0.108ms)
+✔ retiming and pauses do not modify position (0.097041ms)
+✔ dictionary supports common inflections and includes real definitions (10.77475ms)
+✔ length weights keep short words neutral and gently extend long words (0.63ms)
+✔ each paragraph meets its WPM budget including punctuation and difficulty (0.441833ms)
+✔ punctuation and lookups redistribute rather than inflate the budget (0.214208ms)
+✔ rewind slowdown lowers average and replay only slows its paragraph (0.145708ms)
+✔ single-word paragraphs and empty input remain well-defined (0.078792ms)
+✔ new timing plan responds immediately to a manual pace change (0.089042ms)
+✔ late timers never steal display time from following words (0.093375ms)
+✔ short words retain the minimum even among long words and punctuation (0.12875ms)
+✔ floor allocation preserves order and total even for extreme weights (0.071ms)
+✔ native adapter preserves PDFs, atomic restore batches, collision copies and deletion (3.738542ms)
+✔ native preference persistence excludes document text and reload hydrates from durable reading (2.719958ms)
+✔ paragraph jump uses exact token positions and rejects invalid input (0.926833ms)
+✔ search finds phrases case-insensitively and selects the matching word (1.079583ms)
+✔ search returns bounded results without crossing paragraphs (0.542ms)
+✔ bookshelf summaries exclude text but preserve saved progress (0.149375ms)
+✔ two columns read down the left then down the right despite interleaved source order (3.900417ms)
+✔ spanning headings split columns into top-to-bottom sections without losing items (0.816666ms)
+✔ single-column prose is not split and explicit one-column override works (0.20225ms)
+✔ page ranges and repeated margins keep token-to-source positions correct (1.352333ms)
+✔ full-width front matter does not hide two-column body text (0.983125ms)
+✔ narrow article sidebar stays separate from abstract and font fragments stay in the same line (0.765458ms)
+✔ verified line-break repair retains compounds, ambiguous spelling and source mapping (0.905958ms)
+✔ PDF fragments form words, lines and paragraphs without concatenation (1.23325ms)
+✔ PDF import preserves page order and reports empty pages (2.654958ms)
+✔ image-only PDF fails clearly and releases the document (0.362416ms)
+✔ invalid, oversized and cancelled inputs do not start parsing (0.2255ms)
+✔ password and malformed PDF failures have actionable messages (0.188875ms)
+✔ transient reader and file-access errors explain recovery (0.077292ms)
+✔ sentence rewind handles mid-sentence, boundaries, abbreviations and paragraphs (1.206791ms)
+✔ saved passages preserve valid original anchors and reject malformed ranges (0.473792ms)
+✔ shelf searches respect active, archived and recoverable trash states (0.083833ms)
+✔ invalid EPUB archives fail before extraction (0.364667ms)
+✔ EPUB deflate extraction retains the spine and complete chapter text (8.9525ms)
+✔ EPUB central/local filename disagreement is rejected (2.652417ms)
+✔ EPUB CRC corruption is detected after decompression (5.976958ms)
+✔ EPUB truncation and mutated directory boundaries fail closed (0.643083ms)
+✔ backup limits identifiers and filters nonnumeric lookup values (1.223625ms)
+✔ native bundle has no remote font, remote server or unrestricted script policy (0.919625ms)
+ℹ tests 56
+ℹ suites 0
+ℹ pass 56
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 133.27775

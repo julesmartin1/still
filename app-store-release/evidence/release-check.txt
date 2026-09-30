@@ -1,0 +1,21 @@
+
+> still-ios@0.1.0 check:release
+> node scripts/check-release.mjs
+
+NOT SUBMISSION READY
+• publisherName
+• supportEmail
+• supportURL
+• privacyURL
+• countries
+• pricing
+• audience
+• bundleIdentifier
+• developmentTeam
+• legalReview
+• nativeDeviceVerification
+• securityReview
+• testFlightVerification
+• privacyManifestArchiveVerification
+• final bundle identifier must match config
+• final privacy policy is not present

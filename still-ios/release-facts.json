@@ -1,0 +1,16 @@
+{
+  "publisherName": null,
+  "supportEmail": null,
+  "supportURL": null,
+  "privacyURL": null,
+  "countries": [],
+  "pricing": null,
+  "audience": null,
+  "bundleIdentifier": null,
+  "developmentTeam": null,
+  "legalReview": false,
+  "nativeDeviceVerification": false,
+  "securityReview": false,
+  "testFlightVerification": false,
+  "privacyManifestArchiveVerification": false
+}

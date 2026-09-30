@@ -1,0 +1,28 @@
+{
+  "name": "still-ios",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "start": "node server.mjs",
+    "build": "node scripts/legal-pages.mjs && node scripts/build.mjs",
+    "sync": "npm run build && cap sync ios",
+    "verify": "npm test && node scripts/check-release.mjs",
+    "test:native-core": "node scripts/test-vault.mjs",
+    "check:release": "node scripts/check-release.mjs"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.5.2",
+    "@capacitor/ios": "8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "esbuild": "0.28.2"
+  },
+  "overrides": {
+    "xcode": {
+      "uuid": "11.1.1"
+    }
+  }
+}

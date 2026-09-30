@@ -1,0 +1,6 @@
+
+> still-ios@0.1.0 test:native-core
+> node scripts/test-vault.mjs
+
+PASS: atomic commit, interrupted commit, relaunch, orphan cleanup, deletion, key validation, corrupt manifest fail-closed
+PASS: missing manifest does not erase existing files

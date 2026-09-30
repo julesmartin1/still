@@ -1,0 +1,22 @@
+gate,status,evidence,revision,owner,next_action
+Baseline tests,PASS,evidence/javascript-tests.txt; initial baseline 49 tests,171db4e,agent,Retest affected code after fixes
+Native project and bundled assets,PASS,ARCHITECTURE.md; bundle and cap sync results,171db4e,agent,Build with real iOS SDK
+Native full build,BLOCKED,STATUS.md Xcode unavailable,171db4e,owner/agent,Install and initialize Xcode then compile
+Atomic storage core host tests,PASS,evidence/native-storage-tests.txt,171db4e,agent,Verify device lock and full bridge integration
+Native storage adapter tests,PASS,evidence/javascript-tests.txt simulated bridge,171db4e,agent,Test on actual iOS runtime
+Shared parser and pacing regressions,PASS,evidence/javascript-tests.txt 56 tests,171db4e,agent,Expand device malicious-file tests
+Dependency npm audit,PASS,npm-audit.json; npm-runtime-audit.json,171db4e,agent,Recheck before release
+Vendor dependency inventory,PASS,DEPENDENCY_INVENTORY.json; LICENSES.md,171db4e,agent,Inspect exact signed archive
+Native security verification,BLOCKED,SECURITY_FINDINGS.md; MASVS_MATRIX.md,171db4e,agent/owner,Native bridge traffic lock-state and resource testing
+Privacy and data inventory,IN PROGRESS,DATA_INVENTORY.md; bundled draft pages,171db4e,agent/owner,Verify native traffic and finalize publisher facts
+Legal and rights review,BLOCKED,LEGAL_REVIEW_BRIEF.md,171db4e,owner/counsel,Choose markets identity model and obtain scoped review
+Accessibility on device,BLOCKED,Native scaling hook and normal reader implemented,171db4e,agent/owner,VoiceOver Dynamic Type keyboard contrast testing
+Native Files and export,BLOCKED,Adapter and UI code present; no iOS runtime,171db4e,agent,Test file providers and share completion on device
+Deletion shared UI and core,PASS,TEST_REPORT.md; native-storage-tests.txt,171db4e,agent,Verify native end-to-end deletion with disposable data
+Device reliability and performance,BLOCKED,TEST_REPORT.md open native matrix,171db4e,agent/owner,Real supported iPhone and iPad testing
+TestFlight beta,BLOCKED,No verified signing account or approved cohort,171db4e,owner,Provide team and cohort authorization
+Store draft packet,IN PROGRESS,STORE_SUBMISSION.md,171db4e,agent/owner,Real screenshots final metadata account and archive
+Publisher support countries pricing,BLOCKED,Owner explicitly undecided,171db4e,owner,Decide required facts
+Release guard,PASS,evidence/release-check.txt correctly refuses incomplete release,171db4e,agent,Keep blockers until evidence is real
+Operations,IN PROGRESS,OPERATIONS.md,171db4e,owner,Assign support and incident responsibility
+App Store submission,BLOCKED,No signed verified release or account access,171db4e,owner/agent,Complete mandatory gates then submit through authorized account
