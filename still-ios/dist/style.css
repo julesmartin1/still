@@ -1292,3 +1292,19 @@ html[data-theme="dark"] .file-button {
   min-width: 44px;
   min-height: 44px;
 }
+
+/* ---- Word anchored on its focus letter (see word-display.js) ---- */
+#word.focus-mode {
+  display: grid;
+  /* Equal side columns put the middle column (the focus letter) exactly
+     under the fixation marks. min-content sizing lets fitWord() detect a
+     word that would overflow and shrink it. */
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+}
+#word.focus-mode .before {
+  text-align: end;
+}
+#word.focus-mode .after {
+  text-align: start;
+}

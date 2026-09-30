@@ -38,6 +38,7 @@ import {
 } from "./navigation.js";
 import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
+import { splitAtFocus, fadeDuration } from "./word-display.js";
 import {
   parseText,
   cleanWord,
@@ -263,12 +264,79 @@ function save() {
   }
 }
 
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let wordFade = null;
+// Shows one word, anchored on its focus letter unless the reader chose
+// centred words (see word-display.js for the reasoning).
+function showWord(word, { animate = false, durationMs = 0 } = {}) {
+  const el = $("word");
+  const focus = appearance.placement !== "centered" && word.length <= 40;
+  el.classList.toggle("focus-mode", focus);
+  if (focus) {
+    const parts = splitAtFocus(word).map((text, i) => {
+      const span = document.createElement("span");
+      span.className = ["before", "focus", "after"][i];
+      span.textContent = text;
+      return span;
+    });
+    el.replaceChildren(...parts);
+    el.setAttribute("aria-label", word); // read as one word, not three pieces
+  } else {
+    el.textContent = word;
+    el.removeAttribute("aria-label");
+  }
+  fitWord();
+  wordFade?.cancel();
+  wordFade = null;
+  if (
+    animate &&
+    appearance.transition !== "instant" &&
+    !reducedMotion.matches &&
+    el.animate
+  ) {
+    const duration = fadeDuration(durationMs);
+    if (duration)
+      wordFade = el.animate([{ opacity: 0.25 }, { opacity: 1 }], {
+        duration,
+        easing: "ease-out",
+      });
+  }
+}
+// Offset in px between the focus letter's centre and the word box's centre.
+function focusOffset(el) {
+  const focus = el.querySelector(".focus");
+  if (!focus) return 0;
+  const f = focus.getBoundingClientRect(),
+    box = el.getBoundingClientRect();
+  return f.left + f.width / 2 - (box.left + box.width / 2);
+}
 function fitWord() {
   const el = $("word");
   el.style.fontSize = "";
   el.style.whiteSpace = "nowrap";
   el.style.overflowWrap = "normal";
-  let size = parseFloat(getComputedStyle(el).fontSize);
+  const full = parseFloat(getComputedStyle(el).fontSize);
+  let size = full;
+  if (el.classList.contains("focus-mode")) {
+    // A long word may not fit on one side of the focus letter. Shrink it a
+    // little; if it still doesn't balance, centre it rather than making the
+    // text jump to a much smaller size.
+    while (
+      (el.scrollWidth > el.clientWidth || Math.abs(focusOffset(el)) > 1) &&
+      size > full * 0.75
+    ) {
+      size -= 2;
+      el.style.fontSize = size + "px";
+    }
+    if (el.scrollWidth <= el.clientWidth && Math.abs(focusOffset(el)) <= 1)
+      return;
+    const word = el.textContent;
+    el.classList.remove("focus-mode");
+    el.textContent = word;
+    el.removeAttribute("aria-label");
+    el.style.fontSize = "";
+    size = full;
+  }
   while (el.scrollWidth > el.clientWidth && size > 14) {
     size -= 2;
     el.style.fontSize = size + "px";
@@ -282,8 +350,10 @@ function fitWord() {
 }
 function render() {
   const t = data.tokens[reader.index];
-  $("word").textContent = t?.text || "No visible words";
-  fitWord();
+  showWord(t?.text || "No visible words", {
+    animate: reader.playing,
+    durationMs: timingPlan[reader.index],
+  });
   $("count").textContent =
     `${data.tokens.length ? reader.index + 1 : 0} / ${plural(data.tokens.length, "word")}`;
   const percent = data.tokens.length
@@ -1807,19 +1877,31 @@ function applyAppearance() {
   document.documentElement.style.setProperty("--reading-scale", size / 100);
   $("appearanceTheme").value = theme;
   $("appearanceFont").value = appearance.font || "serif";
+  $("appearancePlacement").value =
+    appearance.placement === "centered" ? "centered" : "focus";
+  $("appearanceTransition").value =
+    appearance.transition === "instant" ? "instant" : "soft";
   $("appearanceSize").value = size;
   $("appearanceSizeLabel").textContent = size + "%";
   try {
     storage.setItem("still-appearance", JSON.stringify(appearance));
   } catch {}
-  fitWord();
+  if (reader) showWord(data.tokens[reader.index]?.text || "No visible words");
 }
-for (const id of ["appearanceTheme", "appearanceFont", "appearanceSize"])
+for (const id of [
+  "appearanceTheme",
+  "appearanceFont",
+  "appearanceSize",
+  "appearancePlacement",
+  "appearanceTransition",
+])
   $(id).oninput = () => {
     appearance = {
       theme: $("appearanceTheme").value,
       font: $("appearanceFont").value,
       size: Number($("appearanceSize").value),
+      placement: $("appearancePlacement").value,
+      transition: $("appearanceTransition").value,
     };
     applyAppearance();
   };

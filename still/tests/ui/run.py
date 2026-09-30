@@ -259,6 +259,43 @@ async def phone_layout_has_no_sideways_scroll(browser):
     await ctx.close()
 
 
+@check
+async def words_are_anchored_on_their_focus_letter(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, "comprehension reading a")
+    offset = await page.evaluate("""() => {
+      const f = document.querySelector('#word .focus').getBoundingClientRect();
+      const mark = document.querySelector('.focal-line').getBoundingClientRect();
+      return Math.abs(f.left + f.width / 2 - (mark.left + mark.width / 2));
+    }""")
+    assert offset <= 1, f"focus letter is {offset}px off the marks"
+    assert await page.text_content("#word .focus") == "p"
+    await page.click("#readingSettings")
+    await page.locator("summary", has_text="Appearance").click()
+    await page.select_option("#appearancePlacement", "centered")
+    assert await page.locator("#word .focus").count() == 0
+    await ctx.close()
+
+
+@check
+async def soft_change_fades_briefly_and_respects_reduced_motion(browser):
+    for reduced, expect_fades in (("no-preference", True), ("reduce", False)):
+        ctx, page = await fresh(browser, reduced_motion=reduced)
+        durations = await page.evaluate("""async () => {
+          const w = document.getElementById('word'), seen = [], orig = w.animate.bind(w);
+          w.animate = (k, o) => (seen.push(o.duration), orig(k, o));
+          document.getElementById('play').click();
+          await new Promise(r => setTimeout(r, 1200));
+          document.getElementById('play').click();
+          return seen;
+        }""")
+        if expect_fades:
+            assert durations and all(12 <= d <= 40 for d in durations), durations
+        else:
+            assert not durations, durations
+        await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],
