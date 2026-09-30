@@ -29,6 +29,7 @@ import {
   setShelfState,
   deleteReading,
   eraseLibrary,
+  searchReadingText,
 } from "./library.js";
 import {
   buildParagraphIndex,
@@ -63,10 +64,30 @@ There are words for these small discoveries. Ephemeral describes something that 
 Later, when the day grows busy, you may remember the bird. You may forget it entirely. Either way, for a few seconds, you were there. The light, the quiet, the world just outside. And that was enough.`;
 let erasing = false;
 const KEY = "still-reader-v1";
+// Local storage holds about 5 MB per site. Readings longer than this keep
+// their text only in the bookshelf (IndexedDB) and load it from there.
+const LOCAL_TEXT_LIMIT = 500000;
 let saved;
 try {
   saved = JSON.parse(storage.getItem(KEY));
 } catch {}
+const hasText = (value) =>
+  typeof value?.text === "string" && value.text.trim() !== "";
+let startupNote = "";
+if (saved && typeof saved.documentId === "string" && !hasText(saved)) {
+  // Long readings are saved without their text in local storage (it is
+  // small); the full text lives in the bookshelf. Load it from there.
+  try {
+    const record = await getReading(saved.documentId);
+    if (hasText(record)) saved = { ...record, ...saved, text: record.text };
+  } catch {}
+  if (!hasText(saved)) {
+    // Never reuse the ID with other text: that would overwrite the
+    // bookshelf copy of this reading with the sample.
+    saved = null;
+    startupNote = "Your last reading is on the Bookshelf.";
+  }
+}
 let text =
   typeof saved?.text === "string" && saved.text.trim() ? saved.text : SAMPLE;
 let title =
@@ -196,23 +217,33 @@ function save() {
       finished: reader?.finished || false,
     });
     if (savedText !== text || savedSettings !== settings) {
-      storage.setItem(
-        KEY,
-        JSON.stringify({
-          text,
-          title,
+      const state = {
+        text,
+        title,
           base,
           profile,
           documentId,
           readingOptions,
           shelfState,
-          sourceIndex: data.tokens[reader?.index]?.sourceIndex ?? filterAnchor,
-          index: reader?.index || 0,
-          finished: reader?.finished || false,
-        }),
-      );
+        sourceIndex: data.tokens[reader?.index]?.sourceIndex ?? filterAnchor,
+        index: reader?.index || 0,
+        finished: reader?.finished || false,
+      };
+      // Mark as saved first so a failure below is not retried on every word.
       savedText = text;
       savedSettings = settings;
+      const withoutText = () => {
+        const { text: _omit, ...rest } = state;
+        storage.setItem(KEY, JSON.stringify({ ...rest, textInLibrary: true }));
+      };
+      if (!native && text.length > LOCAL_TEXT_LIMIT) withoutText();
+      else
+        try {
+          storage.setItem(KEY, JSON.stringify(state));
+        } catch (error) {
+          if (native) throw error;
+          withoutText(); // quota exceeded: the bookshelf keeps the text
+        }
     }
     storage.setItem(
       KEY + "-position",
@@ -223,7 +254,8 @@ function save() {
         finished: reader?.finished || false,
       }),
     );
-    $("saved").textContent = libraryError || "Saved on this device";
+    $("saved").textContent =
+      libraryError || startupNote || "Saved on this device";
     $("saved").classList.toggle("storage-error", !!libraryError);
   } catch {
     $("saved").textContent = "Storage unavailable · keep this tab open";
@@ -253,9 +285,12 @@ function render() {
   $("word").textContent = t?.text || "No visible words";
   fitWord();
   $("count").textContent =
-    `${data.tokens.length ? reader.index + 1 : 0} / ${data.tokens.length} words`;
-  $("progress").style.width =
-    `${data.tokens.length ? ((reader.index + 1) / data.tokens.length) * 100 : 0}%`;
+    `${data.tokens.length ? reader.index + 1 : 0} / ${plural(data.tokens.length, "word")}`;
+  const percent = data.tokens.length
+    ? ((reader.index + 1) / data.tokens.length) * 100
+    : 0;
+  $("progress").style.width = `${percent}%`;
+  $("progressTrack").setAttribute("aria-valuenow", Math.round(percent));
   $("title").textContent = title;
   $("speed").value = base;
   if (document.activeElement !== $("speedValue")) $("speedValue").value = base;
@@ -286,6 +321,25 @@ function playbackUI() {
     : reader.finished
       ? "You’ve reached the end."
       : "Settle in. Start when you’re ready.";
+  // Words are not announced one by one (far too fast for a screen reader);
+  // announce the state and position whenever playback starts or stops.
+  const position = data.tokens.length
+    ? `word ${reader.index + 1} of ${data.tokens.length}`
+    : "no visible words";
+  const announcement = playing
+    ? "Playing."
+    : reader.finished
+      ? "Finished. You’ve reached the end."
+      : `Paused at ${position}: ${data.tokens[reader.index]?.text || ""}`;
+  if ($("srStatus").textContent !== announcement)
+    $("srStatus").textContent = announcement;
+}
+// After an action that returns to reading (opening a reading, saving
+// settings, jumping to a bookmark), put focus on the play button so Space
+// plays instead of re-activating the button that opened the dialog.
+function returnToReader() {
+  const target = normalMode ? $("readingMode") : $("play");
+  target.focus({ preventScroll: true });
 }
 function createReader(index = 0) {
   reader?.pause();
@@ -352,6 +406,7 @@ function checkpoint() {
 function load(nextText, nextTitle, existing = null, importedSource = null) {
   if (!nextText.trim()) return;
   pause();
+  startupNote = "";
   clearTimeout(normalScrollTimer);
   selectionStart = null;
   selectionEnd = null;
@@ -407,10 +462,6 @@ function setPace(value) {
 }
 $("play").onclick = toggle;
 $("speed").oninput = (e) => setPace(e.target.value);
-$("speedValue").oninput = (e) => {
-  const value = Number(e.target.value);
-  if (e.target.value.trim() && value >= 80 && value <= 600) setPace(value);
-};
 $("speedValue").onchange = (e) => setPace(e.target.value);
 $("speedValue").onblur = (e) => setPace(e.target.value);
 $("speedValue").onkeydown = (e) => {
@@ -444,6 +495,9 @@ $("newText").onclick = () => {
   $("importSkipReferences").checked = false;
   $("pdfOptions").hidden = true;
   $("pdfStatus").hidden = true;
+  $("pdfErrorDetails").hidden = true;
+  $("retryPdf").hidden = true;
+  $("textFileStatus").textContent = "";
   $("duplicateNotice").hidden = true;
   $("startParagraph").value = 1;
   updateDraft();
@@ -502,6 +556,7 @@ $("inputForm").onsubmit = (e) => {
     imported,
   );
   $("inputDialog").close();
+  returnToReader();
 };
 $("textInput").oninput = () => {
   updateDraft();
@@ -515,6 +570,7 @@ $("textInput").oninput = () => {
 $("sample").onclick = () => {
   load(SAMPLE, "The art of noticing");
   $("inputDialog").close();
+  returnToReader();
 };
 document
   .querySelectorAll("[data-close]")
@@ -559,6 +615,7 @@ function clearSearch() {
   $("searchStatus").hidden = true;
 }
 function review() {
+  if (!data.tokens.length) return; // everything hidden by citation filtering
   pause();
   origin = reader.index;
   selected = reader.index;
@@ -615,6 +672,7 @@ $("findText").oninput = () => {
     ...results.map((result) => {
       const button = document.createElement("button");
       button.className = "search-result";
+      button.dir = "auto";
       const label = document.createElement("strong");
       label.textContent = `Paragraph ${result.paragraph + 1}`;
       button.append(label, document.createTextNode(result.excerpt));
@@ -880,7 +938,7 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
     $("textTitle").value = result.title;
     applyPdfRange();
     $("pdfStatus").textContent =
-      `Imported ${result.pages} ${result.pages === 1 ? "page" : "pages"}. ${result.blankPages ? `${result.blankPages} ${result.blankPages === 1 ? "page had" : "pages had"} no selectable text and were skipped. ` : ""}Check the text below, then open it in the reader. ${result.pageModels.filter((p) => p.columns === 2).length} pages use two-column reading order. ${repaired} line-break splits repaired. Tables may still need manual review.`;
+      `Imported ${result.pages} ${result.pages === 1 ? "page" : "pages"}. ${result.blankPages ? `${result.blankPages} ${result.blankPages === 1 ? "page had" : "pages had"} no selectable text and were skipped. ` : ""}Check the text below, then open it in the reader. ${plural(result.pageModels.filter((p) => p.columns === 2).length, "page uses", "pages use")} two-column reading order. ${plural(repaired, "line-break split")} repaired. Tables may still need manual review.`;
   } catch (error) {
     if (!controller.signal.aborted && pdfController === controller) {
       $("pdfStatus").textContent = pdfErrorMessage(error);
@@ -911,16 +969,30 @@ async function showLibrary() {
   if (!$("libraryDialog").open) $("libraryDialog").showModal();
   await checkpoint();
   try {
-    const readings = (await listReadings()).filter((r) =>
-      shelfMatches(r, $("shelfSearch").value, $("shelfView").value),
+    const query = $("shelfSearch").value,
+      view = $("shelfView").value;
+    const all = await listReadings();
+    const inText = query.trim() ? await searchReadingText(query) : new Set();
+    const readings = all.filter(
+      (r) =>
+        shelfMatches(r, query, view) ||
+        ((r.shelfState || "active") === view && inText.has(r.id)),
     );
     if (request !== shelfRequest || !$("libraryDialog").open) return;
     $("restoreConfirm").hidden = !restorePending;
+    $("emptyTrash").hidden =
+      view !== "trash" || !all.some((r) => r.shelfState === "trash");
     $("libraryStatus").textContent =
       libraryError ||
-      (!readings.length
-        ? "Your readings will appear here when you add one."
-        : "");
+      (readings.length
+        ? ""
+        : query.trim()
+          ? "No readings match that search."
+          : view === "trash"
+            ? "The Trash is empty."
+            : view === "archived"
+              ? "No archived readings."
+              : "Your readings will appear here when you add one.");
     $("libraryList").replaceChildren(
       ...readings.map((record) => {
         const button = document.createElement("button");
@@ -935,7 +1007,7 @@ async function showLibrary() {
               99,
               Math.floor((record.index / Math.max(1, record.wordCount)) * 100),
             );
-        info.textContent = `${record.id === documentId ? "Reading now · " : ""}${record.finished ? "Finished" : `${percent}% read`} · ${record.wordCount.toLocaleString()} words`;
+        info.textContent = `${record.id === documentId ? "Reading now · " : ""}${record.finished ? "Finished" : `${percent}% read`} · ${plural(record.wordCount, "word")}`;
         const track = document.createElement("span");
         track.className = "shelf-progress";
         const fill = document.createElement("i");
@@ -950,7 +1022,7 @@ async function showLibrary() {
             if (!reading) throw Error();
             load(reading.text, reading.title, reading);
             $("libraryDialog").close();
-            $("play").focus({ preventScroll: true });
+            returnToReader();
           } catch {
             $("libraryStatus").textContent =
               "This reading could not be opened. Try again.";
@@ -1030,7 +1102,7 @@ function applyPdfRange() {
   $("textInput").value = composed.text;
   $("textInput").setCustomValidity("");
   $("pdfRangeStatus").textContent =
-    `Pages ${from}–${to} · ${composed.locations.at(-1).end + 1} words · ${composed.removed} repeated header/footer lines removed. Original page view will be available.`;
+    `Pages ${from}–${to} · ${plural(composed.locations.at(-1).end + 1, "word")} · ${plural(composed.removed, "header/footer line")} removed. Original page view will be available.`;
   updateDraft();
 }
 $("applyPdfRange").onclick = applyPdfRange;
@@ -1170,6 +1242,7 @@ $("saveReadingDetails").onclick = () => {
         : readingOptions.sections,
   });
   $("settingsDialog").close();
+  returnToReader();
 };
 function readingSections() {
   return readingOptions.sections
@@ -1219,6 +1292,7 @@ function renderSections() {
         $("contentsDialog").close();
         render();
         if (normalMode) renderNormal();
+        returnToReader();
         checkpoint();
       };
       return b;
@@ -1297,6 +1371,7 @@ $("duplicateOpen").onclick = () => {
   load(r.text, r.title, r);
   $("inputDialog").close();
   duplicatePending = null;
+  returnToReader();
 };
 $("duplicateCopy").onclick = () => {
   if (duplicatePending)
@@ -1359,7 +1434,7 @@ $("restoreConfirm").onclick = async () => {
     const count = await restoreLibrary(restorePending);
     restorePending = null;
     $("restoreConfirm").hidden = true;
-    $("backupStatus").textContent = `Restored ${count} readings.`;
+    $("backupStatus").textContent = `Restored ${plural(count, "reading")}.`;
     await showLibrary();
   } catch (error) {
     $("backupStatus").textContent =
@@ -1401,6 +1476,7 @@ function normalChunk(start, end) {
     const t = data.tokens[i];
     if (t.paragraph !== paragraph) {
       p = document.createElement("p");
+      p.dir = "auto"; // right-to-left scripts lay out correctly
       fragment.append(p);
       paragraph = t.paragraph;
     }
@@ -1513,6 +1589,7 @@ $("selectPassage").onclick = () => {
   updateNormalHighlight();
 };
 function rewindSentence() {
+  if (!data.tokens.length) return;
   const playing = reader.playing;
   pause();
   const index = previousSentence(data.tokens, reader.index);
@@ -1540,10 +1617,23 @@ function editMark(mark = null) {
           )
         : group;
     if (!selectedTokens.length) return;
+    const start = selectedTokens[0].sourceIndex,
+      end = selectedTokens.at(-1).sourceEnd;
+    // Saving the same passage again edits the existing bookmark.
+    const existing = (readingOptions.marks || []).find(
+      (m) => m.start === start && m.end === end,
+    );
+    if (existing) {
+      markDraft = { ...existing };
+      $("markQuote").textContent = markDraft.quote;
+      $("markNote").value = markDraft.note;
+      $("markDialog").showModal();
+      return;
+    }
     markDraft = {
       id: crypto.randomUUID(),
-      start: selectedTokens[0].sourceIndex,
-      end: selectedTokens.at(-1).sourceEnd,
+      start,
+      end,
       quote: selectedTokens
         .map((t) => t.text)
         .join(" ")
@@ -1559,13 +1649,14 @@ function editMark(mark = null) {
 function renderMarks() {
   const marks = readingOptions.marks || [];
   $("marksStatus").textContent = marks.length
-    ? `${marks.length} saved passages`
+    ? plural(marks.length, "saved passage")
     : "No saved passages yet.";
   $("marksList").replaceChildren(
     ...marks.map((m) => {
       const row = document.createElement("article");
       row.className = "saved-mark";
       const quote = document.createElement("blockquote");
+      quote.dir = "auto";
       quote.textContent = m.quote;
       const note = document.createElement("p");
       note.textContent = m.note;
@@ -1582,13 +1673,43 @@ function renderMarks() {
         reader.seek(index);
         $("marksDialog").close();
         if (normalMode) renderNormal();
+        returnToReader();
         checkpoint();
       };
       const edit = document.createElement("button");
       edit.className = "text-button";
       edit.textContent = "Edit note";
       edit.onclick = () => editMark(m);
-      row.append(quote, note, go, edit);
+      const remove = document.createElement("button");
+      remove.className = "text-button danger";
+      remove.textContent = "Delete";
+      remove.setAttribute("aria-label", "Delete this saved passage");
+      let confirmTimer;
+      remove.onclick = () => {
+        // Two-step delete in place: the first press asks, the second deletes.
+        if (!remove.dataset.confirm) {
+          remove.dataset.confirm = "1";
+          remove.textContent = "Press again to delete";
+          confirmTimer = setTimeout(() => {
+            delete remove.dataset.confirm;
+            remove.textContent = "Delete";
+          }, 4000);
+          return;
+        }
+        clearTimeout(confirmTimer);
+        readingOptions = {
+          ...readingOptions,
+          marks: (readingOptions.marks || []).filter((x) => x.id !== m.id),
+        };
+        save();
+        checkpoint();
+        renderMarks();
+        updateNormalHighlight();
+        $("marksStatus").textContent =
+          "Passage deleted. " + $("marksStatus").textContent;
+        $("marksDialog").querySelector(".close")?.focus();
+      };
+      row.append(quote, note, go, edit, remove);
       return row;
     }),
   );
@@ -1620,6 +1741,21 @@ $("saveMark").onclick = () => {
   renderMarks();
   updateNormalHighlight();
 };
+// Opens the most recently used reading on the shelf other than `excludeId`,
+// or the sample text when there is none. Used when the open reading is
+// trashed or deleted, so the reader never shows a reading from the Trash.
+async function openNextReading(excludeId) {
+  let next = null;
+  try {
+    const summary = (await listReadings()).find(
+      (r) => r.id !== excludeId && (r.shelfState || "active") === "active",
+    );
+    if (summary) next = await getReading(summary.id);
+  } catch {}
+  if (next?.text) load(next.text, next.title, next);
+  else load(SAMPLE, "The art of noticing");
+  await archiveQueue;
+}
 async function moveReading(record, state) {
   try {
     await archiveQueue;
@@ -1628,6 +1764,7 @@ async function moveReading(record, state) {
       shelfState = state;
       save();
       await checkpoint();
+      if (state === "trash") await openNextReading(record.id);
     } else await setShelfState(record.id, state);
     $("undoShelf").hidden = false;
     await showLibrary();
@@ -1654,7 +1791,7 @@ $("shelfView").onchange = showLibrary;
 function applyAppearance() {
   const theme = ["light", "dark", "system"].includes(appearance.theme)
     ? appearance.theme
-    : "light";
+    : "system";
   const dark =
     theme === "dark" ||
     (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
@@ -1716,7 +1853,7 @@ $("epubFile").onchange = async () => {
     $("textInput").setCustomValidity("");
     updateDraft();
     $("epubStatus").textContent =
-      `Imported ${result.chapters} chapters with ${result.sections.length} table-of-contents entries. Choose a starting point below.`;
+      `Imported ${plural(result.chapters, "chapter")} with ${plural(result.sections.length, "table-of-contents entry", "table-of-contents entries")}. Choose a starting point below.`;
   } catch (error) {
     if (!controller.signal.aborted)
       $("epubStatus").textContent =
@@ -1747,18 +1884,30 @@ document.addEventListener("still-storage-failed", () => {
 });
 
 let deletePending = null;
-function confirmDelete(record) {
+function confirmDelete(record, trash = null) {
   pause();
-  deletePending = record;
-  $("deleteDescription").textContent = record
-    ? "Permanently delete “" +
-      record.title +
-      "”, its original file and notes from this app? Exported copies and device backups are not removed."
-    : "Erase all readings, original files, notes and reading preferences from this app? Exported copies and device backups are not removed.";
+  deletePending = trash ? { trash } : record;
+  $("deleteDescription").textContent = trash
+    ? `Permanently delete ${plural(trash.length, "reading")} in the Trash, with their original files and notes? Exported copies and device backups are not removed.`
+    : record
+      ? "Permanently delete “" +
+        record.title +
+        "”, its original file and notes from this app? Exported copies and device backups are not removed."
+      : "Erase all readings, original files, notes and reading preferences from this app? Exported copies and device backups are not removed.";
   $("deleteError").textContent = "";
   $("deleteDialog").showModal();
 }
 $("eraseDevice").onclick = () => confirmDelete(null);
+$("emptyTrash").onclick = async () => {
+  try {
+    const trash = (await listReadings()).filter(
+      (r) => r.shelfState === "trash",
+    );
+    if (trash.length) confirmDelete(null, trash);
+  } catch {
+    $("libraryStatus").textContent = "The Trash could not be read. Try again.";
+  }
+};
 $("confirmDelete").onclick = async () => {
   const b = $("confirmDelete");
   b.disabled = true;
@@ -1766,13 +1915,14 @@ $("confirmDelete").onclick = async () => {
     pause();
     await archiveQueue;
     if (deletePending) {
-      const id = deletePending.id;
-      if (id === documentId) {
-        load(SAMPLE, "The art of noticing");
-        await archiveQueue;
+      const ids = deletePending.trash
+        ? deletePending.trash.map((r) => r.id)
+        : [deletePending.id];
+      if (ids.includes(documentId)) {
+        await openNextReading(documentId);
         await flushStorage();
       }
-      await deleteReading(id);
+      for (const id of ids) await deleteReading(id);
       lastShelfMove = null;
       $("undoShelf").hidden = true;
       $("deleteDialog").close();
@@ -1829,3 +1979,5 @@ $("aboutStill").onclick = () => {
   pause();
   $("aboutDialog").showModal();
 };
+// Signals that startup finished (used by the browser tests).
+document.documentElement.dataset.ready = "true";

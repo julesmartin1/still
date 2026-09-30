@@ -6,7 +6,7 @@
   font-size: 16px;
   --ink: #202b43;
   --blue: #365fe5;
-  --muted: #68758b;
+  --muted: #5c687e; /* 4.5:1+ on every light surface */
 }
 * {
   box-sizing: border-box;
@@ -1249,4 +1249,46 @@ footer {
     calc(6vw * var(--reading-scale) * var(--system-text-scale)),
     calc(66px * var(--reading-scale) * var(--system-text-scale))
   );
+}
+
+/* ---- Import dialog: one style for all three file types ---- */
+.file-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.file-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: #d6e2ff;
+  color: #203660;
+  font-weight: 600;
+  cursor: pointer;
+}
+.file-button:hover {
+  background: #c7d7ff;
+}
+.file-button:focus-within {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
+}
+.inline-label {
+  display: block;
+  margin-top: 14px;
+  font-size: 14px;
+}
+html[data-theme="dark"] .file-button {
+  background: #354e83;
+  color: #fff;
+}
+
+/* ---- Touch targets (44 px minimum) ---- */
+.pace-step,
+#reset {
+  min-width: 44px;
+  min-height: 44px;
 }

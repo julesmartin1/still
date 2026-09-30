@@ -14,7 +14,16 @@ self.addEventListener("install", (event) =>
   ),
 );
 self.addEventListener("activate", (event) =>
-  event.waitUntil(self.clients.claim()),
+  event.waitUntil(
+    (async () => {
+      // Each release has its own cache; delete older ones so storage does
+      // not grow by the full app size (about 16 MB offline) per update.
+      for (const name of await caches.keys())
+        if (name.startsWith("still-offline-") && name !== CACHE)
+          await caches.delete(name);
+      await self.clients.claim();
+    })(),
+  ),
 );
 self.addEventListener("fetch", (event) => {
   if (

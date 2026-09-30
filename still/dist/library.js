@@ -241,3 +241,31 @@ export async function eraseLibrary() {
     tx.onabort = tx.onerror = () => reject(Error("Erasing could not finish."));
   });
 }
+
+// IDs of readings whose text contains `query` (case-insensitive).
+// Scans one reading at a time so a large shelf never sits in memory at once.
+export async function searchReadingText(query) {
+  const needle = query.trim().toLocaleLowerCase();
+  const found = new Set();
+  if (needle.length < 2) return found;
+  if (native) {
+    for (const r of await nativeList("reading:"))
+      if (r?.text?.toLocaleLowerCase().includes(needle)) found.add(r.id);
+    return found;
+  }
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const request = db
+      .transaction("readings", "readonly")
+      .objectStore("readings")
+      .openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return resolve(found);
+      if (cursor.value.text?.toLocaleLowerCase().includes(needle))
+        found.add(cursor.value.id);
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error);
+  });
+}

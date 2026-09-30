@@ -37,7 +37,7 @@
       <div class="topline">
         <div>
           <p class="eyebrow">YOUR READING SPACE</p>
-          <h1 id="title">The art of noticing</h1>
+          <h1 id="title" dir="auto">The art of noticing</h1>
         </div>
         <span id="saved" class="muted">Saved on this device</span>
       </div>
@@ -48,7 +48,7 @@
         </div>
         <div class="stage">
           <div class="focal-line"></div>
-          <div id="word" aria-label="Current word">There</div>
+          <div id="word" dir="auto">There</div>
           <div class="focal-line"></div>
         </div>
         <p id="status" class="status" aria-live="polite">
@@ -61,7 +61,18 @@
             ▶ <span>Start reading</span>
           </button>
         </div>
-        <div class="progress-track"><div id="progress"></div></div>
+        <div
+          id="progressTrack"
+          class="progress-track"
+          role="progressbar"
+          aria-label="Reading progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        >
+          <div id="progress"></div>
+        </div>
+        <p id="srStatus" class="sr-only" role="status" aria-live="polite"></p>
       </section>
       <section
         id="normalReader"
@@ -181,7 +192,7 @@
       ><input
         id="shelfSearch"
         type="search"
-        placeholder="Search bookshelf…"
+        placeholder="Search titles and text…"
       /><label class="sr-only" for="shelfView">Bookshelf view</label
       ><select id="shelfView">
         <option value="active">Reading</option>
@@ -190,6 +201,9 @@
       </select>
       <p id="libraryStatus" role="status"></p>
       <button id="undoShelf" class="text-button" hidden>Undo last move</button>
+      <button id="emptyTrash" class="text-button danger" hidden>
+        Empty Trash
+      </button>
       <div id="libraryList" class="library-list"></div>
       <details class="backup-controls">
         <summary>Backup &amp; restore</summary>
@@ -226,30 +240,50 @@
             ×
           </button>
         </div>
+        <label for="textTitle">Title</label
+        ><input
+          id="textTitle"
+          maxlength="240"
+          placeholder="Untitled reading"
+        /><label for="textInput">Text to read</label
+        ><textarea
+          dir="auto"
+          id="textInput"
+          required
+          placeholder="Paste a chapter, an article, or a few paragraphs…"
+        ></textarea>
+        <div class="import-divider">or import a file</div>
         <div class="pdf-upload">
-          <label for="textFile">Import a text file</label
-          ><input id="textFile" type="file" accept=".txt,text/plain" />
+          <div class="file-buttons">
+            <label class="file-button" for="textFile"
+              >Text file<input
+                id="textFile"
+                class="sr-only"
+                type="file"
+                accept=".txt,text/plain" /></label
+            ><label class="file-button" for="epubFile"
+              >EPUB book<input
+                id="epubFile"
+                class="sr-only"
+                type="file"
+                accept=".epub,application/epub+zip" /></label
+            ><label class="file-button" for="pdfFile"
+              >PDF<input
+                id="pdfFile"
+                class="sr-only"
+                type="file"
+                accept="application/pdf,.pdf"
+                aria-describedby="pdfHint pdfStatus"
+            /></label>
+          </div>
           <p id="textFileStatus" role="status"></p>
-          <label for="epubFile">Import an EPUB book</label
-          ><input
-            id="epubFile"
-            type="file"
-            accept=".epub,application/epub+zip"
-          />
           <p id="epubStatus" class="muted" role="status"></p>
-          <label for="pdfFile" class="pdf-label"
-            >Import a PDF <span>Choose file ↗</span></label
-          ><label for="pdfLayout">Reading order</label
+          <label for="pdfLayout" class="inline-label">PDF reading order</label
           ><select id="pdfLayout">
             <option value="auto">Detect columns automatically</option>
             <option value="single">Across the page (one column)</option>
-            <option value="two">Left column, then right column</option></select
-          ><input
-            id="pdfFile"
-            type="file"
-            accept="application/pdf,.pdf"
-            aria-describedby="pdfHint pdfStatus"
-          />
+            <option value="two">Left column, then right column</option>
+          </select>
           <p id="pdfHint" class="muted">
             PDFs with selectable text · up to 50 MB · processed on your device
           </p>
@@ -283,7 +317,6 @@
           >
           <p id="pdfRangeStatus" class="muted" role="status"></p>
         </fieldset>
-        <div class="import-divider">or paste text</div>
         <div id="duplicateNotice" hidden>
           <p id="duplicateMessage" role="status"></p>
           <button type="button" id="duplicateOpen" class="primary">
@@ -310,17 +343,6 @@
             list</label
           >
         </div>
-        <label for="textTitle">Title</label
-        ><input
-          id="textTitle"
-          maxlength="240"
-          placeholder="Untitled reading"
-        /><label for="textInput">Text to read</label
-        ><textarea
-          id="textInput"
-          required
-          placeholder="Paste a chapter, an article, or a few paragraphs…"
-        ></textarea>
         <details id="startOptions">
           <summary>Choose where to start</summary>
           <label for="startSection">Section or chapter</label
@@ -383,10 +405,10 @@
       />
       <div id="searchResults" class="search-results" hidden></div>
       <p id="searchStatus" class="muted" role="status" hidden></p>
-      <div id="paragraph" class="paragraph"></div>
+      <div id="paragraph" class="paragraph" dir="auto"></div>
       <details id="originalContext" hidden>
         <summary>Show original paragraph with citations</summary>
-        <p id="originalParagraph"></p>
+        <p id="originalParagraph" dir="auto"></p>
       </details>
       <div class="selection">
         <span>Selected: <strong id="selectedWord"></strong></span
@@ -592,7 +614,7 @@
           ×
         </button>
       </div>
-      <blockquote id="markQuote"></blockquote>
+      <blockquote id="markQuote" dir="auto"></blockquote>
       <label for="markNote">Note (optional)</label
       ><textarea
         id="markNote"

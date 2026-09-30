@@ -2,6 +2,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 const root = resolve("dist");
+const port = Number(process.env.PORT) || 4173;
 http
   .createServer(async (req, res) => {
     try {
@@ -28,6 +29,6 @@ http
       res.end("Not found");
     }
   })
-  .listen(4173, "127.0.0.1", () =>
-    console.log("Still is running at http://127.0.0.1:4173"),
+  .listen(port, "127.0.0.1", () =>
+    console.log(`Still is running at http://127.0.0.1:${port}`),
   );

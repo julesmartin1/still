@@ -70,50 +70,14 @@ function makeLines(items) {
     })
     .filter((l) => l.text);
 }
-function orderedRegions(items, mode, depth = 0) {
-  if (!items.length) return { lines: [], columns: 1 };
-  // Reassemble complete baselines before classifying gutters, including font/ligature fragments.
-  const rows = [];
-  for (const item of [...items].sort(
-    (a, b) => b.transform[5] - a.transform[5],
-  )) {
-    let row = rows.find(
-      (r) =>
-        Math.abs(r.y - item.transform[5]) <
-        Math.max(2, Math.max(r.height, item.height) * 0.45),
-    );
-    if (!row) {
-      row = { y: item.transform[5], height: item.height, items: [] };
-      rows.push(row);
-    }
-    row.items.push(item);
-    row.height = Math.max(row.height, item.height);
-  }
-  rows.sort((a, b) => b.y - a.y);
-  // Wide horizontal whitespace separates layouts, e.g. an abstract sidebar from the body.
-  const heights = items.map((i) => i.height).sort((a, b) => a - b),
-    typical = heights[Math.floor(heights.length / 2)];
-  const bands = [[]];
-  rows.forEach((r, i) => {
-    if (
-      i &&
-      rows[i - 1].y - r.y > Math.max(typical * 1.9, rows[i - 1].height * 1.5)
-    )
-      bands.push([]);
-    bands.at(-1).push(...r.items);
-  });
-  if (bands.length > 1 && depth < 8) {
-    const regions = bands.map((b) => orderedRegions(b, mode, depth + 1));
-    return {
-      lines: regions.flatMap((r) => r.lines),
-      columns: Math.max(...regions.map((r) => r.columns)),
-    };
-  }
-  if (mode === "single") return { lines: makeLines(items), columns: 1 };
+// Finds the best vertical gutter between two columns: an x position that
+// many rows have text on both sides of, and few rows cross.
+function findGutter(rows, items) {
   const box = bounds(items),
     span = box.right - box.x;
   let split = null,
-    best = -Infinity;
+    best = -Infinity,
+    bestShared = 0;
   for (let ratio = 0.15; ratio <= 0.85; ratio += 0.01) {
     const x = box.x + span * ratio;
     let shared = 0,
@@ -131,11 +95,12 @@ function orderedRegions(items, mode, depth = 0) {
     if (shared >= 3 && score > best) {
       best = score;
       split = x;
+      bestShared = shared;
     }
   }
-  if (best < 1 && mode !== "two") split = null;
-  if (split === null && mode === "two") split = box.x + span / 2;
-  if (split === null) return { lines: makeLines(items), columns: 1 };
+  return { split, best, shared: bestShared, box, span };
+}
+function columnLines(rows, split) {
   // Entire spanning rows form boundaries; never split a row by individual PDF fragments.
   const lines = [];
   let band = [];
@@ -158,7 +123,66 @@ function orderedRegions(items, mode, depth = 0) {
     } else band.push(...row.items);
   }
   flush();
-  return { lines, columns: 2 };
+  return lines;
+}
+function orderedRegions(items, mode, depth = 0) {
+  if (!items.length) return { lines: [], columns: 1 };
+  // Reassemble complete baselines before classifying gutters, including font/ligature fragments.
+  const rows = [];
+  for (const item of [...items].sort(
+    (a, b) => b.transform[5] - a.transform[5],
+  )) {
+    let row = rows.find(
+      (r) =>
+        Math.abs(r.y - item.transform[5]) <
+        Math.max(2, Math.max(r.height, item.height) * 0.45),
+    );
+    if (!row) {
+      row = { y: item.transform[5], height: item.height, items: [] };
+      rows.push(row);
+    }
+    row.items.push(item);
+    row.height = Math.max(row.height, item.height);
+  }
+  rows.sort((a, b) => b.y - a.y);
+  // A clear gutter running down most of the region means ordinary columns.
+  // Read them whole before looking at horizontal gaps: gaps between
+  // paragraphs often line up across both columns, and cutting there would
+  // interleave pieces of the left and right columns.
+  if (mode !== "single") {
+    const gutter = findGutter(rows, items);
+    if (
+      gutter.split !== null &&
+      gutter.best >= 3 &&
+      gutter.shared >= rows.length * 0.3
+    )
+      return { lines: columnLines(rows, gutter.split), columns: 2 };
+  }
+  // Wide horizontal whitespace separates layouts, e.g. an abstract sidebar from the body.
+  const heights = items.map((i) => i.height).sort((a, b) => a - b),
+    typical = heights[Math.floor(heights.length / 2)];
+  const bands = [[]];
+  rows.forEach((r, i) => {
+    if (
+      i &&
+      rows[i - 1].y - r.y > Math.max(typical * 1.9, rows[i - 1].height * 1.5)
+    )
+      bands.push([]);
+    bands.at(-1).push(...r.items);
+  });
+  if (bands.length > 1 && depth < 8) {
+    const regions = bands.map((b) => orderedRegions(b, mode, depth + 1));
+    return {
+      lines: regions.flatMap((r) => r.lines),
+      columns: Math.max(...regions.map((r) => r.columns)),
+    };
+  }
+  if (mode === "single") return { lines: makeLines(items), columns: 1 };
+  let { split, best, box, span } = findGutter(rows, items);
+  if (best < 1 && mode !== "two") split = null;
+  if (split === null && mode === "two") split = box.x + span / 2;
+  if (split === null) return { lines: makeLines(items), columns: 1 };
+  return { lines: columnLines(rows, split), columns: 2 };
 }
 export function layoutPage(
   raw,
@@ -194,17 +218,20 @@ export function composePdf(
   let text = "",
     wordIndex = 0;
   const locations = [];
-  let removed = 0;
+  let removed = 0,
+    last = null; // previous retained line, across pages
   for (const page of chosen) {
     let previous = null;
     for (const line of page.lines) {
       if (
         removeMargins &&
-        pages.length >= 3 &&
         (line.y > page.height * 0.92 || line.top < page.height * 0.08) &&
-        (/^\d+$/.test(line.text) ||
-          (counts.get(signature(line)) || 0) >=
-            Math.max(3, Math.ceil(pages.length * 0.5)))
+        // A bare page number is safe to drop on any multi-page PDF; other
+        // repeated lines need 3+ pages before they count as a header/footer.
+        ((pages.length >= 2 && /^\d+$/.test(line.text)) ||
+          (pages.length >= 3 &&
+            (counts.get(signature(line)) || 0) >=
+              Math.max(3, Math.ceil(pages.length * 0.5))))
       ) {
         removed++;
         continue;
@@ -215,13 +242,25 @@ export function composePdf(
         /^(?:(?:\d+(?:\.\d+)*[.)]?\s+)?(?:abstract|introduction|background|methods?|methodology|results|discussion|conclusions?|references|bibliography|works cited)\b|(?:chapter|part)\s+\S+|prologue\b|epilogue\b|appendix\b)/i.test(
           line.text,
         );
-      const paragraph =
-        heading ||
-        previous?.heading ||
+      const jumped =
         !previous ||
         gap < 0 ||
-        gap > Math.max(previous.height, line.height) * 1.65 ||
         Math.abs(line.x - previous.x) > page.width * 0.25;
+      // A sentence that runs from the bottom of one column or page to the
+      // top of the next is one paragraph, not two.
+      const continues =
+        jumped &&
+        !heading &&
+        last &&
+        !last.heading &&
+        !/[.!?:;。！？]["”’)\]]*$/u.test(last.text) &&
+        /^["“‘(]?\p{Ll}/u.test(line.text);
+      const paragraph =
+        !continues &&
+        (heading ||
+          previous?.heading ||
+          jumped ||
+          gap > Math.max(previous.height, line.height) * 1.65);
       const join = !paragraph ? previous?.joinNext : false;
       if (join === "remove") text = text.slice(0, -1);
       if (text && !join) text += paragraph ? "\n\n" : " ";
@@ -236,6 +275,7 @@ export function composePdf(
       wordIndex += count - (join ? 1 : 0);
       text += line.text;
       previous = { ...line, heading };
+      last = previous;
     }
   }
   return { text, locations, removed };
