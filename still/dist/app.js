@@ -40,6 +40,13 @@ import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
 import { splitAtFocus, fadeDuration } from "./word-display.js";
 import {
+  checkInDue,
+  endCheckInDue,
+  followUp,
+  summarizeCheckins,
+  normalizeCheckins,
+} from "./checkins.js";
+import {
   parseText,
   cleanWord,
   freshProfile,
@@ -202,8 +209,33 @@ let data = filteredReading(text, readingOptions),
   timingPlan = [],
   paragraphGroups = buildParagraphIndex(data.tokens),
   intentionalNavigation = false;
+// Check-in state: words shown since the last check-in, where that stretch
+// began, and paragraphs being replayed slower after "lost the thread".
+let wordsRead = 0,
+  segmentStart = 0,
+  replaySet = null,
+  pendingCheckin = null,
+  sectionCache = null;
 function refreshTiming() {
-  timingPlan = buildTimingPlan(data.tokens, { base, profile, replayParagraph });
+  timingPlan = buildTimingPlan(data.tokens, {
+    base,
+    profile,
+    replayParagraph,
+    replayParagraphs: replaySet,
+  });
+}
+const checkinMode = () =>
+  ["interval", "sections", "off"].includes(appearance.checkins)
+    ? appearance.checkins
+    : "interval";
+function sectionStarts() {
+  const key = readingOptions.sections || text;
+  if (sectionCache?.key !== key)
+    sectionCache = {
+      key,
+      starts: new Set(readingSections().map((s) => s.paragraph)),
+    };
+  return sectionCache.starts;
 }
 function save() {
   if (erasing) return;
@@ -221,11 +253,11 @@ function save() {
       const state = {
         text,
         title,
-          base,
-          profile,
-          documentId,
-          readingOptions,
-          shelfState,
+        base,
+        profile,
+        documentId,
+        readingOptions,
+        shelfState,
         sourceIndex: data.tokens[reader?.index]?.sourceIndex ?? filterAnchor,
         index: reader?.index || 0,
         finished: reader?.finished || false,
@@ -366,8 +398,10 @@ function render() {
   if (document.activeElement !== $("speedValue")) $("speedValue").value = base;
   $("slower").disabled = base <= 80;
   $("faster").disabled = base >= 600;
+  const replaying =
+    t?.paragraph === replayParagraph || !!replaySet?.has(t?.paragraph);
   $("learning").textContent =
-    `Current target: ${Math.round(targetWpm(base, profile, t?.paragraph === replayParagraph))} WPM${t?.paragraph === replayParagraph ? " · slower replay" : profile.slowdown ? " · adjusted for you" : ""}`;
+    `Current target: ${Math.round(targetWpm(base, profile, replaying))} WPM${replaying ? " · slower replay" : profile.slowdown ? " · adjusted for you" : ""}`;
   $("play").disabled = !data.tokens.length;
   $("review").disabled = !data.tokens.length;
   $("quickRewind").disabled = !data.tokens.length;
@@ -417,11 +451,35 @@ function createReader(index = 0) {
   reader = new Playback({
     length: data.tokens.length,
     duration: (i) => timingPlan[i],
-    onWord: () => render(),
+    onWord: () => {
+      if (reader?.playing) {
+        if (!wordsRead) segmentStart = reader.index;
+        wordsRead++;
+      }
+      render();
+    },
     onEnd: () => {
       playbackUI();
       save();
       checkpoint();
+      if (endCheckInDue(wordsRead, checkinMode()))
+        openCheckIn(data.tokens.length - 1, { end: true });
+    },
+    breakAfter: (i) =>
+      !!data.tokens[i]?.paragraphEnd &&
+      checkInDue({
+        tokens: data.tokens,
+        index: i,
+        wordsRead,
+        mode: checkinMode(),
+        base: targetWpm(base, profile),
+        sectionStarts: sectionStarts(),
+      }),
+    onBreak: (i) => {
+      playbackUI();
+      save();
+      checkpoint();
+      openCheckIn(i);
     },
   });
   reader.seek(Number.isInteger(index) ? index : 0);
@@ -477,6 +535,9 @@ function load(nextText, nextTitle, existing = null, importedSource = null) {
   if (!nextText.trim()) return;
   pause();
   startupNote = "";
+  wordsRead = 0;
+  replaySet = null;
+  sectionCache = null;
   clearTimeout(normalScrollTimer);
   selectionStart = null;
   selectionEnd = null;
@@ -525,6 +586,7 @@ function setPace(value) {
   base = clamp(Math.round(number), 80, 600);
   profile = { ...profile, slowdown: 0 };
   replayParagraph = null;
+  replaySet = null;
   refreshTiming();
   reader.retime();
   render();
@@ -546,6 +608,7 @@ $("faster").onclick = () => setPace(base + 10);
 $("reset").onclick = () => {
   profile = freshProfile();
   replayParagraph = null;
+  replaySet = null;
   refreshTiming();
   reader.retime();
   render();
@@ -1787,6 +1850,7 @@ function renderMarks() {
 $("bookmarks").onclick = () => {
   pause();
   renderMarks();
+  renderCheckins();
   $("marksDialog").showModal();
 };
 $("markPassage").onclick = () => editMark();
@@ -1881,6 +1945,7 @@ function applyAppearance() {
     appearance.placement === "centered" ? "centered" : "focus";
   $("appearanceTransition").value =
     appearance.transition === "instant" ? "instant" : "soft";
+  $("checkinMode").value = checkinMode();
   $("appearanceSize").value = size;
   $("appearanceSizeLabel").textContent = size + "%";
   try {
@@ -1894,6 +1959,7 @@ for (const id of [
   "appearanceSize",
   "appearancePlacement",
   "appearanceTransition",
+  "checkinMode",
 ])
   $(id).oninput = () => {
     appearance = {
@@ -1902,6 +1968,7 @@ for (const id of [
       size: Number($("appearanceSize").value),
       placement: $("appearancePlacement").value,
       transition: $("appearanceTransition").value,
+      checkins: $("checkinMode").value,
     };
     applyAppearance();
   };
@@ -2060,6 +2127,199 @@ $("webNotices").hidden = native;
 $("aboutStill").onclick = () => {
   pause();
   $("aboutDialog").showModal();
+};
+
+// ---- Comprehension check-ins (see checkins.js) ----
+function segmentQuote(from, to) {
+  const words = data.tokens.slice(from, to + 1).map((t) => t.text);
+  return words.length > 14
+    ? words.slice(0, 7).join(" ") + " … " + words.slice(-5).join(" ")
+    : words.join(" ");
+}
+function openCheckIn(index, { end = false, manual = false } = {}) {
+  if (!data.tokens.length || $("checkinDialog").open) return;
+  const from = Math.min(
+    manual
+      ? paragraphGroups[data.tokens[index].paragraph][0].index
+      : segmentStart,
+    index,
+  );
+  pendingCheckin = {
+    index,
+    end,
+    from,
+    record: {
+      id: crypto.randomUUID(),
+      start: data.tokens[from].sourceIndex,
+      end: data.tokens[index].sourceEnd,
+      quote: segmentQuote(from, index).slice(0, 300),
+      createdAt: Date.now(),
+    },
+  };
+  $("checkinTitle").textContent = end
+    ? "You've reached the end. What was it about?"
+    : "What was that about?";
+  $("checkinRecap").value = "";
+  $("checkinAsk").hidden = false;
+  $("checkinFollow").hidden = true;
+  $("checkinDialog").showModal();
+  $("checkinRecap").focus();
+}
+// Leaves the check-in and carries on reading (or stays put at the end).
+function finishCheckIn({ resume = true } = {}) {
+  const pending = pendingCheckin;
+  pendingCheckin = null;
+  wordsRead = 0;
+  if ($("checkinDialog").open) $("checkinDialog").close();
+  if (!pending || pending.end || pending.manual) return;
+  if (pending.index < data.tokens.length - 1) reader.seek(pending.index + 1);
+  if (resume) play();
+  else returnToReader();
+}
+function rateCheckIn(rating) {
+  if (!pendingCheckin) return;
+  const entry = {
+    ...pendingCheckin.record,
+    rating,
+    recap: $("checkinRecap").value.trim(),
+  };
+  const checkins = normalizeCheckins(
+    [...(readingOptions.checkins || []), entry],
+    Number.MAX_SAFE_INTEGER,
+  );
+  readingOptions = { ...readingOptions, checkins };
+  if (rating === "lost")
+    // Ease the pace a little for this reading (Reset adjustments undoes it).
+    profile = {
+      ...profile,
+      slowdown: clamp((profile.slowdown || 0) + 0.05, 0, 0.2),
+    };
+  refreshTiming();
+  save();
+  checkpoint();
+  const next = followUp(checkins);
+  if (next === "replay") {
+    showFollowUp(
+      "No problem. One-word reading takes away the quick glances back that usually fill gaps. Replay that stretch a little slower? Your pace also eases slightly for this reading.",
+      ["Keep going", () => finishCheckIn()],
+      [
+        "Replay it slower",
+        () => {
+          const pending = pendingCheckin;
+          pendingCheckin = null;
+          wordsRead = 0;
+          $("checkinDialog").close();
+          replaySet = new Set(
+            data.tokens
+              .slice(pending.from, pending.index + 1)
+              .map((t) => t.paragraph),
+          );
+          refreshTiming();
+          reader.seek(pending.from);
+          play();
+        },
+      ],
+    );
+  } else if (next === "faster") {
+    const eased = profile.slowdown > 0;
+    showFollowUp(
+      eased
+        ? "Your last three check-ins were clear. Go back to your usual pace?"
+        : `Your last three check-ins were clear. Try ${Math.min(600, base + 10)} WPM?`,
+      ["Keep this pace", () => finishCheckIn()],
+      [
+        eased ? "Use my usual pace" : `Try ${Math.min(600, base + 10)} WPM`,
+        () => {
+          if (eased) profile = { ...profile, slowdown: 0 };
+          else setPace(base + 10);
+          refreshTiming();
+          render();
+          finishCheckIn();
+        },
+      ],
+    );
+  } else finishCheckIn();
+}
+function showFollowUp(
+  message,
+  [secondaryLabel, secondary],
+  [primaryLabel, primary],
+) {
+  $("checkinAsk").hidden = true;
+  $("checkinFollow").hidden = false;
+  $("checkinTitle").textContent = primaryLabel.startsWith("Replay")
+    ? "Want another pass?"
+    : "Nicely done";
+  $("checkinFollowText").textContent = message;
+  $("checkinSecondary").textContent = secondaryLabel;
+  $("checkinSecondary").onclick = secondary;
+  $("checkinPrimary").textContent = primaryLabel;
+  $("checkinPrimary").onclick = primary;
+  $("checkinPrimary").focus();
+}
+for (const button of document.querySelectorAll("#checkinDialog [data-rating]"))
+  button.onclick = () => rateCheckIn(button.dataset.rating);
+$("checkinSkip").onclick = () => finishCheckIn();
+$("checkinDialog").addEventListener("keydown", (e) => {
+  if (e.target === $("checkinRecap") || $("checkinAsk").hidden) return;
+  const rating = { 1: "clear", 2: "mostly", 3: "lost" }[e.key];
+  if (rating) {
+    e.preventDefault();
+    rateCheckIn(rating);
+  }
+});
+// Escape or × skips the check-in but stays paused.
+$("checkinDialog").addEventListener("close", () => {
+  if (pendingCheckin) finishCheckIn({ resume: false });
+});
+function renderCheckins() {
+  const checkins = readingOptions.checkins || [];
+  const s = summarizeCheckins(checkins);
+  $("checkinSummary").textContent = s.total
+    ? `${plural(s.total, "check-in")} for this reading: ${s.clear} clear · ${s.mostly} mostly · ${s.lost} lost the thread.`
+    : checkinMode() === "off"
+      ? "Check-ins are off. Turn them on in Reading settings, or check in now."
+      : "Your check-ins for this reading will appear here.";
+  const labels = { clear: "Clear", mostly: "Mostly", lost: "Lost the thread" };
+  $("checkinList").replaceChildren(
+    ...checkins
+      .slice()
+      .reverse()
+      .map((c) => {
+        const row = document.createElement("article");
+        row.className = "checkin-entry";
+        const chip = document.createElement("span");
+        chip.className = "checkin-chip " + c.rating;
+        chip.textContent = labels[c.rating];
+        const recap = document.createElement("p");
+        recap.dir = "auto";
+        recap.textContent = c.recap || "No recap written.";
+        const quote = document.createElement("p");
+        quote.className = "quote";
+        quote.dir = "auto";
+        quote.textContent = c.quote;
+        const go = document.createElement("button");
+        go.className = "text-button";
+        go.textContent = "Reread this part";
+        go.onclick = () => {
+          const index = visibleIndex(data.tokens, c.start);
+          if (index >= data.tokens.length) return;
+          reader.seek(index);
+          $("marksDialog").close();
+          if (normalMode) renderNormal();
+          returnToReader();
+          checkpoint();
+        };
+        row.append(chip, recap, quote, go);
+        return row;
+      }),
+  );
+}
+$("checkinNow").onclick = () => {
+  if (!data.tokens.length) return;
+  $("marksDialog").close();
+  openCheckIn(reader.index, { manual: true });
+  pendingCheckin.manual = true;
 };
 // Signals that startup finished (used by the browser tests).
 document.documentElement.dataset.ready = "true";

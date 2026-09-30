@@ -296,6 +296,70 @@ async def soft_change_fades_briefly_and_respects_reduced_motion(browser):
         await ctx.close()
 
 
+def prose(words, seed="calm"):
+    return " ".join(f"{seed}{i}" + ("." if i % 12 == 11 else "") for i in range(words)) + "."
+
+
+@check
+async def check_in_pauses_at_a_section_end_and_resumes(browser):
+    ctx, page = await fresh(browser)
+    text = "Chapter One\n\n" + prose(70, "a") + "\n\nChapter Two\n\n" + prose(40, "b")
+    await open_text(page, text, kind="book")
+    await page.click("#readingSettings")
+    await page.select_option("#checkinMode", "sections")
+    await page.click("#saveReadingDetails")
+    await page.fill("#speedValue", "600")
+    await page.press("#speedValue", "Enter")
+    await page.click("#play")
+    await page.wait_for_function("document.getElementById('checkinDialog').open", timeout=20000)
+    word = await page.get_attribute("#word", "aria-label") or await page.text_content("#word")
+    assert word.startswith("a69"), f"paused on {word!r}, expected the end of chapter one"
+    await page.fill("#checkinRecap", "letters and numbers")
+    await page.click("[data-rating=mostly]")
+    await page.wait_for_timeout(300)
+    assert not await dialog_open(page, "checkinDialog")
+    assert "Pause" in await page.inner_text("#play"), "reading did not resume"
+    await page.click("#play")
+    await page.click("#bookmarks")
+    assert "1 check-in" in await page.inner_text("#checkinSummary")
+    assert "letters and numbers" in await page.inner_text("#checkinList")
+    await ctx.close()
+
+
+@check
+async def lost_the_thread_offers_a_slower_replay(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, prose(90, "c"))
+    await page.fill("#speedValue", "600")
+    await page.press("#speedValue", "Enter")
+    await page.click("#play")
+    await page.wait_for_function("document.getElementById('checkinDialog').open", timeout=20000)
+    assert "reached the end" in await page.inner_text("#checkinTitle")
+    await page.click("#checkinDialog", position={"x": 5, "y": 5})  # focus off the text box
+    await page.keyboard.press("3")
+    assert await page.is_visible("#checkinFollow")
+    await page.click("#checkinPrimary")
+    await page.wait_for_timeout(300)
+    assert "Pause" in await page.inner_text("#play")
+    assert "slower replay" in await page.inner_text("#learning")
+    await ctx.close()
+
+
+@check
+async def check_ins_can_be_turned_off(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, prose(90, "d"))
+    await page.click("#readingSettings")
+    await page.select_option("#checkinMode", "off")
+    await page.click("#saveReadingDetails")
+    await page.fill("#speedValue", "600")
+    await page.press("#speedValue", "Enter")
+    await page.click("#play")
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=20000)
+    assert not await dialog_open(page, "checkinDialog")
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],

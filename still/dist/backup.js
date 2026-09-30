@@ -1,6 +1,7 @@
 import { normalizeMarks } from "./reading-features.js";
 import { normalizeSections } from "./document.js";
 import { countWords } from "./engine.js";
+import { normalizeCheckins } from "./checkins.js";
 // Longest reading Still keeps, in characters (about 350,000 English words).
 // Paste, text-file, EPUB and PDF imports all stop at this size, and restore
 // skips any longer reading instead of rejecting the whole backup.
@@ -126,6 +127,7 @@ export function decodeBackup(value) {
         ...(validRange ? { referenceRange: range } : {}),
         sections: normalizeSections(opts.sections, r.text),
         marks: normalizeMarks(opts.marks, count),
+        checkins: normalizeCheckins(opts.checkins, count),
         readingMode: opts.readingMode === "text" ? "text" : "word",
       },
     });

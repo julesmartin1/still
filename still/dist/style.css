@@ -1308,3 +1308,147 @@ html[data-theme="dark"] .file-button {
 #word.focus-mode .after {
   text-align: start;
 }
+
+/* ---- Comprehension check-ins ---- */
+#checkinRecap {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+}
+.checkin-question {
+  margin: 18px 0 10px;
+  font-weight: 600;
+}
+.checkin-ratings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.checkin-ratings .rating {
+  flex: 1 1 140px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid #c9d4ea;
+  background: #f3f6fd;
+  color: var(--ink);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.checkin-ratings .rating:hover {
+  background: #e4ebfb;
+}
+.checkin-ratings kbd {
+  font:
+    12px ui-monospace,
+    monospace;
+  color: var(--muted);
+  border: 1px solid #c9d4ea;
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.checkin-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+.checkin-history {
+  margin-top: 26px;
+  border-top: 1px solid #e0e6f1;
+  padding-top: 16px;
+}
+.checkin-history-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.checkin-history h3 {
+  margin: 0;
+  font-size: 17px;
+}
+.checkin-entry {
+  padding: 12px 0;
+  border-bottom: 1px solid #edf1f7;
+  display: grid;
+  gap: 4px;
+}
+.checkin-entry .quote {
+  color: var(--muted);
+  font-size: 14px;
+}
+.checkin-chip {
+  justify-self: start;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.checkin-chip.clear {
+  background: #dff3e8;
+  color: #1c6b43;
+}
+.checkin-chip.mostly {
+  background: #fdf0d6;
+  color: #85520a;
+}
+.checkin-chip.lost {
+  background: #fbe4e1;
+  color: #a2261c;
+}
+.text-button.danger {
+  color: #b3261e;
+}
+html[data-theme="dark"] .checkin-ratings .rating {
+  background: #263650;
+  border-color: #43516b;
+}
+html[data-theme="dark"] .checkin-ratings .rating:hover {
+  background: #2f4262;
+}
+html[data-theme="dark"] .checkin-history,
+html[data-theme="dark"] .checkin-entry {
+  border-color: #2e3a52;
+}
+html[data-theme="dark"] .checkin-chip.clear {
+  background: #1b3a2b;
+  color: #8fe0b4;
+}
+html[data-theme="dark"] .checkin-chip.mostly {
+  background: #3a2e14;
+  color: #f2c77a;
+}
+html[data-theme="dark"] .checkin-chip.lost {
+  background: #3d1f1d;
+  color: #ffaaa0;
+}
+html[data-theme="dark"] .text-button.danger {
+  color: #ff9d92;
+}
+
+/* ---- Layout polish ---- */
+html[data-theme="dark"] header {
+  border-bottom-color: #26324a;
+}
+.import-divider {
+  margin-bottom: 10px;
+}
+.file-buttons .file-button {
+  flex: 1 1 auto;
+  justify-content: center;
+  margin: 0;
+}
+.checkin-entry .text-button {
+  justify-self: start;
+}
+@media (pointer: coarse) {
+  /* Number-key hints are for keyboards only. */
+  .checkin-ratings kbd {
+    display: none;
+  }
+}

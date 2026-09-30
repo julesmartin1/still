@@ -200,6 +200,7 @@ export function buildTimingPlan(
     base = 260,
     profile = freshProfile(),
     replayParagraph = null,
+    replayParagraphs = null, // Set of paragraphs to replay slower
     now = Date.now(),
   } = {},
 ) {
@@ -214,7 +215,11 @@ export function buildTimingPlan(
   for (const [paragraph, words] of groups) {
     const budget =
       (words.length * 60000) /
-      targetWpm(base, profile, paragraph === replayParagraph);
+      targetWpm(
+        base,
+        profile,
+        paragraph === replayParagraph || !!replayParagraphs?.has(paragraph),
+      );
     const allocated = allocateWordTimes(
       words.map((w) => w.weight),
       budget,
@@ -229,6 +234,9 @@ export class Playback {
     duration,
     onWord,
     onEnd,
+    // Optional: return true to stop after the word at `index` (a check-in).
+    breakAfter = null,
+    onBreak = null,
     schedule = (fn, ms) => setTimeout(fn, ms),
     cancel = (id) => clearTimeout(id),
     clock = () => performance.now(),
@@ -238,6 +246,8 @@ export class Playback {
       duration,
       onWord,
       onEnd,
+      breakAfter,
+      onBreak,
       schedule,
       cancel,
       clock,
@@ -267,6 +277,11 @@ export class Playback {
           this.pause();
           this.finished = true;
           this.onEnd();
+          return;
+        }
+        if (this.breakAfter?.(this.index)) {
+          this.pause();
+          this.onBreak?.(this.index);
           return;
         }
         this.index++;

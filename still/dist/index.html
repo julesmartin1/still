@@ -496,6 +496,16 @@
         <option value="academic">Academic paper</option>
         <option value="other">Other</option>
       </select>
+      <label for="checkinMode">Comprehension check-ins</label
+      ><select id="checkinMode">
+        <option value="interval">Every few minutes, at a paragraph end</option>
+        <option value="sections">At the end of each section</option>
+        <option value="off">Off</option>
+      </select>
+      <p class="muted">
+        A quick, ungraded pause to recap and say how well it landed. Losing the
+        thread offers a slower replay.
+      </p>
       <details id="citationSettings">
         <summary>Citation options</summary>
         <section class="reading-filters" aria-label="Reading content">
@@ -546,14 +556,15 @@
         ><label for="appearanceTransition">Word change</label
         ><select id="appearanceTransition">
           <option value="soft">Soft (a brief fade-in)</option>
-          <option value="instant">Instant</option></select
-        ><p class="muted">
+          <option value="instant">Instant</option>
+        </select>
+        <p class="muted">
           Anchoring keeps your eye on one spot: each word's focus letter, about
           a third of the way in, lands between the two marks. The soft change
           lasts at most 40 ms so it never cuts into the time you need to
           recognise the word.
-        </p
-        ><label for="appearanceSize">Text size</label
+        </p>
+        <label for="appearanceSize">Text size</label
         ><input
           id="appearanceSize"
           type="range"
@@ -616,6 +627,14 @@
       <button id="markCurrent" class="outline">Save current paragraph</button>
       <p id="marksStatus" class="muted" role="status"></p>
       <div id="marksList"></div>
+      <section class="checkin-history" aria-labelledby="checkinHistoryTitle">
+        <div class="checkin-history-heading">
+          <h3 id="checkinHistoryTitle">Check-ins</h3>
+          <button id="checkinNow" class="text-button">Check in now</button>
+        </div>
+        <p id="checkinSummary" class="muted"></p>
+        <div id="checkinList"></div>
+      </section>
     </dialog>
     <dialog id="markDialog" aria-labelledby="markTitle">
       <div class="dialog-heading">
@@ -638,6 +657,63 @@
       ><button id="saveMark" class="primary">Save passage</button>
     </dialog>
     <script type="module" src="bootstrap.js"></script>
+    <dialog id="checkinDialog" aria-labelledby="checkinTitle">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">A QUICK CHECK-IN</p>
+          <h2 id="checkinTitle">What was that about?</h2>
+        </div>
+        <button
+          data-close="checkinDialog"
+          class="close"
+          aria-label="Skip this check-in"
+        >
+          ×
+        </button>
+      </div>
+      <div id="checkinAsk">
+        <p class="muted">
+          A few words of your own, if you like. Putting it into words helps it
+          stick, and helps you tell how well it landed.
+        </p>
+        <label for="checkinRecap" class="sr-only">Your recap (optional)</label
+        ><textarea
+          id="checkinRecap"
+          dir="auto"
+          rows="2"
+          maxlength="1000"
+          placeholder="In a sentence or a few words… (optional)"
+        ></textarea>
+        <p id="checkinQuestion" class="checkin-question">
+          How well did that land?
+        </p>
+        <div
+          class="checkin-ratings"
+          role="group"
+          aria-labelledby="checkinQuestion"
+        >
+          <button class="rating" data-rating="clear">Clear <kbd>1</kbd></button
+          ><button class="rating" data-rating="mostly">
+            Mostly <kbd>2</kbd></button
+          ><button class="rating" data-rating="lost">
+            Lost the thread <kbd>3</kbd>
+          </button>
+        </div>
+        <div class="checkin-footer">
+          <button id="checkinSkip" class="text-button">Skip</button>
+          <span class="muted"
+            >Not graded. Change how often in Reading settings.</span
+          >
+        </div>
+      </div>
+      <div id="checkinFollow" hidden>
+        <p id="checkinFollowText"></p>
+        <div class="dialog-actions">
+          <button id="checkinSecondary" class="outline"></button
+          ><button id="checkinPrimary" class="primary"></button>
+        </div>
+      </div>
+    </dialog>
     <dialog id="deleteDialog" aria-labelledby="deleteTitle">
       <div class="dialog-heading">
         <h2 id="deleteTitle">Permanent deletion</h2>
