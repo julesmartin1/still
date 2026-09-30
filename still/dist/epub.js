@@ -1,5 +1,14 @@
 const decoder = new TextDecoder();
-export async function unzipEpub(buffer) {
+function crc32(bytes) {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let i = 0; i < 8; i++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+export async function unzipEpub(buffer, { signal } = {}) {
   const bytes = new Uint8Array(buffer),
     view = new DataView(buffer);
   if (bytes.length > 50 * 1024 * 1024)
@@ -18,6 +27,14 @@ export async function unzipEpub(buffer) {
     view.getUint16(end + 6, true) !== 0
   )
     throw Error("This EPUB archive is too large or unsupported.");
+  const centralEnd =
+    view.getUint32(end + 16, true) + view.getUint32(end + 12, true);
+  if (
+    centralEnd > end ||
+    view.getUint16(end + 8, true) !== count ||
+    end + 22 + view.getUint16(end + 20, true) !== bytes.length
+  )
+    throw Error("The EPUB archive is damaged.");
   let offset = view.getUint32(end + 16, true),
     total = 0;
   const entries = new Map();
@@ -35,6 +52,9 @@ export async function unzipEpub(buffer) {
       extra = view.getUint16(offset + 30, true),
       comment = view.getUint16(offset + 32, true),
       local = view.getUint32(offset + 42, true);
+    if (offset + 46 + nameLength + extra + comment > centralEnd)
+      throw Error("The EPUB directory is incomplete.");
+    const crc = view.getUint32(offset + 16, true);
     total += size;
     if (total > 100 * 1024 * 1024 || size > 20 * 1024 * 1024)
       throw Error("The expanded EPUB is too large.");
@@ -45,6 +65,7 @@ export async function unzipEpub(buffer) {
     if (flags & 1)
       throw Error("This EPUB is encrypted. Import an unlocked, DRM-free copy.");
     if (
+      name.includes("\u0000") ||
       name.startsWith("/") ||
       name.split("/").includes("..") ||
       name.includes("\\") ||
@@ -60,12 +81,24 @@ export async function unzipEpub(buffer) {
       view.getUint16(local + 28, true);
     if (dataStart + packed > bytes.length)
       throw Error("The EPUB archive is incomplete.");
+    const localName = decoder.decode(
+      bytes.subarray(local + 30, local + 30 + view.getUint16(local + 26, true)),
+    );
+    if (
+      localName !== name ||
+      view.getUint16(local + 8, true) !== method ||
+      view.getUint16(local + 6, true) !== flags ||
+      dataStart + packed > view.getUint32(end + 16, true)
+    )
+      throw Error("The EPUB file headers do not match.");
     entries.set(name, {
       method,
       size,
+      crc,
       data: bytes.subarray(dataStart, dataStart + packed),
     });
   }
+  if (offset !== centralEnd) throw Error("The EPUB directory is damaged.");
   const read = async (path) => {
     const e = entries.get(path);
     if (!e) throw Error("An EPUB chapter is missing: " + path);
@@ -79,6 +112,7 @@ export async function unzipEpub(buffer) {
       const chunks = [];
       let length = 0;
       while (true) {
+        signal?.throwIfAborted();
         const { value, done } = await reader.read();
         if (done) break;
         length += value.length;
@@ -97,13 +131,16 @@ export async function unzipEpub(buffer) {
     } else throw Error("Unsupported EPUB compression.");
     if (result.length !== e.size)
       throw Error("The EPUB contains an incomplete chapter.");
+    if (crc32(result) !== e.crc)
+      throw Error("The EPUB chapter failed its integrity check.");
     return decoder.decode(result);
   };
   return { entries, read };
 }
 function xml(value) {
-  if (/<!DOCTYPE|<!ENTITY/i.test(value))
-    value = value.replace(/<!DOCTYPE[^>]*>/gi, "");
+  if (value.length > 4000000 || /<!ENTITY|<!DOCTYPE[^>]*\[/i.test(value))
+    throw Error("The EPUB contains unsupported or oversized XML.");
+  if (/<!DOCTYPE/i.test(value)) value = value.replace(/<!DOCTYPE[^>]*>/gi, "");
   const doc = new DOMParser().parseFromString(value, "application/xml");
   if (doc.querySelector("parsererror"))
     throw Error("This EPUB contains unreadable chapter markup.");
@@ -125,7 +162,7 @@ export async function extractEpub(
   if (file.size > 50 * 1024 * 1024)
     throw Error("Choose an EPUB smaller than 50 MB.");
   signal?.throwIfAborted();
-  const zip = await unzipEpub(await file.arrayBuffer());
+  const zip = await unzipEpub(await file.arrayBuffer(), { signal });
   if (zip.entries.has("META-INF/encryption.xml")) {
     const encryption = xml(await zip.read("META-INF/encryption.xml"));
     const algorithms = [
@@ -191,7 +228,11 @@ export async function extractEpub(
       pending = "";
       ids = [];
     };
-    const walk = (node) => {
+    let visited = 0;
+    const walk = (node, depth = 0) => {
+      if (++visited > 200000 || depth > 128)
+        throw Error("The EPUB chapter is too complex.");
+      signal?.throwIfAborted();
       if (node.nodeType === 3) {
         pending += node.textContent;
         return;
@@ -208,7 +249,7 @@ export async function extractEpub(
         anchors.set(path + "#" + id, paragraphs.length + 1);
         ids.push(id);
       }
-      for (const child of node.childNodes) walk(child);
+      for (const child of node.childNodes) walk(child, depth + 1);
       if (block) flush();
     };
     walk(body);

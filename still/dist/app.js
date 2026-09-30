@@ -1,3 +1,4 @@
+import { native, storage, flushStorage, exportFile } from "./native-runtime.js";
 import { extractEpub } from "./epub.js";
 import { previousSentence, shelfMatches } from "./reading-features.js";
 import { setupOffline } from "./offline.js";
@@ -21,6 +22,8 @@ import {
   librarySnapshot,
   restoreLibrary,
   setShelfState,
+  deleteReading,
+  eraseLibrary,
 } from "./library.js";
 import {
   buildParagraphIndex,
@@ -50,10 +53,11 @@ Noticing is an unassuming habit. It asks for nothing elaborate: a little attenti
 There are words for these small discoveries. Ephemeral describes something that lasts only briefly. Serendipity is the happy accident of finding something you were not looking for. Neither requires a grand adventure. Sometimes, all it takes is an open window.
 
 Later, when the day grows busy, you may remember the bird. You may forget it entirely. Either way, for a few seconds, you were there. The light, the quiet, the world just outside. And that was enough.`;
+let erasing = false;
 const KEY = "still-reader-v1";
 let saved;
 try {
-  saved = JSON.parse(localStorage.getItem(KEY));
+  saved = JSON.parse(storage.getItem(KEY));
 } catch {}
 let text =
   typeof saved?.text === "string" && saved.text.trim() ? saved.text : SAMPLE;
@@ -102,7 +106,7 @@ let shelfState = saved?.shelfState || "active",
   normalScrollLocked = false;
 let appearance;
 try {
-  appearance = JSON.parse(localStorage.getItem("still-appearance")) || {};
+  appearance = JSON.parse(storage.getItem("still-appearance")) || {};
 } catch {
   appearance = {};
 }
@@ -156,7 +160,7 @@ let savedText = null,
   savedSettings = null;
 let savedPosition;
 try {
-  savedPosition = JSON.parse(localStorage.getItem(KEY + "-position"));
+  savedPosition = JSON.parse(storage.getItem(KEY + "-position"));
 } catch {}
 let data = filteredReading(text, readingOptions),
   reader,
@@ -172,6 +176,7 @@ function refreshTiming() {
   timingPlan = buildTimingPlan(data.tokens, { base, profile, replayParagraph });
 }
 function save() {
+  if (erasing) return;
   try {
     const settings = JSON.stringify({
       title,
@@ -183,7 +188,7 @@ function save() {
       finished: reader?.finished || false,
     });
     if (savedText !== text || savedSettings !== settings) {
-      localStorage.setItem(
+      storage.setItem(
         KEY,
         JSON.stringify({
           text,
@@ -201,7 +206,7 @@ function save() {
       savedText = text;
       savedSettings = settings;
     }
-    localStorage.setItem(
+    storage.setItem(
       KEY + "-position",
       JSON.stringify({
         documentId,
@@ -295,6 +300,7 @@ function pause() {
   playbackUI();
   save();
   checkpoint();
+  flushStorage().catch(() => {});
 }
 function play() {
   if (normalMode) setReadingMode(false);
@@ -306,7 +312,7 @@ function toggle() {
   reader.playing ? pause() : play();
 }
 function checkpoint() {
-  if (!reader) return Promise.resolve(false);
+  if (!reader || erasing) return Promise.resolve(false);
   const record = {
     id: documentId,
     title,
@@ -713,7 +719,7 @@ reader.finished =
 playbackUI();
 checkpoint();
 refreshSource();
-const context = document.modelContext;
+const context = native ? null : document.modelContext;
 if (context?.registerTool) {
   const lifecycle = new AbortController();
   const tools = [
@@ -941,7 +947,10 @@ async function showLibrary() {
         const actions = document.createElement("div");
         actions.className = "shelf-actions";
         for (const action of record.shelfState === "trash"
-          ? [["Restore", "active"]]
+          ? [
+              ["Restore", "active"],
+              ["Delete permanently", "delete"],
+            ]
           : record.shelfState === "archived"
             ? [
                 ["Unarchive", "active"],
@@ -955,7 +964,10 @@ async function showLibrary() {
           control.className = "text-button";
           control.textContent = action[0];
           control.setAttribute("aria-label", action[0] + " " + record.title);
-          control.onclick = () => moveReading(record, action[1]);
+          control.onclick = () =>
+            action[1] === "delete"
+              ? confirmDelete(record)
+              : moveReading(record, action[1]);
           actions.append(control);
         }
         row.append(button, actions);
@@ -1285,14 +1297,10 @@ $("exportLibrary").onclick = async () => {
     const downloadBlob = new Blob([payload], { type: "application/json" });
     if (downloadBlob.size > 250 * 1024 * 1024)
       throw Error("Backup is larger than the 250 MB restore limit.");
-    const url = URL.createObjectURL(downloadBlob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download =
-      "still-bookshelf-" + new Date().toISOString().slice(0, 10) + ".json";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    $("backupStatus").textContent = "Backup downloaded.";
+    await exportFile(payload);
+    $("backupStatus").textContent = native
+      ? "Export sheet closed. Keep your backup in a safe place."
+      : "Backup downloaded.";
   } catch (error) {
     $("backupStatus").textContent =
       error.message ||
@@ -1642,7 +1650,7 @@ function applyAppearance() {
   $("appearanceSize").value = size;
   $("appearanceSizeLabel").textContent = size + "%";
   try {
-    localStorage.setItem("still-appearance", JSON.stringify(appearance));
+    storage.setItem("still-appearance", JSON.stringify(appearance));
   } catch {}
   fitWord();
 }
@@ -1698,5 +1706,98 @@ $("epubFile").onchange = async () => {
     $("epubFile").value = "";
   }
 };
-setupOffline($("prepareOffline"), $("offlineStatus"));
+if (native) {
+  $("prepareOffline").hidden = true;
+  $("offlineStatus").textContent =
+    "Reader, dictionary and PDF tools are included for offline use.";
+} else setupOffline($("prepareOffline"), $("offlineStatus"));
 setReadingMode(readingOptions.readingMode === "text", false);
+
+document.addEventListener("still-background", () => {
+  pause();
+  flushStorage().catch(() => {});
+});
+document.addEventListener("still-storage-failed", () => {
+  $("saved").textContent =
+    "Could not save. Unlock your device and keep Still open.";
+  $("saved").classList.add("storage-error");
+});
+
+let deletePending = null;
+function confirmDelete(record) {
+  pause();
+  deletePending = record;
+  $("deleteDescription").textContent = record
+    ? "Permanently delete “" +
+      record.title +
+      "”, its original file and notes from this app? Exported copies and device backups are not removed."
+    : "Erase all readings, original files, notes and reading preferences from this app? Exported copies and device backups are not removed.";
+  $("deleteError").textContent = "";
+  $("deleteDialog").showModal();
+}
+$("eraseDevice").onclick = () => confirmDelete(null);
+$("confirmDelete").onclick = async () => {
+  const b = $("confirmDelete");
+  b.disabled = true;
+  try {
+    pause();
+    await archiveQueue;
+    if (deletePending) {
+      const id = deletePending.id;
+      if (id === documentId) {
+        load(SAMPLE, "The art of noticing");
+        await archiveQueue;
+        await flushStorage();
+      }
+      await deleteReading(id);
+      lastShelfMove = null;
+      $("undoShelf").hidden = true;
+      $("deleteDialog").close();
+      await showLibrary();
+    } else {
+      await flushStorage();
+      erasing = true;
+      await eraseLibrary();
+      for (const key of [KEY, KEY + "-position", "still-appearance"])
+        storage.removeItem(key);
+      await flushStorage();
+      location.reload();
+    }
+  } catch {
+    erasing = false;
+    $("deleteError").textContent =
+      "Could not finish deleting. Unlock your device and try again.";
+  } finally {
+    b.disabled = false;
+  }
+};
+$("textFile").onchange = async () => {
+  const file = $("textFile").files[0];
+  if (!file) return;
+  try {
+    if (file.size > 2000000)
+      throw Error("Choose a text file smaller than 2 MB.");
+    const value = await file.text();
+    if (!value.trim()) throw Error("This text file is empty.");
+    pdfDraft = null;
+    epubDraft = null;
+    $("textInput").value = value;
+    $("textTitle").value = file.name.replace(/\.[^.]+$/, "").slice(0, 240);
+    $("pdfOptions").hidden = true;
+    $("pdfStatus").hidden = true;
+    updateDraft();
+    $("textFileStatus").textContent = "Text imported. Check it before opening.";
+  } catch (e) {
+    $("textFileStatus").textContent = e.message;
+  } finally {
+    $("textFile").value = "";
+  }
+};
+// The privacy/help pages are generated for the iOS app only; the web build
+// links straight to the bundled third-party licenses instead.
+$("appNotices").hidden = !native;
+$("webNotices").hidden = native;
+$("aboutStill").onclick = () => {
+  pause();
+  $("aboutDialog").showModal();
+};

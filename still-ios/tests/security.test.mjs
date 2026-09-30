@@ -55,11 +55,20 @@ test("native bundle has no remote font, remote server or unrestricted script pol
     "utf8",
   );
   assert.doesNotMatch(css, /https?:\/\//);
-  const config = JSON.parse(
-    await readFile(new URL("../capacitor.config.json", import.meta.url)),
-  );
-  assert.equal(config.server.url, undefined);
-  assert.deepEqual(config.server.allowNavigation, []);
+  // The Capacitor config only exists in the iOS package; the web build shares
+  // this test for its CSS and HTML checks.
+  let config = null;
+  try {
+    config = JSON.parse(
+      await readFile(new URL("../capacitor.config.json", import.meta.url)),
+    );
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  if (config) {
+    assert.equal(config.server.url, undefined);
+    assert.deepEqual(config.server.allowNavigation, []);
+  }
   const html = await readFile(
     new URL("../dist/index.html", import.meta.url),
     "utf8",

@@ -1,0 +1,11 @@
+{
+  "name": "still-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "node scripts/sync-shared.mjs && cd still && node scripts/offline-assets.mjs && cd ../still-ios && node ../still/scripts/offline-assets.mjs",
+    "check:shared": "node scripts/sync-shared.mjs --check",
+    "test": "npm run check:shared && cd still && npm test",
+    "start": "cd still && npm start"
+  }
+}

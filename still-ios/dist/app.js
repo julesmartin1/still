@@ -1793,6 +1793,10 @@ $("textFile").onchange = async () => {
     $("textFile").value = "";
   }
 };
+// The privacy/help pages are generated for the iOS app only; the web build
+// links straight to the bundled third-party licenses instead.
+$("appNotices").hidden = !native;
+$("webNotices").hidden = native;
 $("aboutStill").onclick = () => {
   pause();
   $("aboutDialog").showModal();

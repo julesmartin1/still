@@ -1,3 +1,11 @@
+import {
+  native,
+  nativeGet,
+  nativeList,
+  nativeCommit,
+  encodeSource,
+  decodeSource,
+} from "./native-runtime.js";
 // Same-device library. No reading content leaves this origin.
 let database;
 function openDatabase() {
@@ -50,6 +58,11 @@ export function readingSummary(record) {
 export async function saveReading(record) {
   if (!record.id || typeof record.text !== "string" || !record.text.trim())
     throw Error("A reading must contain text.");
+  if (native)
+    return nativeCommit([
+      ["reading:" + record.id, record],
+      ["summary:" + record.id, readingSummary(record)],
+    ]);
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(["readings", "summaries"], "readwrite");
@@ -61,6 +74,22 @@ export async function saveReading(record) {
   });
 }
 async function readStore(store, key) {
+  if (native) {
+    const prefix = {
+      readings: "reading:",
+      summaries: "summary:",
+      sources: "source:",
+    }[store];
+    const result =
+      key === undefined
+        ? await nativeList(prefix)
+        : await nativeGet(prefix + key);
+    return store === "sources"
+      ? Array.isArray(result)
+        ? result.map(decodeSource)
+        : decodeSource(result)
+      : result;
+  }
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, "readonly");
@@ -81,6 +110,10 @@ export const getReading = (id) => readStore("readings", id);
 
 export const getSource = (id) => readStore("sources", id);
 export async function saveSource(id, source) {
+  if (native)
+    return nativeCommit([
+      ["source:" + id, await encodeSource({ id, ...source })],
+    ]);
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const tx = db.transaction("sources", "readwrite");
@@ -92,6 +125,11 @@ export async function saveSource(id, source) {
 }
 
 export async function librarySnapshot() {
+  if (native)
+    return {
+      readings: await readStore("readings"),
+      sources: await readStore("sources"),
+    };
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(["readings", "sources"], "readonly");
@@ -105,6 +143,30 @@ export async function librarySnapshot() {
 }
 // Restore in one transaction. Existing IDs are preserved; conflicting readings become copies.
 export async function restoreLibrary(bundle) {
+  if (native) {
+    const ids = new Set((await listReadings()).map((r) => r.id)),
+      mapping = new Map(),
+      writes = [];
+    for (const r of bundle.readings) {
+      const id = ids.has(r.id) ? crypto.randomUUID() : r.id;
+      mapping.set(r.id, id);
+      const record = {
+        ...r,
+        id,
+        title: ids.has(r.id) ? r.title + " (restored copy)" : r.title,
+      };
+      writes.push(
+        ["reading:" + id, record],
+        ["summary:" + id, readingSummary(record)],
+      );
+    }
+    for (const s of bundle.sources) {
+      const id = mapping.get(s.id);
+      writes.push(["source:" + id, await encodeSource({ ...s, id })]);
+    }
+    await nativeCommit(writes);
+    return bundle.readings.length;
+  }
   const db = await openDatabase();
   const existing = await listReadings();
   const ids = new Set(existing.map((r) => r.id)),
@@ -139,4 +201,43 @@ export async function setShelfState(id, state) {
   const r = await getReading(id);
   if (!r) throw Error("Reading not found.");
   await saveReading({ ...r, shelfState: state, updatedAt: Date.now() });
+}
+export async function deleteReading(id) {
+  if (native)
+    return nativeCommit([], ["reading:" + id, "summary:" + id, "source:" + id]);
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(
+      ["readings", "summaries", "sources"],
+      "readwrite",
+    );
+    for (const name of ["readings", "summaries", "sources"])
+      tx.objectStore(name).delete(id);
+    tx.oncomplete = resolve;
+    tx.onabort = tx.onerror = () => reject(Error("Deletion could not finish."));
+  });
+}
+export async function eraseLibrary() {
+  if (native) {
+    const records = await listReadings();
+    return nativeCommit(
+      [],
+      records.flatMap((r) => [
+        "reading:" + r.id,
+        "summary:" + r.id,
+        "source:" + r.id,
+      ]),
+    );
+  }
+  const db = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(
+      ["readings", "summaries", "sources"],
+      "readwrite",
+    );
+    for (const name of ["readings", "summaries", "sources"])
+      tx.objectStore(name).clear();
+    tx.oncomplete = resolve;
+    tx.onabort = tx.onerror = () => reject(Error("Erasing could not finish."));
+  });
 }

@@ -1,0 +1,12 @@
+import { initializeStorage } from "./native-runtime.js";
+try {
+  await initializeStorage();
+  await import("./app.js");
+} catch {
+  document.body.replaceChildren();
+  const message = document.createElement("p");
+  message.textContent =
+    "Still could not open its saved library. Your files have not been reset. Unlock your device and reopen Still. If the problem continues, keep the app installed and contact support.";
+  message.style.padding = "32px";
+  document.body.append(message);
+}

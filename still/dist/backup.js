@@ -23,6 +23,7 @@ export function decodeBackup(value) {
       "This is not a valid Still bookshelf backup. Nothing was imported.",
     );
   };
+  if (typeof value === "string" && value.length > 250 * 1024 * 1024) bad();
   let data;
   try {
     data = typeof value === "string" ? JSON.parse(value) : value;
@@ -34,7 +35,8 @@ export function decodeBackup(value) {
     data.version !== 1 ||
     !Array.isArray(data.readings) ||
     !Array.isArray(data.sources) ||
-    data.readings.length > 1000
+    data.readings.length > 1000 ||
+    data.sources.length > 1000
   )
     bad();
   const ids = new Set(),
@@ -43,6 +45,7 @@ export function decodeBackup(value) {
     if (
       !r ||
       typeof r.id !== "string" ||
+      r.id.length > 200 ||
       ids.has(r.id) ||
       typeof r.text !== "string" ||
       !r.text.trim() ||
@@ -92,7 +95,13 @@ export function decodeBackup(value) {
         slowdown: Math.max(0, Math.min(0.2, Number(r.profile?.slowdown) || 0)),
         lookups:
           r.profile?.lookups && typeof r.profile.lookups === "object"
-            ? r.profile.lookups
+            ? Object.fromEntries(
+                Object.entries(r.profile.lookups)
+                  .filter(
+                    ([k, v]) => k.length <= 100 && Number.isFinite(v) && v >= 0,
+                  )
+                  .slice(0, 5000),
+              )
             : {},
         rewinds: [],
       },
@@ -115,7 +124,8 @@ export function decodeBackup(value) {
       sourceIds.has(s.id) ||
       typeof s.pdf !== "string" ||
       s.pdf.length > 70000000 ||
-      !Array.isArray(s.locations)
+      !Array.isArray(s.locations) ||
+      s.locations.length > 200000
     )
       bad();
     sourceIds.add(s.id);
@@ -145,7 +155,8 @@ export function decodeBackup(value) {
         !Array.isArray(l.rect) ||
         l.rect.length !== 4 ||
         !l.rect.every(Number.isFinite) ||
-        typeof l.text !== "string"
+        typeof l.text !== "string" ||
+        l.text.length > 20000
       )
         bad();
       previous = l.start;

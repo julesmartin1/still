@@ -93,6 +93,8 @@ export async function extractPdf(
   const task = getDocument({
     data: bytes,
     isEvalSupported: false,
+    maxImageSize: 16000000,
+    canvasMaxAreaInBytes: 64000000,
     cMapUrl: root + "cmaps/",
     cMapPacked: true,
     standardFontDataUrl: root + "standard_fonts/",
@@ -102,6 +104,7 @@ export async function extractPdf(
     void task.destroy().catch(() => {});
   };
   signal?.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(abort, 60000);
   try {
     const doc = await task.promise;
     let metadata;
@@ -162,6 +165,7 @@ export async function extractPdf(
       blankPages,
     };
   } finally {
+    clearTimeout(timeout);
     signal?.removeEventListener("abort", abort);
     await task.destroy();
   }

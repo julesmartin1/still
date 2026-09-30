@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Literata:opsz,wght@7..72,400;7..72,500&display=swap");
 :root {
   font-family: "DM Sans", sans-serif;
   color: #202b43;
@@ -1198,4 +1197,56 @@ html[data-theme="dark"] #speedValue:focus {
     margin: 10px 0;
     width: 100%;
   }
+}
+
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root {
+  --system-text-scale: 1;
+  font-size: calc(16px * var(--system-text-scale));
+}
+button,
+input,
+textarea,
+select {
+  font-size: inherit;
+}
+.normal-text {
+  font-size: calc(20px * var(--reading-scale) * var(--system-text-scale));
+}
+.muted,
+.text-button,
+.primary,
+.secondary,
+.outline,
+.adapt p {
+  font-size: calc(14px * var(--system-text-scale));
+}
+.topline,
+footer {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.normal-toolbar button,
+.reading-tools button {
+  min-height: 44px;
+}
+#normalPane:focus-visible {
+  outline: 3px solid #83a5ff;
+}
+#word {
+  font-size: clamp(
+    calc(32px * var(--reading-scale) * var(--system-text-scale)),
+    calc(6vw * var(--reading-scale) * var(--system-text-scale)),
+    calc(66px * var(--reading-scale) * var(--system-text-scale))
+  );
 }

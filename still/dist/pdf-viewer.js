@@ -176,6 +176,8 @@ export function createPdfViewer({ getIndex, onRead }) {
         task = pdfjs.getDocument({
           data: bytes,
           isEvalSupported: false,
+          maxImageSize: 16000000,
+          canvasMaxAreaInBytes: 64000000,
           cMapUrl: root + "cmaps/",
           cMapPacked: true,
           standardFontDataUrl: root + "standard_fonts/",
