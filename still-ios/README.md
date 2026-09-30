@@ -2,6 +2,10 @@
 
 This separate native project starts from the published Still source at `bd515492a4849b670a8205fd2feb89d11d07b665`. It does not change the existing private website. The release dossier is in sibling `../app-store-release/`.
 
+**Shared code.** Everything in `dist/` and `tests/` except `native-runtime.js` and the generated `offline-assets.js` (plus iOS-only pages such as `privacy.html`, `help.html`, `licenses.html` and `notices/`) is copied from `../still/` by `node ../scripts/sync-shared.mjs` (or `npm run sync` at the repository root). Edit shared files in `../still/`, not here. `tests/native-adapter.test.mjs` and the native runtime are iOS-only.
+
+**Unverified in a native build (2026-09-30):** the shared code now includes `pdf-compat.js` and `pdf-worker.mjs` (so PDF page view works on iOS 18, where PDF.js 6.3 needs newer built-ins) and a top-level `await` at app start. Both are standard for the `safari18` esbuild target, but run `npm run build` and a simulator check before relying on them.
+
 **Not submission ready.** Full Xcode, simulator/device validation, publisher/support/territory/pricing decisions, signing and legal review are outstanding. Swift source parsing and macOS storage tests do not constitute an iOS build.
 
 ## Architecture
