@@ -80,6 +80,25 @@ The handoff says "do not introduce comprehension quizzes", so check-ins aren't q
 
 Worth measuring next, with users' consent: whether people who use check-ins rate "Lost" less often over time, and whether the pace suggestions get accepted.
 
+## Ease-of-use audit (October 2026)
+
+The goal of this pass: make it easier to start reading, stay with it, and come back tomorrow, for readers whose attention is pulled in many directions. Language-learning apps such as Duolingo solved a similar problem with short daily goals, visible progress and a clear next step, so this pass borrows those ideas while keeping Still calm (no sounds, no leagues, no nagging).
+
+| # | Finding | Change |
+|---|---|---|
+| 38 | Nothing said how long a reading would take. "8 / 188 words" is abstract. | **Time left** in the reader ("4 min left in chapter"), computed from the timing plan itself, so it includes the reader's adjustments. The bookshelf shows time left per reading. |
+| 39 | Nothing brought readers back the next day. | **Daily goal and streak.** Pick 5, 10, 15 or 20 minutes. A Today card shows a progress ring, the streak and the last seven days; the header shows the streak. Only time spent playing words counts. Everything stays on the device (`habits.js`). |
+| 40 | First run dropped readers on a busy page with a small "Find my pace" link. | **Welcome in three short steps:** what Still is and how to control it, a daily goal, then Find my pace or the sample. Existing readers never see it. |
+| 41 | While reading, five tool buttons, the pace panel and the footer stayed at full strength around the word. | **The page fades back while words play** and returns on pause, hover or keyboard focus. |
+| 42 | On phones, play/pause meant reaching for a button under the word. | **Tap the word to play or pause.** Holding it still shows the sentence. |
+| 43 | Pressing play started at full speed, so the first words were easy to miss. | **Easing in:** the first four words after play get 80%, 50%, 30% and 15% extra time. |
+| 44 | Pausing and finishing gave no feedback. | **A short summary on pause** (time, words, pace, today's goal). **A finish card** at the end, with the streak and the obvious next step ("Up next: …" or Add a reading). |
+| 45 | No quick way to skip ahead or change pace mid-reading. | **→ skips to the next sentence; ↑ and ↓ change the pace by 10.** In Text view, ↑ and ↓ still scroll. |
+| 46 | The controls gave Review and Play equal weight, and the sentence rewind sat among the tools below. | Play is now the large central button, with **↶ (back a sentence) and Review either side.** The tools row is shorter: Chapters (Sections for papers), Text view, Notes, Settings. It fits one row on phones. |
+| 47 | The "A pace that follows you" panel took half the space below the reader to explain timing. | Replaced by the Today card. A one-line note under the pace keeps the explanation. |
+
+What to measure next, with consent: whether readers with a goal come back on more days, which goal size they keep, and whether the fade-back while reading changes how often they pause.
+
 ## Still open
 
 - **The iOS app has never been compiled.** It needs a Mac with enough disk space and an Xcode-compatible macOS. After that:

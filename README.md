@@ -1,6 +1,6 @@
 # Still
 
-A calm reading app that shows one word at a time, at an average pace that adapts to the reader. It has paragraph review, local-only storage, optional citation filtering for papers, and ungraded comprehension check-ins. It also has chapters from a PDF's table of contents, hold-to-see-the-sentence, a short "find my pace" warm-up, and import checks that repair common book-PDF faults.
+A calm reading app that shows one word at a time, at an average pace that adapts to the reader. It has paragraph review, local-only storage, optional citation filtering for papers, and ungraded comprehension check-ins. It also has chapters from a PDF's table of contents, hold-to-see-the-sentence, a short "find my pace" warm-up, and import checks that repair common book-PDF faults. To make short, regular reading easy, it shows the time left, offers a daily goal with a streak, fades the page back while you read, and lets you tap the word to play or pause.
 
 | Folder | What it is |
 |---|---|
@@ -34,8 +34,8 @@ Never edit a shared file inside `still-ios/dist/` directly; the next sync overwr
 
 ## Tests
 
-- **Unit tests** (`npm test` in `still/` or `still-ios/`): reading engine, word splitting, citations, PDF layout and contents, text repair and checks, backups, check-ins, pace finder, PDF compatibility shims.
-- **Browser tests** (`still/tests/ui/run.py`): keyboard, dialogs, storage, bookshelf, check-ins, layout. One-time setup: `pip install playwright && python -m playwright install chromium`. Then run `python3 tests/ui/run.py` from `still/` (pass a name fragment to run a subset).
+- **Unit tests** (`npm test` in `still/` or `still-ios/`): reading engine, word splitting, citations, PDF layout and contents, text repair and checks, backups, check-ins, pace finder, daily goal and streak, PDF compatibility shims.
+- **Browser tests** (`still/tests/ui/run.py`): keyboard, dialogs, storage, bookshelf, check-ins, welcome and daily goal, layout. One-time setup: `pip install playwright && python -m playwright install chromium`. Then run `python3 tests/ui/run.py` from `still/` (pass a name fragment to run a subset).
 
 ## iOS
 
