@@ -401,6 +401,35 @@ async def import_flags_printed_line_breaks_and_rejoins_them(browser):
     await ctx.close()
 
 
+@check
+async def holding_the_word_shows_its_sentence(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, "First one here. The quick brown fox jumps over the dog. Last one.")
+    await page.click("#play")
+    await page.wait_for_function("document.getElementById('word').textContent === 'quick'", timeout=5000)
+    box = await page.locator("#wordReader .stage").bounding_box()
+    await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + 20)
+    await page.mouse.down()
+    await page.wait_for_timeout(400)
+    assert not await page.locator("#peek").is_hidden()
+    peek = await page.text_content("#peek")
+    assert peek.startswith("The quick brown fox") and peek.endswith("dog."), peek
+    marked = await page.text_content("#peek mark")
+    assert marked in ("quick", "brown"), marked
+    assert "Start" in await page.inner_text("#play") or "Read" in await page.inner_text("#play")
+    await page.mouse.up()
+    assert await page.locator("#peek").is_hidden()
+    assert "Pause" in await page.inner_text("#play"), "did not resume"
+    await page.click("#play")
+    # Keyboard: hold S.
+    await page.keyboard.down("s")
+    assert not await page.locator("#peek").is_hidden()
+    await page.keyboard.up("s")
+    assert await page.locator("#peek").is_hidden()
+    assert "Pause" not in await page.inner_text("#play"), "resumed though it was paused"
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],

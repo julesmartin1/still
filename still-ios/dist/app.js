@@ -66,6 +66,7 @@ import {
   targetWpm,
   Playback,
   clamp,
+  sentenceEnd,
 } from "./engine.js";
 const $ = (id) => document.getElementById(id);
 // "1 reading", "3 readings"; pass the plural form when it isn't just "+s".
@@ -494,7 +495,7 @@ function playbackUI() {
     ? ""
     : reader.finished
       ? "You’ve reached the end."
-      : "Settle in. Start when you’re ready.";
+      : "Settle in. Start when you’re ready. Hold the word to see its sentence.";
   // Words are not announced one by one (far too fast for a screen reader);
   // announce the state and position whenever playback starts or stops.
   const position = data.tokens.length
@@ -962,6 +963,10 @@ document.addEventListener("keydown", (e) => {
   if (!e.repeat && e.key === "ArrowLeft") {
     e.preventDefault();
     rewindSentence();
+  }
+  if (!e.repeat && e.key.toLowerCase() === "s") {
+    e.preventDefault();
+    showPeek();
   }
   if (!e.repeat && e.key.toLowerCase() === "r") {
     e.preventDefault();
@@ -1863,6 +1868,71 @@ $("selectPassage").onclick = () => {
     : "Selection cleared.";
   updateNormalHighlight();
 };
+// Hold to see the sentence: one word at a time removes the quick glance back
+// that normally repairs a missed word, so holding the word (or S) pauses and
+// shows the whole sentence with the current word marked. Letting go resumes.
+let peekState = null;
+function sentenceAround(tokens, i) {
+  const same = (j) => tokens[j]?.paragraph === tokens[i].paragraph;
+  let start = i,
+    end = i;
+  while (start > 0 && i - start < 60 && same(start - 1) && !sentenceEnd.test(tokens[start - 1].text))
+    start--;
+  while (end < tokens.length - 1 && end - i < 60 && same(end + 1) && !sentenceEnd.test(tokens[end].text))
+    end++;
+  return [start, end];
+}
+function showPeek() {
+  if (peekState || !data.tokens.length) return;
+  peekState = { resume: reader.playing };
+  pause();
+  const [start, end] = sentenceAround(data.tokens, reader.index);
+  const parts = [];
+  for (let j = start; j <= end; j++) {
+    if (j > start) parts.push(" ");
+    if (j === reader.index) {
+      const mark = document.createElement("mark");
+      mark.textContent = data.tokens[j].text;
+      parts.push(mark);
+    } else parts.push(data.tokens[j].text);
+  }
+  const sentence = document.createElement("span");
+  sentence.append(...parts);
+  $("peek").replaceChildren(sentence);
+  $("peek").hidden = false;
+  $("wordReader").classList.add("peeking");
+  $("status").textContent = peekState.resume
+    ? "Let go to carry on reading."
+    : "Let go to return to the word.";
+}
+function hidePeek() {
+  if (!peekState) return;
+  const { resume } = peekState;
+  peekState = null;
+  $("peek").hidden = true;
+  $("wordReader").classList.remove("peeking");
+  if (resume) play();
+  else playbackUI();
+}
+{
+  const stage = document.querySelector("#wordReader .stage");
+  let holdTimer = 0;
+  stage.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(showPeek, 250);
+  });
+  for (const type of ["pointerup", "pointercancel", "pointerleave"])
+    stage.addEventListener(type, () => {
+      clearTimeout(holdTimer);
+      hidePeek();
+    });
+  stage.addEventListener("contextmenu", (e) => e.preventDefault());
+  document.addEventListener("keyup", (e) => {
+    if (e.key.toLowerCase() === "s") hidePeek();
+  });
+  window.addEventListener("blur", hidePeek);
+}
 function rewindSentence() {
   if (!data.tokens.length) return;
   const playing = reader.playing;
