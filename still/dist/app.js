@@ -298,11 +298,11 @@ function save() {
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let wordFade = null;
-// Shows one word, anchored on its focus letter unless the reader chose
-// centred words (see word-display.js for the reasoning).
+// Shows one word, centred by default. Readers who choose "anchored" get the
+// focus letter fixed under the marks and tinted (see word-display.js).
 function showWord(word, { animate = false, durationMs = 0 } = {}) {
   const el = $("word");
-  const focus = appearance.placement !== "centered" && word.length <= 40;
+  const focus = appearance.placement === "anchored" && word.length <= 40;
   el.classList.toggle("focus-mode", focus);
   if (focus) {
     const parts = splitAtFocus(word).map((text, i) => {
@@ -1942,7 +1942,7 @@ function applyAppearance() {
   $("appearanceTheme").value = theme;
   $("appearanceFont").value = appearance.font || "serif";
   $("appearancePlacement").value =
-    appearance.placement === "centered" ? "centered" : "focus";
+    appearance.placement === "anchored" ? "anchored" : "centered";
   $("appearanceTransition").value =
     appearance.transition === "instant" ? "instant" : "soft";
   $("checkinMode").value = checkinMode();

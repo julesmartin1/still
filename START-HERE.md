@@ -5,7 +5,7 @@
 > - The web and iOS apps **share one copy of the reader code**. Edit it in `still/`, then run `npm run sync` at the repository root. The "separate copies" note under *Collaborating* no longer applies. See `README.md`.
 > - Audit findings were fixed, including backup limits, PDF viewing on older browsers and iOS 18, Chinese/Japanese/Thai word splitting, two-column PDF order, keyboard focus, storage for long readings, deleting bookmarks and Trash, right-to-left text and screen-reader announcements. See `AUDIT.md`.
 > - **Comprehension check-ins** were added, and they are deliberately not quizzes. They give an optional one-line recap and an ungraded "how well did that land?", and losing the thread offers a slower replay. They respect the "no quizzes" instruction below and can be turned off in Reading settings.
-> - Words are now anchored on their focus letter and fade in over at most 40 ms. Both can be switched back in Appearance.
+> - Words now fade in over at most 40 ms. They stay centred by default, and anchoring on a highlighted focus letter is optional. Both are in Appearance.
 > - Average-WPM pacing, the short-word floor, paragraph review, local storage and citation filtering are unchanged.
 > - The iOS project has still not been compiled. Everything under *Work on the iPhone/iPad version* still applies.
 

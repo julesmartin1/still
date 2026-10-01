@@ -260,9 +260,13 @@ async def phone_layout_has_no_sideways_scroll(browser):
 
 
 @check
-async def words_are_anchored_on_their_focus_letter(browser):
+async def words_are_centred_by_default_and_can_be_anchored(browser):
     ctx, page = await fresh(browser)
     await open_text(page, "comprehension reading a")
+    assert await page.locator("#word .focus").count() == 0, "centred should be the default"
+    await page.click("#readingSettings")
+    await page.locator("summary", has_text="Appearance").click()
+    await page.select_option("#appearancePlacement", "anchored")
     offset = await page.evaluate("""() => {
       const f = document.querySelector('#word .focus').getBoundingClientRect();
       const mark = document.querySelector('.focal-line').getBoundingClientRect();
@@ -270,8 +274,6 @@ async def words_are_anchored_on_their_focus_letter(browser):
     }""")
     assert offset <= 1, f"focus letter is {offset}px off the marks"
     assert await page.text_content("#word .focus") == "p"
-    await page.click("#readingSettings")
-    await page.locator("summary", has_text="Appearance").click()
     await page.select_option("#appearancePlacement", "centered")
     assert await page.locator("#word .focus").count() == 0
     await ctx.close()

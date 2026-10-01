@@ -49,10 +49,12 @@ The request was for a fade instead of words "popping up". The research points in
 
 What changed:
 
-1. **Words are anchored on their focus letter** (default). The letter about a third of the way into each word sits exactly between the two marks.
-2. **Each word fades in over 12–40 ms** (default), which is 1–2 frames and at most 12% of the word's time. This softens the onset without cutting into recognition time, and it turns off under reduced motion.
+1. **Each word fades in over 12–40 ms** (default), which is 1–2 frames and at most 12% of the word's time. This softens the onset without cutting into recognition time, and it turns off under reduced motion. The fade is a comfort choice: no evidence shows it changes comprehension.
+2. **Words can be anchored on a focus letter** (optional). The letter about a third of the way into each word sits exactly between the two marks and is tinted.
 
-Both are in Reading settings, under Appearance, and "Centered" and "Instant" restore the old behaviour. The fade is a comfort choice: no evidence shows it changes comprehension. Anchoring has the stronger research basis.
+Both are in Reading settings, under Appearance. "Instant" turns off the fade.
+
+Anchoring was the default at first. In use, it made longer words look off-centre, because nothing showed why they had moved. Words are now centred by default. Choosing "Anchored" tints the focus letter so the shift reads as deliberate.
 
 ## Comprehension check-ins: design notes
 

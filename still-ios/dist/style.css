@@ -1308,6 +1308,10 @@ html[data-theme="dark"] .file-button {
 #word.focus-mode .after {
   text-align: start;
 }
+/* The tinted letter shows why the word is not centred. */
+#word.focus-mode .focus {
+  color: #ffa47a; /* 8.4:1 on the reader's navy */
+}
 
 /* ---- Comprehension check-ins ---- */
 #checkinRecap {
