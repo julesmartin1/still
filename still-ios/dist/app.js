@@ -42,6 +42,7 @@ import {
 } from "./navigation.js";
 import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
+import { checkText } from "./text-check.js";
 import {
   repairPdfLines,
   repairText,
@@ -1395,7 +1396,56 @@ function draftSections(value) {
     return pdfDraft.sections;
   return null;
 }
+// "Worth a look" list under the text box (see text-check.js). Runs a moment
+// after typing stops, since the text can be a whole book.
+let textCheckTimer = 0;
+function scheduleTextCheck() {
+  clearTimeout(textCheckTimer);
+  textCheckTimer = setTimeout(renderTextCheck, 350);
+}
+function renderTextCheck() {
+  const box = $("textInput");
+  const findings = checkText(box.value);
+  $("textCheck").hidden = !findings.length;
+  $("textCheckList").replaceChildren(
+    ...findings.map((finding) => {
+      const item = document.createElement("li");
+      const message = document.createElement("span");
+      message.textContent = finding.message;
+      item.append(message);
+      if (finding.ranges.length) {
+        let next = 0;
+        const show = document.createElement("button");
+        show.type = "button";
+        show.className = "text-button";
+        show.textContent = "Show";
+        show.onclick = () => {
+          const [start, end] = finding.ranges[next];
+          next = (next + 1) % finding.ranges.length;
+          show.textContent = finding.ranges.length > 1 ? "Show next" : "Show";
+          box.focus();
+          box.setSelectionRange(start, end);
+        };
+        item.append(show);
+      }
+      if (finding.fix) {
+        const fix = document.createElement("button");
+        fix.type = "button";
+        fix.className = "text-button";
+        fix.textContent = finding.fixLabel || "Fix";
+        fix.onclick = () => {
+          box.value = finding.fix(box.value);
+          box.dispatchEvent(new Event("input"));
+          renderTextCheck();
+        };
+        item.append(fix);
+      }
+      return item;
+    }),
+  );
+}
 function updateDraft() {
+  scheduleTextCheck();
   const value = $("textInput").value;
   if (!importTypeManual) $("importType").value = inferType(value);
   $("importAcademic").hidden = $("importType").value !== "academic";

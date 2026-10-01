@@ -1475,3 +1475,36 @@ html[data-theme="dark"] header {
 .reader-top span:last-child {
   flex-shrink: 0;
 }
+
+/* ---- "Worth a look" findings under the import text box ---- */
+.text-check {
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff6e8;
+  color: #4a3511;
+  font-size: 14px;
+}
+.text-check-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.text-check ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.text-check li {
+  margin: 4px 0;
+}
+.text-check li .text-button {
+  margin-left: 8px;
+  min-height: 44px;
+  color: #7a4a00;
+}
+html[data-theme="dark"] .text-check {
+  background: #3a2f1c;
+  color: #f4e6cc;
+}
+html[data-theme="dark"] .text-check li .text-button {
+  color: #ffd48a;
+}

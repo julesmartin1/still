@@ -383,6 +383,24 @@ async def pdf_table_of_contents_becomes_chapters(browser):
     await ctx.close()
 
 
+@check
+async def import_flags_printed_line_breaks_and_rejoins_them(browser):
+    ctx, page = await fresh(browser)
+    await page.click("#newText")
+    lines = ["The morning was quiet and the road ran down to the river where"] * 6
+    lines += ["the light lay flat on the water and nothing moved at all there."] * 6
+    text = "\n".join(lines)
+    await page.evaluate(
+        "t => { const e = document.getElementById('textInput'); e.value = t; e.dispatchEvent(new Event('input')); }",
+        text,
+    )
+    await page.wait_for_selector("#textCheck:not([hidden])", timeout=3000)
+    await page.locator("#textCheckList button", has_text="Rejoin").click()
+    assert "\n" not in (await page.input_value("#textInput")).strip()
+    await page.wait_for_selector("#textCheck[hidden]", state="attached", timeout=3000)
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],
