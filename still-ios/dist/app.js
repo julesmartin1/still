@@ -16,7 +16,11 @@ import {
   MAX_BACKUP_READINGS,
 } from "./backup.js";
 import { filteredReading, visibleIndex } from "./citations.js";
-import { composePdf, markLineJoins } from "./pdf-layout.js";
+import {
+  composePdf,
+  markLineJoins,
+  outlineSections,
+} from "./pdf-layout.js";
 import { createPdfViewer } from "./pdf-viewer.js";
 import {
   saveReading,
@@ -393,6 +397,7 @@ function render() {
   });
   $("count").textContent =
     `${data.tokens.length ? reader.index + 1 : 0} / ${plural(data.tokens.length, "word")}`;
+  updateModeLabel();
   const percent = data.tokens.length
     ? ((reader.index + 1) / data.tokens.length) * 100
     : 0;
@@ -413,6 +418,69 @@ function render() {
   updateNormalHighlight();
   save();
 }
+// Where each section starts in the visible words, rebuilt when the reading
+// or its sections change. Kept cheap because render() runs on every word.
+let chapterCache = { data: null, sections: null, list: [] };
+function chapterStarts() {
+  if (
+    chapterCache.data !== data ||
+    chapterCache.sections !== readingOptions.sections
+  ) {
+    const firstWord = new Map();
+    for (const t of data.original.tokens)
+      if (!firstWord.has(t.paragraph)) firstWord.set(t.paragraph, t.index);
+    const list = readingSections()
+      .map((s) => ({
+        title: s.title,
+        index: visibleIndex(data.tokens, firstWord.get(s.paragraph - 1) ?? 0),
+      }))
+      .filter((s) => s.index < data.tokens.length)
+      .sort((a, b) => a.index - b.index);
+    chapterCache = { data, sections: readingOptions.sections, list };
+  }
+  return chapterCache.list;
+}
+// Index into chapterStarts() of the section containing visible word `i`.
+function chapterAt(i) {
+  const list = chapterStarts();
+  let low = 0,
+    high = list.length - 1,
+    found = -1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (list[mid].index <= i) {
+      found = mid;
+      low = mid + 1;
+    } else high = mid - 1;
+  }
+  return found;
+}
+// The reader's top-left label: the current chapter when the reading has
+// chapters, otherwise a calm line about the reader's state.
+let modeKey = "";
+function updateModeLabel(force = false) {
+  const list = chapterStarts();
+  const at = list.length >= 2 ? chapterAt(reader.index) : -1;
+  const key = at + "|" + reader.playing + "|" + reader.finished;
+  if (!force && key === modeKey) return;
+  modeKey = key;
+  const el = $("mode");
+  if (at >= 0) {
+    el.textContent = `${at + 1} of ${list.length} · ${list[at].title}`;
+    el.title = list[at].title;
+    el.classList.add("chapter");
+  } else {
+    el.textContent = reader.playing
+      ? "IN YOUR OWN TIME"
+      : reader.finished
+        ? "A GOOD PLACE TO PAUSE"
+        : list.length >= 2
+          ? "BEFORE THE FIRST CHAPTER"
+          : "READY WHEN YOU ARE";
+    el.removeAttribute("title");
+    el.classList.remove("chapter");
+  }
+}
 function playbackUI() {
   const playing = reader.playing;
   $("play").innerHTML = playing
@@ -420,11 +488,7 @@ function playbackUI() {
     : reader.finished
       ? "↻ <span>Read again</span>"
       : "▶ <span>Start reading</span>";
-  $("mode").textContent = playing
-    ? "IN YOUR OWN TIME"
-    : reader.finished
-      ? "A GOOD PLACE TO PAUSE"
-      : "READY WHEN YOU ARE";
+  updateModeLabel(true);
   $("status").textContent = playing
     ? ""
     : reader.finished
@@ -685,10 +749,7 @@ $("inputForm").onsubmit = (e) => {
         skipCitations: kind === "academic" && $("importSkipCitations").checked,
         skipReferences:
           kind === "academic" && $("importSkipReferences").checked,
-        sections:
-          epubDraft && epubDraft.text === draftText
-            ? epubDraft.sections
-            : detectSections(draftText, kind),
+        sections: draftSections(draftText) || detectSections(draftText, kind),
       },
     },
     imported,
@@ -1080,8 +1141,21 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
     $("pdfTo").max = result.pages;
     $("textTitle").value = result.title;
     applyPdfRange();
-    $("pdfStatus").textContent =
-      `Imported ${result.pages} ${result.pages === 1 ? "page" : "pages"}. ${result.blankPages ? `${result.blankPages} ${result.blankPages === 1 ? "page had" : "pages had"} no selectable text and were skipped. ` : ""}Check the text below, then open it in the reader. ${plural(result.pageModels.filter((p) => p.columns === 2).length, "page uses", "pages use")} two-column reading order. ${plural(repaired, "line-break split")} repaired. ${repairSummary(fixes)}Tables may still need manual review.`;
+    const columns = result.pageModels.filter((p) => p.columns === 2).length;
+    const chapters = pdfDraft.sections?.length || 0;
+    $("pdfStatus").textContent = [
+      `Imported ${plural(result.pages, "page")}.`,
+      result.blankPages &&
+        `${plural(result.blankPages, "page had", "pages had")} no selectable text and ${result.blankPages === 1 ? "was" : "were"} skipped.`,
+      chapters &&
+        `Found ${plural(chapters, "chapter")} in the PDF's table of contents.`,
+      columns && `${plural(columns, "page uses", "pages use")} two-column reading order.`,
+      repaired && `${plural(repaired, "line-break split")} repaired.`,
+      repairSummary(fixes).trim(),
+      "Check the text below, then open it in the reader.",
+    ]
+      .filter(Boolean)
+      .join(" ");
   } catch (error) {
     if (!controller.signal.aborted && pdfController === controller) {
       $("pdfStatus").textContent = pdfErrorMessage(error);
@@ -1241,7 +1315,9 @@ function applyPdfRange() {
       "No selectable text in those pages. Choose another range.";
     return;
   }
-  Object.assign(pdfDraft, composed);
+  Object.assign(pdfDraft, composed, {
+    sections: outlineSections(pdfDraft.outline, composed),
+  });
   $("textInput").value = composed.text;
   $("textInput").setCustomValidity("");
   $("pdfRangeStatus").textContent =
@@ -1311,15 +1387,21 @@ $("referenceApply").onclick = () => {
   applyReadingOptions({ ...readingOptions, referenceRange: { start, end } });
 };
 
+// Sections that came with the imported file (an EPUB's or PDF's own table of
+// contents), as long as the text hasn't been edited since.
+function draftSections(value) {
+  if (epubDraft && epubDraft.text === value) return epubDraft.sections;
+  if (pdfDraft && pdfDraft.text === value && pdfDraft.sections?.length)
+    return pdfDraft.sections;
+  return null;
+}
 function updateDraft() {
   const value = $("textInput").value;
   if (!importTypeManual) $("importType").value = inferType(value);
   $("importAcademic").hidden = $("importType").value !== "academic";
   const paragraphs = value.trim() ? parseText(value).paragraphs : [];
   const headings =
-    epubDraft && epubDraft.text === value
-      ? epubDraft.sections
-      : detectSections(value, $("importType").value);
+    draftSections(value) || detectSections(value, $("importType").value);
   const options = [{ title: "Beginning", paragraph: 1 }, ...headings];
   $("startSection").replaceChildren(
     ...options.map((h) => {

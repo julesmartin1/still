@@ -362,6 +362,27 @@ async def check_ins_can_be_turned_off(browser):
     await ctx.close()
 
 
+@check
+async def pdf_table_of_contents_becomes_chapters(browser):
+    ctx, page = await fresh(browser)
+    await page.click("#newText")
+    await page.set_input_files("#pdfFile", os.path.join(HERE, "..", "fixtures", "chapters.pdf"))
+    await page.wait_for_function(
+        "document.getElementById('pdfStatus').textContent.startsWith('Imported')", timeout=30000
+    )
+    assert "Found 3 chapters" in await page.text_content("#pdfStatus")
+    options = await page.eval_on_selector_all("#startSection option", "o => o.map(x => x.textContent)")
+    assert options == ["Beginning", "Chapter One: The River", "Chapter Two: The Bridge", "Chapter Three: Home"], options
+    await page.click("#inputForm [type=submit]")
+    await page.wait_for_timeout(200)
+    assert await page.text_content("#mode") == "1 of 3 · Chapter One: The River"
+    await page.click("#contents")
+    await page.locator("#sectionList button", has_text="Chapter Two").click()
+    assert await page.text_content("#mode") == "2 of 3 · Chapter Two: The Bridge"
+    assert await page.text_content("#word") == "Chapter"
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],

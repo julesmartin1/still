@@ -1,4 +1,4 @@
-import { countWords } from "./engine.js";
+import { countWords, parseText } from "./engine.js";
 // Geometry-based reading order. Every retained line carries its source rectangle.
 function bounds(items) {
   return {
@@ -272,7 +272,12 @@ export function composePdf(
           previous?.heading ||
           jumped ||
           gap > Math.max(previous.height, line.height) * 1.65 ||
-          (sentenceEnded && (indented || shortBefore)));
+          (sentenceEnded && (indented || shortBefore)) ||
+          // A short line standing alone, like "10 May" or a chapter title.
+          (shortBefore &&
+            previous.start &&
+            previous.text.length <= 80 &&
+            /^["“‘(]?\p{Lu}/u.test(line.text)));
       const join = !paragraph ? previous?.joinNext : false;
       if (join === "remove") text = text.slice(0, -1);
       if (text && !join) text += paragraph ? "\n\n" : " ";
@@ -286,7 +291,7 @@ export function composePdf(
       });
       wordIndex += count - (join ? 1 : 0);
       text += line.text;
-      previous = { ...line, heading };
+      previous = { ...line, heading, start: paragraph };
       last = previous;
     }
   }
@@ -350,4 +355,30 @@ export async function markLineJoins(pages, lookup, { signal } = {}) {
       }
     }
   return count;
+}
+
+// Turns PDF table-of-contents entries into reading sections
+// ([{ title, paragraph }], paragraph 1-based) for composed text. Each entry
+// lands on the first line at or below the point it links to; entries outside
+// the chosen pages are dropped.
+export function outlineSections(outline, { text, locations }) {
+  if (!outline?.length || !locations?.length) return [];
+  const tokens = parseText(text).tokens;
+  const sections = [];
+  for (const entry of outline) {
+    const onPage = locations.filter((l) => l.page === entry.page);
+    let target =
+      entry.top == null
+        ? onPage[0]
+        : onPage.find((l) => l.rect[3] <= entry.top + 2) ?? null;
+    // Pointing below the last line, or at a page with no text: the next text.
+    if (!target) target = locations.find((l) => l.page > entry.page);
+    if (!target || entry.page < locations[0].page) continue;
+    const token = tokens[Math.max(0, target.start)];
+    if (!token) continue;
+    const paragraph = token.paragraph + 1;
+    if (sections.some((s) => s.paragraph === paragraph)) continue;
+    sections.push({ title: entry.title, paragraph });
+  }
+  return sections.sort((a, b) => a.paragraph - b.paragraph);
 }

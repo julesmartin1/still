@@ -1456,3 +1456,22 @@ html[data-theme="dark"] header {
     display: none;
   }
 }
+
+/* ---- Current chapter in the reader's top bar ---- */
+.reader-top {
+  gap: 16px;
+}
+#mode {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#mode.chapter {
+  letter-spacing: 0;
+  font-size: 13px;
+  color: #c9d3e6;
+}
+.reader-top span:last-child {
+  flex-shrink: 0;
+}

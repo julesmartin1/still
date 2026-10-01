@@ -182,3 +182,38 @@ test("book paragraphs are found by first-line indent and short last lines", () =
     "No indent but the line above was short. “A quoted line”, he said, “that wraps” is still the same paragraph.",
   ]);
 });
+test("table-of-contents entries land on the line they point at", async () => {
+  const { outlineSections } = await import("../dist/pdf-layout.js");
+  const { readOutline } = await import("../dist/pdf-import.js");
+  const ref = { num: 7 };
+  const doc = {
+    getOutline: async () => [
+      { title: "Part One", dest: [0, { name: "Fit" }], items: [
+        { title: "  Chapter   1 ", dest: "c1", items: [] },
+        { title: "Chapter 2", dest: [ref, { name: "XYZ" }, 0, 300, null], items: [] },
+      ] },
+      { title: "Broken", dest: null, items: [] },
+    ],
+    getDestination: async () => [0, { name: "XYZ" }, 0, 500, null],
+    getPageIndex: async (r) => (r === ref ? 1 : 0),
+  };
+  const outline = await readOutline(doc);
+  assert.deepEqual(outline.map((o) => [o.title, o.page, o.top, o.depth]), [
+    ["Part One", 1, null, 0],
+    ["Chapter 1", 1, 500, 1],
+    ["Chapter 2", 2, 300, 1],
+  ]);
+  const text = "Part One\n\nChapter 1\n\nSome words here.\n\nChapter 2\n\nMore words.";
+  const loc = (page, top, start, end) => ({ page, rect: [0, top - 10, 100, top], start, end });
+  const locations = [
+    loc(1, 600, 0, 1), loc(1, 490, 2, 3), loc(1, 470, 4, 6),
+    loc(2, 600, 7, 7), loc(2, 290, 7, 8), loc(2, 270, 9, 10),
+  ];
+  // The second page's first line (top 600) is above Chapter 2's link point.
+  locations[3] = loc(2, 600, 7, 6);
+  assert.deepEqual(outlineSections(outline, { text, locations }), [
+    { title: "Part One", paragraph: 1 },
+    { title: "Chapter 1", paragraph: 2 },
+    { title: "Chapter 2", paragraph: 4 },
+  ]);
+});

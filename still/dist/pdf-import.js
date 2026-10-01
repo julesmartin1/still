@@ -149,7 +149,14 @@ export async function extractPdf(
         "No selectable text found. This PDF may be scanned images. Use a PDF with selectable text, or copy text from an OCR tool.",
       );
     signal?.throwIfAborted();
+    let outline = [];
+    try {
+      outline = await readOutline(doc);
+    } catch {
+      /* A broken table of contents should not stop the import. */
+    }
     return {
+      outline,
       ...composePdf(pageModels),
       pageModels,
       text: composePdf(pageModels).text,
@@ -166,4 +173,41 @@ export async function extractPdf(
     signal?.removeEventListener("abort", abort);
     await task.destroy();
   }
+}
+
+// The PDF's own table of contents (its "bookmarks"), as
+// [{ title, page, top, depth }]. `top` is the y position the entry points at,
+// in PDF units, or null when it points at the whole page. Two levels deep
+// covers "Part / Chapter" without listing every subsection.
+export async function readOutline(doc, { maxDepth = 1, limit = 200 } = {}) {
+  const items = await doc.getOutline?.();
+  if (!Array.isArray(items) || !items.length) return [];
+  const out = [];
+  const walk = async (list, depth) => {
+    for (const item of list) {
+      if (out.length >= limit) return;
+      let dest = item.dest;
+      if (typeof dest === "string") dest = await doc.getDestination(dest);
+      const title = (item.title || "").replace(/\s+/g, " ").trim();
+      if (title && Array.isArray(dest) && dest[0] != null) {
+        const pageIndex =
+          typeof dest[0] === "number"
+            ? dest[0]
+            : await doc.getPageIndex(dest[0]);
+        const kind = dest[1]?.name;
+        const top =
+          kind === "XYZ" ? dest[3] : /^FitB?H$/.test(kind || "") ? dest[2] : null;
+        out.push({
+          title: title.slice(0, 120),
+          page: pageIndex + 1,
+          top: typeof top === "number" ? top : null,
+          depth,
+        });
+      }
+      if (item.items?.length && depth < maxDepth)
+        await walk(item.items, depth + 1);
+    }
+  };
+  await walk(items, 0);
+  return out;
 }
