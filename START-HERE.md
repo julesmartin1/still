@@ -6,6 +6,9 @@
 > - Audit findings were fixed, including backup limits, PDF viewing on older browsers and iOS 18, Chinese/Japanese/Thai word splitting, two-column PDF order, keyboard focus, storage for long readings, deleting bookmarks and Trash, right-to-left text and screen-reader announcements. See `AUDIT.md`.
 > - **Comprehension check-ins** were added, and they are deliberately not quizzes. They give an optional one-line recap and an ungraded "how well did that land?", and losing the thread offers a slower replay. They respect the "no quizzes" instruction below and can be turned off in Reading settings.
 > - Words now fade in over at most 40 ms. They stay centred by default, and anchoring on a highlighted focus letter is optional. Both are in Appearance.
+> - Imports repair common book-PDF faults (mislabelled ligatures, hidden hyphens, note numbers, indented paragraphs, page headers). A "Worth a look" panel flags anything else odd before reading.
+> - A PDF's own table of contents becomes chapters, and the reader shows "2 of 12 · Chapter title".
+> - Holding the word (or S) shows the whole sentence. "Find my pace" sets a starting pace from three short passages rated by feel, not scored.
 > - Average-WPM pacing, the short-word floor, paragraph review, local storage and citation filtering are unchanged.
 > - The iOS project has still not been compiled. Everything under *Work on the iPhone/iPad version* still applies.
 

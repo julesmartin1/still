@@ -430,6 +430,27 @@ async def holding_the_word_shows_its_sentence(browser):
     await ctx.close()
 
 
+@check
+async def find_my_pace_sets_a_starting_pace(browser):
+    ctx, page = await fresh(browser)
+    assert not await page.locator("#paceInvite").is_hidden(), "first-run invite missing"
+    await page.clock.install()
+    await page.click("#findPace")
+    assert await dialog_open(page, "paceDialog")
+    for feel in ("comfortable", "comfortable", "fast"):
+        await page.click("#pacePrimary")
+        await page.clock.run_for(30000)
+        await page.wait_for_selector("#paceFeel:not([hidden])")
+        await page.click(f"#paceFeel [data-feel={feel}]")
+    status = await page.text_content("#paceStatus")
+    assert "310 words per minute" in status, status
+    await page.click("#pacePrimary")
+    assert not await dialog_open(page, "paceDialog")
+    assert await page.input_value("#speedValue") == "310"
+    assert await page.locator("#paceInvite").is_hidden()
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],

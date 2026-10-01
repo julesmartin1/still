@@ -43,6 +43,7 @@ import {
 import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
 import { checkText } from "./text-check.js";
+import { PASSAGES, nextPace, suggestedPace } from "./pace-finder.js";
 import {
   repairPdfLines,
   repairText,
@@ -662,6 +663,90 @@ function setPace(value) {
   reader.retime();
   render();
   $("speedValue").value = base;
+}
+// Find my pace (see pace-finder.js). Runs its own small player so the
+// current reading and its position are untouched.
+let paceRun = null;
+const PACE_FOUND = "still-pace-found";
+function paceStep() {
+  const run = paceRun;
+  $("paceFeel").hidden = true;
+  $("paceSecondary").hidden = true;
+  if (run.history.length < PASSAGES.length) {
+    const k = run.history.length;
+    $("paceWord").textContent = k ? "Next" : "Ready";
+    $("paceStatus").textContent = `Passage ${k + 1} of ${PASSAGES.length}`;
+    $("pacePrimary").textContent = k ? "Next passage" : "Start";
+    $("pacePrimary").hidden = false;
+    run.action = paceRead;
+    return;
+  }
+  run.result = suggestedPace(run.history);
+  $("paceWord").textContent = `${run.result}`;
+  $("paceStatus").textContent = `A comfortable starting pace for you: ${run.result} words per minute. Still keeps adjusting as you read.`;
+  $("pacePrimary").textContent = `Use ${run.result} words / min`;
+  $("pacePrimary").hidden = false;
+  $("paceSecondary").textContent = `Keep ${base} words / min`;
+  $("paceSecondary").hidden = run.result === base;
+  run.action = () => {
+    setPace(run.result);
+    $("paceDialog").close();
+    returnToReader();
+  };
+}
+function paceRead() {
+  const run = paceRun;
+  const wpm = nextPace(run.history);
+  const tokens = parseText(PASSAGES[run.history.length]).tokens;
+  const plan = buildTimingPlan(tokens, { base: wpm });
+  $("pacePrimary").hidden = true;
+  $("paceStatus").textContent = `Passage ${run.history.length + 1} of ${PASSAGES.length} · ${wpm} words per minute`;
+  run.player = new Playback({
+    length: tokens.length,
+    duration: (i) => plan[i],
+    onWord: (i) => ($("paceWord").textContent = tokens[i].text),
+    onEnd: () => {
+      run.wpm = wpm;
+      $("paceStatus").textContent = "How did that feel?";
+      $("paceFeel").hidden = false;
+      $("paceFeel").querySelector("button").focus();
+    },
+  });
+  run.player.play();
+}
+function openPaceFinder() {
+  pause();
+  paceRun = { history: [] };
+  paceStep();
+  $("paceDialog").showModal();
+  $("pacePrimary").focus();
+}
+$("findPace").onclick = openPaceFinder;
+$("pacePrimary").onclick = () => paceRun?.action?.();
+$("paceSecondary").onclick = () => $("paceDialog").close();
+$("paceFeel").addEventListener("click", (e) => {
+  const feel = e.target.closest("[data-feel]")?.dataset.feel;
+  if (!feel || !paceRun) return;
+  paceRun.history.push({ wpm: paceRun.wpm, feel });
+  if (paceRun.history.length === PASSAGES.length)
+    try {
+      storage.setItem(PACE_FOUND, "1");
+    } catch {}
+  paceStep();
+  $("pacePrimary").focus();
+});
+$("paceDialog").addEventListener("close", () => {
+  paceRun?.player?.pause();
+  paceRun = null;
+  $("paceInvite").hidden = true;
+});
+{
+  let found = true;
+  try {
+    found = !!storage.getItem(PACE_FOUND);
+  } catch {}
+  // Invite first-time readers only: no saved reading and never run.
+  $("paceInvite").hidden = found || !!saved;
 }
 $("play").onclick = toggle;
 $("speed").oninput = (e) => setPace(e.target.value);

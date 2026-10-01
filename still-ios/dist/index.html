@@ -152,6 +152,12 @@
           <div class="range-labels">
             <span>Take your time</span><span>Pick up the pace</span>
           </div>
+          <p class="pace-find">
+            <button id="findPace" class="text-button">Find my pace</button
+            ><span id="paceInvite" class="muted" hidden>
+              New here? It takes about a minute.</span
+            >
+          </p>
         </div>
         <div class="adapt">
           <div class="adapt-title">
@@ -662,6 +668,46 @@
       ><button id="saveMark" class="primary">Save passage</button>
     </dialog>
     <script type="module" src="bootstrap.js"></script>
+    <dialog id="paceDialog" aria-labelledby="paceTitle">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">FIND MY PACE</p>
+          <h2 id="paceTitle">A comfortable place to start</h2>
+        </div>
+        <button data-close="paceDialog" class="close" aria-label="Close">
+          ×
+        </button>
+      </div>
+      <p class="muted">
+        You’ll read three short passages, each at a different speed. After
+        each one, say how it felt. Nothing is scored and there are no
+        questions about the text.
+      </p>
+      <div class="pace-stage">
+        <div class="focal-line"></div>
+        <div id="paceWord" dir="auto">Ready</div>
+        <div class="focal-line"></div>
+      </div>
+      <p id="paceStatus" class="checkin-question" role="status">
+        Passage 1 of 3
+      </p>
+      <div
+        id="paceFeel"
+        class="checkin-ratings"
+        role="group"
+        aria-labelledby="paceStatus"
+        hidden
+      >
+        <button class="rating" data-feel="comfortable">Comfortable</button
+        ><button class="rating" data-feel="fast">A bit fast</button
+        ><button class="rating" data-feel="too-fast">Too fast</button>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" id="paceSecondary" class="secondary" hidden>
+          Keep my current pace</button
+        ><button type="button" id="pacePrimary" class="primary">Start</button>
+      </div>
+    </dialog>
     <dialog id="checkinDialog" aria-labelledby="checkinTitle">
       <div class="dialog-heading">
         <div>

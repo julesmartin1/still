@@ -1547,3 +1547,33 @@ html[data-theme="dark"] .text-check li .text-button {
 #wordReader.peeking .focal-line {
   visibility: hidden;
 }
+
+/* ---- Find my pace ---- */
+.pace-find {
+  margin: 10px 0 0;
+  font-size: 14px;
+}
+.pace-find .text-button {
+  min-height: 44px;
+  font-weight: 600;
+}
+.pace-find .muted {
+  margin-left: 8px;
+}
+.pace-stage {
+  margin: 14px 0 4px;
+  height: 150px;
+  border-radius: 16px;
+  background: #172137;
+  color: #f5f7ff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+#paceWord {
+  font-family: var(--reading-font);
+  font-size: 38px;
+  line-height: 1.2;
+}
