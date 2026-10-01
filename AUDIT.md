@@ -33,6 +33,19 @@ The web app was tested in Chromium on 29–30 September 2026. The testing combin
 | 25 | Structural | The web and iOS apps had drifted apart as two copies. | **Fixed.** There is one shared source plus `scripts/sync-shared.mjs`, with a check that fails if they differ. |
 | 26 | Structural | There were no interface tests, which is where most bugs were. | **Fixed.** `still/tests/ui/run.py` has 19 browser checks. |
 
+### Found with a real book (*The Sorrows of Young Werther*, Penguin PDF)
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| 27 | High | The book's font labels its ligature glyphs with the wrong characters: "fi" comes out as "ɹ", "ff" as "ʃ", "fl" as "ɻ", "ffi" as "ɽ" and "ffl" as "ʀ". About 670 words read wrongly, for example "ɹrst" and "oʃer". | **Fixed.** `text-repair.js` learns each mislabelled character from the dictionary, per document, and repairs it in PDFs, text files and pasted text. Phonetic text is left alone. All 5 were recovered in this book. |
+| 28 | Medium | Hyphens came out as an invisible control character, so "cold-shouldered" read as one run-together word. | **Fixed.** |
+| 29 | Medium | Endnote numbers stuck to words ("garden3", "Melusine5"). | **Fixed.** Removed only when they count up through the text, so postcodes, years and model numbers stay. 69 of 71 were removed in this book. |
+| 30 | Medium | Book paragraphs (first-line indent, no gap) were not detected, so a whole PDF page became one paragraph. | **Fixed** for indents and short last lines. This affects paragraph review and check-ins. |
+| 31 | Medium | Running headers and page numbers were read aloud mid-sentence unless the reader ticked an option. | **Fixed.** The option is now on by default. |
+| 32 | Low | Anchoring words on the focus letter made longer words look off-centre. | **Fixed.** Words are centred by default, and the anchored option tints the focus letter. |
+
+Readings imported before these fixes keep their old text and need to be imported again.
+
 One early finding was withdrawn: "offline download fails". It came from an incomplete copy of the app made for testing, not from the app.
 
 ## Word transition: what the research supports

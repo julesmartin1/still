@@ -255,12 +255,24 @@ export function composePdf(
         !last.heading &&
         !/[.!?:;。！？]["”’)\]]*$/u.test(last.text) &&
         /^["“‘(]?\p{Ll}/u.test(line.text);
+      // Books mark paragraphs with a first-line indent or a short last line,
+      // not a gap. Both need the previous line to end a sentence.
+      const sentenceEnded =
+        previous && /[.!?:;。！？…]["”’)\]]*$/u.test(previous.text);
+      const indent = previous ? line.x - previous.x : 0;
+      const indented =
+        indent > Math.max(line.height * 0.7, 4) && indent < page.width * 0.2;
+      const shortBefore =
+        previous &&
+        previous.right <
+          columnRight(page, previous) - Math.max(previous.height * 3, 20);
       const paragraph =
         !continues &&
         (heading ||
           previous?.heading ||
           jumped ||
-          gap > Math.max(previous.height, line.height) * 1.65);
+          gap > Math.max(previous.height, line.height) * 1.65 ||
+          (sentenceEnded && (indented || shortBefore)));
       const join = !paragraph ? previous?.joinNext : false;
       if (join === "remove") text = text.slice(0, -1);
       if (text && !join) text += paragraph ? "\n\n" : " ";
@@ -279,6 +291,24 @@ export function composePdf(
     }
   }
   return { text, locations, removed };
+}
+// Right edge of the text column a line belongs to (the widest line that
+// starts near it), cached per page.
+const columnRights = new WeakMap();
+function columnRight(page, line) {
+  if (!columnRights.has(page)) columnRights.set(page, new Map());
+  const cache = columnRights.get(page);
+  const key = Math.round(line.x / 20);
+  if (!cache.has(key))
+    cache.set(
+      key,
+      Math.max(
+        ...page.lines
+          .filter((l) => Math.abs(l.x - line.x) < page.width * 0.1)
+          .map((l) => l.right),
+      ),
+    );
+  return cache.get(key);
 }
 export function sourceLocation(locations, index) {
   let low = 0,

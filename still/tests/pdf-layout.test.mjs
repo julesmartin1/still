@@ -151,3 +151,34 @@ test("verified line-break repair retains compounds, ambiguous spelling and sourc
   assert.equal(r.locations[1].start, 1);
   assert.equal(sourceLocation(r.locations, 1).focusIndex, 1);
 });
+test("book paragraphs are found by first-line indent and short last lines", () => {
+  const line = (text, x, y, right) => ({
+    text,
+    x,
+    y,
+    right,
+    top: y + 10,
+    height: 10,
+  });
+  const page = {
+    number: 1,
+    width: 400,
+    height: 600,
+    lines: [
+      line("The first paragraph runs across", 40, 500, 360),
+      line("the whole line and then ends.", 40, 487, 250),
+      line("A second one starts indented and", 55, 474, 360),
+      line("keeps going to the margin. It", 40, 461, 360),
+      line("ends here.", 40, 448, 120),
+      line("No indent but the line above was short.", 40, 435, 340),
+      line("“A quoted line”, he said, “that", 40, 422, 360),
+      line("wraps” is still the same paragraph.", 40, 409, 360),
+    ],
+  };
+  const paragraphs = composePdf([page]).text.split("\n\n");
+  assert.deepEqual(paragraphs, [
+    "The first paragraph runs across the whole line and then ends.",
+    "A second one starts indented and keeps going to the margin. It ends here.",
+    "No indent but the line above was short. “A quoted line”, he said, “that wraps” is still the same paragraph.",
+  ]);
+});

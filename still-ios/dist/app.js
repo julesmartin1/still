@@ -38,6 +38,11 @@ import {
 } from "./navigation.js";
 import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
+import {
+  repairPdfLines,
+  repairText,
+  describeGlyphMap,
+} from "./text-repair.js";
 import { splitAtFocus, fadeDuration } from "./word-display.js";
 import {
   checkInDue,
@@ -1057,6 +1062,11 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
       },
     });
     if (pdfController !== controller || controller.signal.aborted) return;
+    $("pdfStatus").textContent = "Checking for mislabelled letters…";
+    const fixes = await repairPdfLines(result.pageModels, lookupWord, {
+      signal: controller.signal,
+    });
+    if (pdfController !== controller || controller.signal.aborted) return;
     $("pdfStatus").textContent = "Checking words split across lines…";
     const repaired = await markLineJoins(result.pageModels, lookupWord, {
       signal: controller.signal,
@@ -1071,7 +1081,7 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
     $("textTitle").value = result.title;
     applyPdfRange();
     $("pdfStatus").textContent =
-      `Imported ${result.pages} ${result.pages === 1 ? "page" : "pages"}. ${result.blankPages ? `${result.blankPages} ${result.blankPages === 1 ? "page had" : "pages had"} no selectable text and were skipped. ` : ""}Check the text below, then open it in the reader. ${plural(result.pageModels.filter((p) => p.columns === 2).length, "page uses", "pages use")} two-column reading order. ${plural(repaired, "line-break split")} repaired. Tables may still need manual review.`;
+      `Imported ${result.pages} ${result.pages === 1 ? "page" : "pages"}. ${result.blankPages ? `${result.blankPages} ${result.blankPages === 1 ? "page had" : "pages had"} no selectable text and were skipped. ` : ""}Check the text below, then open it in the reader. ${plural(result.pageModels.filter((p) => p.columns === 2).length, "page uses", "pages use")} two-column reading order. ${plural(repaired, "line-break split")} repaired. ${repairSummary(fixes)}Tables may still need manual review.`;
   } catch (error) {
     if (!controller.signal.aborted && pdfController === controller) {
       $("pdfStatus").textContent = pdfErrorMessage(error);
@@ -2093,6 +2103,26 @@ $("confirmDelete").onclick = async () => {
     b.disabled = false;
   }
 };
+// One sentence describing what text-repair.js fixed, or "".
+function repairSummary({ map, notes }) {
+  const parts = [];
+  if (map.size)
+    parts.push(`Fixed letters the font had mislabelled (${describeGlyphMap(map)}).`);
+  if (notes) parts.push(`Removed ${plural(notes, "note number")} from the text.`);
+  return parts.length ? parts.join(" ") + " " : "";
+}
+// Text copied out of a PDF carries the same faults as an imported one.
+$("textInput").addEventListener("paste", () => {
+  setTimeout(async () => {
+    const before = $("textInput").value;
+    const fixed = await repairText(before, lookupWord);
+    if (fixed.text === before || $("textInput").value !== before) return;
+    $("textInput").value = fixed.text;
+    $("textInput").dispatchEvent(new Event("input"));
+    const summary = repairSummary(fixed);
+    if (summary) $("textFileStatus").textContent = summary.trim();
+  });
+});
 $("textFile").onchange = async () => {
   const file = $("textFile").files[0];
   if (!file) return;
@@ -2108,12 +2138,14 @@ $("textFile").onchange = async () => {
       );
     pdfDraft = null;
     epubDraft = null;
-    $("textInput").value = value;
+    const fixed = await repairText(value, lookupWord);
+    $("textInput").value = fixed.text;
     $("textTitle").value = file.name.replace(/\.[^.]+$/, "").slice(0, 240);
     $("pdfOptions").hidden = true;
     $("pdfStatus").hidden = true;
     updateDraft();
-    $("textFileStatus").textContent = "Text imported. Check it before opening.";
+    $("textFileStatus").textContent =
+      "Text imported. " + repairSummary(fixed) + "Check it before opening.";
   } catch (e) {
     $("textFileStatus").textContent = e.message;
   } finally {
