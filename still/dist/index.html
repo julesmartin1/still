@@ -29,8 +29,20 @@
         ></a
       >
       <nav class="header-actions" aria-label="Readings">
-        <button id="library" class="outline">Bookshelf</button
-        ><button id="newText" class="outline">＋ Add reading</button>
+        <button
+          id="streakChip"
+          class="streak-chip"
+          aria-label="Daily goal and streak"
+        >
+          <svg class="flame" viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              d="M12.6 2.2c.4 3-1.9 4.6-3.4 6.6C7.6 10.9 6.5 12.6 6.5 15a5.5 5.5 0 0 0 11 0c0-2.3-1-4.1-2.2-5.6.1 1.4-.4 2.6-1.5 3.1.3-3.9-.9-7.6-1.2-10.3z"
+            /></svg
+          ><span id="streakCount">0</span></button
+        ><button id="library" class="outline">Bookshelf</button
+        ><button id="newText" class="outline" aria-label="Add reading">
+          ＋<span class="wide-only"> Add reading</span>
+        </button>
       </nav>
     </header>
     <main>
@@ -44,22 +56,42 @@
       <section id="wordReader" class="reader" aria-label="Word reader">
         <div class="reader-top">
           <span id="mode">READY WHEN YOU ARE</span
-          ><span id="count">1 / 200 words</span>
+          ><span class="reader-meta"
+            ><span id="timeLeft"></span
+            ><span id="count">1 / 200 words</span></span
+          >
         </div>
+        <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
         <div class="stage">
           <div class="focal-line"></div>
           <div id="word" dir="auto">There</div>
           <div class="focal-line"></div>
           <p id="peek" class="peek" dir="auto" aria-live="polite" hidden></p>
+          <div id="finishCard" class="finish-card" hidden>
+            <p class="finish-badge" aria-hidden="true">✓</p>
+            <h2 id="finishTitle">Finished</h2>
+            <p id="finishStats"></p>
+            <div class="finish-actions">
+              <button id="finishNext" class="primary">Add a reading</button
+              ><button id="finishShelf" class="secondary">Bookshelf</button>
+            </div>
+          </div>
         </div>
         <p id="status" class="status" aria-live="polite">
           Settle in. Start when you’re ready.
         </p>
         <div class="controls">
-          <button id="review" class="secondary">
-            ↶ <span>Review paragraph</span></button
+          <button
+            id="quickRewind"
+            class="secondary round"
+            aria-label="Back one sentence"
+            title="Back one sentence (←)"
+          >
+            ↶</button
           ><button id="play" class="primary">
-            ▶ <span>Start reading</span>
+            ▶ <span>Start reading</span></button
+          ><button id="review" class="secondary" title="Review paragraph (R)">
+            ☰ <span>Review</span>
           </button>
         </div>
         <div
@@ -104,16 +136,10 @@
         ><span id="sourceNote" class="muted" role="status"></span>
       </div>
       <div class="reading-tools">
-        <button id="readingMode" class="outline">Normal text</button
-        ><button
-          id="quickRewind"
-          class="outline"
-          title="Left arrow: rewind a sentence"
-        >
-          ↶ Sentence</button
-        ><button id="bookmarks" class="outline">Bookmarks &amp; notes</button
-        ><button id="readingSettings" class="outline">Reading settings</button
-        ><button id="contents" class="outline">Sections &amp; chapters</button>
+        <button id="contents" class="outline">Chapters</button
+        ><button id="readingMode" class="outline">Text view</button
+        ><button id="bookmarks" class="outline">Notes</button
+        ><button id="readingSettings" class="outline">Settings</button>
       </div>
       <div class="settings">
         <div class="pace">
@@ -158,25 +184,55 @@
               New here? It takes about a minute.</span
             >
           </p>
-        </div>
-        <div class="adapt">
-          <div class="adapt-title">
-            <span class="spark">✦</span>
-            <h2>A pace that follows you</h2>
-          </div>
-          <p>
-            Longer words get more time. Shorter words move faster. Pauses fit
-            within your paragraph’s average pace.
-          </p>
           <div class="adapt-bottom">
             <span id="learning">Learning as you read</span
             ><button id="reset" class="text-button">Reset adjustments</button>
           </div>
+          <p class="muted pace-note">
+            Longer words get a little more time and short ones a little less;
+            your average stays the same.<span class="keys">
+              ↑ and ↓ change the pace.</span
+            >
+          </p>
         </div>
+        <section class="today" aria-labelledby="todayTitle">
+          <div class="today-head">
+            <h2 id="todayTitle">Today</h2>
+            <button id="goalButton" class="text-button">
+              Daily goal: 5 min
+            </button>
+          </div>
+          <div class="today-body">
+            <div id="goalRing" class="goal-ring" role="img" aria-label="">
+              <svg viewBox="0 0 44 44" aria-hidden="true">
+                <circle class="ring-track" cx="22" cy="22" r="19" />
+                <circle
+                  id="goalArc"
+                  class="ring-fill"
+                  cx="22"
+                  cy="22"
+                  r="19"
+                  pathLength="100"
+                  stroke-dasharray="0 100"
+                />
+              </svg>
+              <span id="goalCheck" aria-hidden="true">✓</span>
+            </div>
+            <div>
+              <p id="todayLine" class="today-line">0 of 5 min</p>
+              <p id="streakLine" class="muted">
+                Read 5 minutes to start a streak.
+              </p>
+            </div>
+          </div>
+          <ol id="weekStrip" class="week" aria-label="The last seven days"></ol>
+        </section>
       </div>
       <footer>
         <button id="aboutStill" class="text-button">About &amp; privacy</button
-        ><span>Space: play / pause · R: review · ←: sentence · hold S: see sentence</span
+        ><span class="shortcuts"
+          >Space or tap: play / pause · ← →: sentence · ↑ ↓: pace · R: review ·
+          hold S: see sentence</span
         ><span>One word. A little more room.</span>
       </footer>
     </main>
@@ -323,8 +379,8 @@
             </button>
           </div>
           <label class="check-label"
-            ><input id="pdfMargins" type="checkbox" checked /> Remove repeated page
-            headers and footers</label
+            ><input id="pdfMargins" type="checkbox" checked /> Remove repeated
+            page headers and footers</label
           >
           <p id="pdfRangeStatus" class="muted" role="status"></p>
         </fieldset>
@@ -343,7 +399,7 @@
           <option value="other" selected>Other</option>
         </select>
         <p id="typeHint" class="muted">
-          You can change this later in Reading settings.
+          You can change this later in Settings.
         </p>
         <div id="importAcademic" hidden>
           <label class="check-label"
@@ -563,7 +619,9 @@
         ><label for="appearancePlacement">Word position</label
         ><select id="appearancePlacement">
           <option value="centered">Centered</option>
-          <option value="anchored">Anchored on a highlighted letter</option></select
+          <option value="anchored">
+            Anchored on a highlighted letter
+          </option></select
         ><label for="appearanceTransition">Word change</label
         ><select id="appearanceTransition">
           <option value="soft">Soft (a brief fade-in)</option>
@@ -679,9 +737,9 @@
         </button>
       </div>
       <p class="muted">
-        You’ll read three short passages, each at a different speed. After
-        each one, say how it felt. Nothing is scored and there are no
-        questions about the text.
+        You’ll read three short passages, each at a different speed. After each
+        one, say how it felt. Nothing is scored and there are no questions about
+        the text.
       </p>
       <div class="pace-stage">
         <div class="focal-line"></div>
@@ -752,9 +810,7 @@
         </div>
         <div class="checkin-footer">
           <button id="checkinSkip" class="text-button">Skip</button>
-          <span class="muted"
-            >Not graded. Change how often in Reading settings.</span
-          >
+          <span class="muted">Not graded. Change how often in Settings.</span>
         </div>
       </div>
       <div id="checkinFollow" hidden>
@@ -762,6 +818,76 @@
         <div class="dialog-actions">
           <button id="checkinSecondary" class="outline"></button
           ><button id="checkinPrimary" class="primary"></button>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="welcomeDialog" aria-labelledby="welcomeTitle">
+      <div class="dialog-heading">
+        <div>
+          <p id="welcomeEyebrow" class="eyebrow">WELCOME TO STILL</p>
+          <h2 id="welcomeTitle">Read more, with less effort</h2>
+        </div>
+        <button data-close="welcomeDialog" class="close" aria-label="Close">
+          ×
+        </button>
+      </div>
+      <div data-step="intro">
+        <ul class="welcome-points">
+          <li>
+            <span class="point-icon" aria-hidden="true">◎</span>
+            <span
+              ><strong>Your eyes stay still.</strong> Words come to you one at a
+              time, so there’s no hunting along the line and nothing else
+              competing for your attention.</span
+            >
+          </li>
+          <li>
+            <span class="point-icon" aria-hidden="true">↶</span>
+            <span
+              ><strong>Tap to pause. Hold to see the sentence.</strong> Missed
+              something? Go back a sentence with ↶.</span
+            >
+          </li>
+          <li>
+            <span class="point-icon" aria-hidden="true"
+              ><svg class="flame" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12.6 2.2c.4 3-1.9 4.6-3.4 6.6C7.6 10.9 6.5 12.6 6.5 15a5.5 5.5 0 0 0 11 0c0-2.3-1-4.1-2.2-5.6.1 1.4-.4 2.6-1.5 3.1.3-3.9-.9-7.6-1.2-10.3z"
+                /></svg
+            ></span>
+            <span
+              ><strong>A few minutes a day.</strong> Pick a small daily goal and
+              build a streak. Short and often beats long and rare.</span
+            >
+          </li>
+        </ul>
+        <div class="dialog-actions">
+          <button id="welcomeSkip" class="text-button">Skip for now</button
+          ><button id="welcomeNext" class="primary">Get started</button>
+        </div>
+      </div>
+      <div data-step="goal" hidden>
+        <p class="muted">
+          How much reading a day feels doable? Small is fine: you can change it
+          any time.
+        </p>
+        <fieldset class="goal-options">
+          <legend class="sr-only">Daily reading goal</legend>
+          <div id="goalOptions"></div>
+        </fieldset>
+        <div class="dialog-actions">
+          <button id="goalSave" class="primary">Continue</button>
+        </div>
+      </div>
+      <div data-step="pace" hidden>
+        <p>
+          Read three short passages at different speeds and say how each felt.
+          It takes about a minute, and Still keeps adjusting as you read.
+        </p>
+        <div class="dialog-actions">
+          <button id="welcomeSample" class="secondary">
+            Start with the sample</button
+          ><button id="welcomePace" class="primary">Find my pace</button>
         </div>
       </div>
     </dialog>

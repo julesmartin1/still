@@ -1,10 +1,11 @@
 import { sentenceEnd } from "./engine.js";
+// A word that ends a sentence (not "Dr." or an initial like "J.").
+const end = (t) =>
+  sentenceEnd.test(t.text) &&
+  !/^(?:Mr|Mrs|Ms|Dr|Prof|St|vs|etc|e\.g|i\.e)\.$/i.test(t.text) &&
+  !/^\p{L}\.$/u.test(t.text);
 export function previousSentence(tokens, index) {
   if (!tokens.length || index <= 0) return 0;
-  const end = (t) =>
-    sentenceEnd.test(t.text) &&
-    !/^(?:Mr|Mrs|Ms|Dr|Prof|St|vs|etc|e\.g|i\.e)\.$/i.test(t.text) &&
-    !/^\p{L}\.$/u.test(t.text);
   let start = index;
   while (
     start > 0 &&
@@ -53,4 +54,17 @@ export function shelfMatches(record, query, view) {
     state === view &&
     record.title.toLowerCase().includes(query.trim().toLowerCase())
   );
+}
+// Start of the next sentence after `index` (the last word if there is none).
+// Paragraph ends count as sentence ends.
+export function nextSentence(tokens, index) {
+  if (!tokens.length) return 0;
+  let i = Math.max(0, index);
+  while (
+    i < tokens.length - 1 &&
+    tokens[i + 1].paragraph === tokens[i].paragraph &&
+    !end(tokens[i])
+  )
+    i++;
+  return Math.min(tokens.length - 1, i + 1);
 }

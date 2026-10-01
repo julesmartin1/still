@@ -13,6 +13,8 @@ It starts its own copy of the server on port 4199 and prints one line per
 check. Exit code is non-zero if anything fails.
 """
 import asyncio
+import datetime
+import json
 import os
 import subprocess
 import sys
@@ -34,7 +36,7 @@ def check(fn):
     return fn
 
 
-async def fresh(browser, **options):
+async def fresh(browser, onboarded=True, storage=None, **options):
     # bypass_csp lets Playwright's own helpers run; the app's CSP is
     # unchanged for real users.
     ctx = await browser.new_context(
@@ -43,6 +45,17 @@ async def fresh(browser, **options):
         accept_downloads=True,
         **options,
     )
+    # Most checks start past the first-run welcome; `storage` seeds
+    # localStorage before the app starts.
+    seed = dict(storage or {})
+    if onboarded:
+        seed.setdefault("still-onboarded", "1")
+    if seed:
+        await ctx.add_init_script(
+            "(s => { if (!sessionStorage.seeded) { sessionStorage.seeded = 1;"
+            " for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); } })("
+            + json.dumps(seed) + ")"
+        )
     page = await ctx.new_page()
     page.errors = []
     page.on("pageerror", lambda e: page.errors.append(str(e)))
@@ -416,7 +429,7 @@ async def holding_the_word_shows_its_sentence(browser):
     assert peek.startswith("The quick brown fox") and peek.endswith("dog."), peek
     marked = await page.text_content("#peek mark")
     assert marked in ("quick", "brown"), marked
-    assert "Start" in await page.inner_text("#play") or "Read" in await page.inner_text("#play")
+    assert "Pause" not in await page.inner_text("#play"), "kept playing while peeking"
     await page.mouse.up()
     assert await page.locator("#peek").is_hidden()
     assert "Pause" in await page.inner_text("#play"), "did not resume"
@@ -448,6 +461,110 @@ async def find_my_pace_sets_a_starting_pace(browser):
     assert not await dialog_open(page, "paceDialog")
     assert await page.input_value("#speedValue") == "310"
     assert await page.locator("#paceInvite").is_hidden()
+    await ctx.close()
+
+
+@check
+async def first_run_welcome_sets_a_daily_goal(browser):
+    ctx, page = await fresh(browser, onboarded=False)
+    assert await dialog_open(page, "welcomeDialog"), "no welcome on first run"
+    await page.click("#welcomeNext")
+    await page.check("#goalOptions input[value='10']")
+    await page.click("#goalSave")
+    assert await page.is_visible("#welcomePace")
+    await page.click("#welcomeSample")
+    assert not await dialog_open(page, "welcomeDialog")
+    assert await page.inner_text("#goalButton") == "Daily goal: 10 min"
+    habits = json.loads(await page.evaluate("localStorage.getItem('still-habits')"))
+    assert habits["goal"] == 10, habits
+    await page.keyboard.press("Space")
+    await page.wait_for_timeout(200)
+    assert "Pause" in await page.inner_text("#play"), "Space did not play after the welcome"
+    await page.reload()
+    await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    assert not await dialog_open(page, "welcomeDialog"), "welcome shown twice"
+    await ctx.close()
+
+
+@check
+async def reading_time_counts_toward_today(browser):
+    ctx, page = await fresh(browser)
+    await page.click("#play")
+    assert await page.evaluate("document.body.classList.contains('immersive')"), "page did not fade back"
+    await page.wait_for_timeout(1600)
+    await page.click("#play")
+    assert not await page.evaluate("document.body.classList.contains('immersive')")
+    habits = json.loads(await page.evaluate("localStorage.getItem('still-habits')"))
+    day = next(iter(habits["days"].values()))
+    assert day["ms"] >= 1000 and day["words"] >= 3, day
+    assert "words" in await page.inner_text("#todayLine")
+    assert await page.inner_text("#timeLeft") != ""
+    await ctx.close()
+
+
+@check
+async def streak_counts_days_in_a_row(browser):
+    today = datetime.date.today()
+    days = {
+        (today - datetime.timedelta(days=n)).isoformat(): {"ms": 400000, "words": 1500}
+        for n in (1, 2, 3)
+    }
+    days[(today - datetime.timedelta(days=5)).isoformat()] = {"ms": 400000, "words": 1}
+    ctx, page = await fresh(browser, storage={"still-habits": json.dumps({"goal": 5, "days": days})})
+    assert await page.inner_text("#streakCount") == "3"
+    line = await page.inner_text("#streakLine")
+    assert "3-day streak" in line and "keeps it going" in line, line
+    assert await page.locator("#weekStrip li.met").count() == 4
+    await ctx.close()
+
+
+@check
+async def tapping_the_word_plays_and_pauses(browser):
+    ctx, page = await fresh(browser)
+    stage = page.locator("#wordReader .stage")
+    await stage.click()
+    assert "Pause" in await page.inner_text("#play"), "tap did not play"
+    await page.wait_for_timeout(300)
+    await stage.click()
+    assert "Pause" not in await page.inner_text("#play"), "tap did not pause"
+    assert await page.locator("#peek").is_hidden()
+    await ctx.close()
+
+
+@check
+async def arrow_keys_change_pace_and_skip_sentences(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, "One two three. Four five six. Seven eight.")
+    await page.keyboard.press("ArrowUp")
+    assert await page.input_value("#speedValue") == "270"
+    await page.keyboard.press("ArrowDown")
+    await page.keyboard.press("ArrowDown")
+    assert await page.input_value("#speedValue") == "250"
+    await page.keyboard.press("ArrowRight")
+    assert await page.text_content("#word") == "Four"
+    await page.keyboard.press("ArrowRight")
+    assert await page.text_content("#word") == "Seven"
+    await page.keyboard.press("ArrowLeft")
+    assert await page.text_content("#word") == "Four"
+    await ctx.close()
+
+
+@check
+async def finishing_offers_the_next_reading(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, "An unread book waits here.", title="Waiting book")
+    await open_text(page, "Short and sweet. The end.", title="Short one")
+    await page.fill("#speedValue", "600")
+    await page.press("#speedValue", "Enter")
+    await page.click("#play")
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=10000)
+    assert await page.is_visible("#finishCard")
+    assert "Short one" in await page.inner_text("#finishTitle")
+    await page.wait_for_function("document.getElementById('finishNext').textContent.includes('Waiting book')")
+    await page.click("#finishNext")
+    await page.wait_for_timeout(200)
+    assert await page.inner_text("#title") == "Waiting book"
+    assert await page.locator("#finishCard").is_hidden()
     await ctx.close()
 
 

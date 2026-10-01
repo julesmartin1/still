@@ -313,3 +313,15 @@ export class Playback {
     }
   }
 }
+// Easing in: the first few words after pressing play get a little extra
+// time, so the eye can settle on the stage before the pace takes over.
+// `step` counts words shown since playback started (0 = the first).
+const WARM_UP = [1.8, 1.5, 1.3, 1.15];
+export const warmUpFactor = (step) => WARM_UP[step] ?? 1;
+// Running totals of a timing plan, so the time left from any word is one
+// subtraction: sums[to] - sums[from].
+export function planSums(plan) {
+  const sums = new Float64Array(plan.length + 1);
+  for (let i = 0; i < plan.length; i++) sums[i + 1] = sums[i] + (plan[i] || 0);
+  return sums;
+}

@@ -1,6 +1,10 @@
 import { native, storage, flushStorage, exportFile } from "./native-runtime.js";
 import { extractEpub } from "./epub.js";
-import { previousSentence, shelfMatches } from "./reading-features.js";
+import {
+  previousSentence,
+  nextSentence,
+  shelfMatches,
+} from "./reading-features.js";
 import { setupOffline } from "./offline.js";
 import {
   inferType,
@@ -16,11 +20,7 @@ import {
   MAX_BACKUP_READINGS,
 } from "./backup.js";
 import { filteredReading, visibleIndex } from "./citations.js";
-import {
-  composePdf,
-  markLineJoins,
-  outlineSections,
-} from "./pdf-layout.js";
+import { composePdf, markLineJoins, outlineSections } from "./pdf-layout.js";
 import { createPdfViewer } from "./pdf-viewer.js";
 import {
   saveReading,
@@ -44,11 +44,7 @@ import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
 import { checkText } from "./text-check.js";
 import { PASSAGES, nextPace, suggestedPace } from "./pace-finder.js";
-import {
-  repairPdfLines,
-  repairText,
-  describeGlyphMap,
-} from "./text-repair.js";
+import { repairPdfLines, repairText, describeGlyphMap } from "./text-repair.js";
 import { splitAtFocus, fadeDuration } from "./word-display.js";
 import {
   checkInDue,
@@ -68,7 +64,20 @@ import {
   Playback,
   clamp,
   sentenceEnd,
+  warmUpFactor,
+  planSums,
 } from "./engine.js";
+import {
+  GOALS,
+  normalizeHabits,
+  recordReading,
+  today,
+  streak,
+  week,
+  formatDuration,
+  formatElapsed,
+  dayKey,
+} from "./habits.js";
 const $ = (id) => document.getElementById(id);
 // "1 reading", "3 readings"; pass the plural form when it isn't just "+s".
 const plural = (n, one, many = one + "s") =>
@@ -228,6 +237,34 @@ let wordsRead = 0,
   replaySet = null,
   pendingCheckin = null,
   sectionCache = null;
+// Daily goal and streak (see habits.js). `session` is the stretch being read
+// now; `lastSession` is what the reader just finished, for the pause summary.
+const HABITS = "still-habits";
+const ONBOARDED = "still-onboarded";
+let habits;
+try {
+  habits = normalizeHabits(JSON.parse(storage.getItem(HABITS)));
+} catch {
+  habits = normalizeHabits(null);
+}
+let session = null,
+  lastSession = null,
+  warmFrom = 0,
+  celebratedDay = today(habits).met ? dayKey() : "",
+  todayShownAt = 0,
+  timeLeftKey = "",
+  toastTimer = 0,
+  finishRequest = 0,
+  finishNext = null,
+  welcomeFlow = false;
+const sentenceCase = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+const WELCOME_COPY = {
+  intro: ["WELCOME TO STILL", "Read more, with less effort"],
+  goal: ["", "Pick a daily goal"],
+  pace: ["STEP 2 OF 2", "Find a comfortable pace?"],
+};
+// Running totals of the plan, for "N min left" (see engine.planSums).
+let timingSums = new Float64Array(1);
 function refreshTiming() {
   timingPlan = buildTimingPlan(data.tokens, {
     base,
@@ -235,6 +272,7 @@ function refreshTiming() {
     replayParagraph,
     replayParagraphs: replaySet,
   });
+  timingSums = planSums(timingPlan);
 }
 const checkinMode = () =>
   ["interval", "sections", "off"].includes(appearance.checkins)
@@ -401,6 +439,8 @@ function render() {
   $("count").textContent =
     `${data.tokens.length ? reader.index + 1 : 0} / ${plural(data.tokens.length, "word")}`;
   updateModeLabel();
+  updateTimeLeft();
+  if (session && performance.now() - todayShownAt > 1000) updateToday();
   const percent = data.tokens.length
     ? ((reader.index + 1) / data.tokens.length) * 100
     : 0;
@@ -484,19 +524,29 @@ function updateModeLabel(force = false) {
     el.classList.remove("chapter");
   }
 }
+const touch = matchMedia("(pointer: coarse)");
 function playbackUI() {
   const playing = reader.playing;
   $("play").innerHTML = playing
     ? "Ⅱ <span>Pause</span>"
     : reader.finished
       ? "↻ <span>Read again</span>"
-      : "▶ <span>Start reading</span>";
+      : reader.index > 0
+        ? "▶ <span>Continue</span>"
+        : "▶ <span>Start reading</span>";
   updateModeLabel(true);
-  $("status").textContent = playing
-    ? ""
-    : reader.finished
-      ? "You’ve reached the end."
-      : "Settle in. Start when you’re ready. Hold the word to see its sentence.";
+  // While words play, everything around the reader fades back.
+  document.body.classList.toggle("immersive", playing);
+  showFinish(reader.finished && !playing);
+  updateTimeLeft();
+  $("status").textContent =
+    playing || reader.finished
+      ? ""
+      : lastSession
+        ? sessionSummary(lastSession)
+        : touch.matches
+          ? "Tap the word to start. Hold it to see the whole sentence."
+          : "Press Space or tap the word to start. Hold it to see the whole sentence.";
   // Words are not announced one by one (far too fast for a screen reader);
   // announce the state and position whenever playback starts or stops.
   const position = data.tokens.length
@@ -522,15 +572,17 @@ function createReader(index = 0) {
   refreshTiming();
   reader = new Playback({
     length: data.tokens.length,
-    duration: (i) => timingPlan[i],
+    duration: (i) => timingPlan[i] * warmUpFactor(i - warmFrom),
     onWord: () => {
       if (reader?.playing) {
         if (!wordsRead) segmentStart = reader.index;
         wordsRead++;
+        if (session) session.words++;
       }
       render();
     },
     onEnd: () => {
+      endSession();
       playbackUI();
       save();
       checkpoint();
@@ -548,6 +600,7 @@ function createReader(index = 0) {
         sectionStarts: sectionStarts(),
       }),
     onBreak: (i) => {
+      endSession();
       playbackUI();
       save();
       checkpoint();
@@ -559,6 +612,7 @@ function createReader(index = 0) {
 }
 function pause() {
   reader.pause();
+  endSession();
   playbackUI();
   save();
   checkpoint();
@@ -566,6 +620,9 @@ function pause() {
 }
 function play() {
   if (normalMode) setReadingMode(false);
+  // The first few words after starting get extra time (engine.warmUpFactor).
+  warmFrom = reader.finished ? 0 : reader.index;
+  startSession();
   reader.play();
   playbackUI();
   $("play").focus({ preventScroll: true });
@@ -683,7 +740,8 @@ function paceStep() {
   }
   run.result = suggestedPace(run.history);
   $("paceWord").textContent = `${run.result}`;
-  $("paceStatus").textContent = `A comfortable starting pace for you: ${run.result} words per minute. Still keeps adjusting as you read.`;
+  $("paceStatus").textContent =
+    `A comfortable starting pace for you: ${run.result} words per minute. Still keeps adjusting as you read.`;
   $("pacePrimary").textContent = `Use ${run.result} words / min`;
   $("pacePrimary").hidden = false;
   $("paceSecondary").textContent = `Keep ${base} words / min`;
@@ -700,7 +758,8 @@ function paceRead() {
   const tokens = parseText(PASSAGES[run.history.length]).tokens;
   const plan = buildTimingPlan(tokens, { base: wpm });
   $("pacePrimary").hidden = true;
-  $("paceStatus").textContent = `Passage ${run.history.length + 1} of ${PASSAGES.length} · ${wpm} words per minute`;
+  $("paceStatus").textContent =
+    `Passage ${run.history.length + 1} of ${PASSAGES.length} · ${wpm} words per minute`;
   run.player = new Playback({
     length: tokens.length,
     duration: (i) => plan[i],
@@ -1049,6 +1108,16 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     rewindSentence();
   }
+  if (!e.repeat && e.key === "ArrowRight") {
+    e.preventDefault();
+    skipSentence();
+  }
+  // Up/Down change the pace in the word view (Text view keeps them for scrolling).
+  if (!normalMode && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    e.preventDefault();
+    setPace(base + (e.key === "ArrowUp" ? 10 : -10));
+    showToast(`${base} words / min`, 1200);
+  }
   if (!e.repeat && e.key.toLowerCase() === "s") {
     e.preventDefault();
     showPeek();
@@ -1240,7 +1309,8 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
         `${plural(result.blankPages, "page had", "pages had")} no selectable text and ${result.blankPages === 1 ? "was" : "were"} skipped.`,
       chapters &&
         `Found ${plural(chapters, "chapter")} in the PDF's table of contents.`,
-      columns && `${plural(columns, "page uses", "pages use")} two-column reading order.`,
+      columns &&
+        `${plural(columns, "page uses", "pages use")} two-column reading order.`,
       repaired && `${plural(repaired, "line-break split")} repaired.`,
       repairSummary(fixes).trim(),
       "Check the text below, then open it in the reader.",
@@ -1315,7 +1385,9 @@ async function showLibrary() {
               99,
               Math.floor((record.index / Math.max(1, record.wordCount)) * 100),
             );
-        info.textContent = `${record.id === documentId ? "Reading now · " : ""}${record.finished ? "Finished" : `${percent}% read`} · ${plural(record.wordCount, "word")}`;
+        const msLeft =
+          (Math.max(0, record.wordCount - record.index) / base) * 60000;
+        info.textContent = `${record.id === documentId ? "Reading now · " : ""}${record.finished ? "Finished" : `${percent}% read · ${formatDuration(msLeft)} left`} · ${plural(record.wordCount, "word")}`;
         const track = document.createElement("span");
         track.className = "shelf-progress";
         const fill = document.createElement("i");
@@ -1421,6 +1493,8 @@ $("pdfLayout").onchange = () => {
 };
 
 function updateFilterUI() {
+  $("contents").textContent =
+    readingOptions.documentType === "academic" ? "Sections" : "Chapters";
   $("citationSettings").hidden = readingOptions.documentType === "book";
   $("citationSettings").open = readingOptions.documentType === "academic";
   $("skipCitations").checked = !!readingOptions.skipCitations;
@@ -1648,7 +1722,7 @@ function renderSections() {
         );
         if (index >= data.tokens.length) {
           $("sectionStatus").textContent =
-            "This section is skipped. Turn off the relevant skip option in Reading settings to read it.";
+            "This section is skipped. Turn off the relevant skip option in Settings to read it.";
           return;
         }
         replayParagraph = null;
@@ -1894,7 +1968,7 @@ function setReadingMode(value, persist = true) {
   normalMode = value;
   $("wordReader").hidden = value;
   $("normalReader").hidden = !value;
-  $("readingMode").textContent = value ? "Word display" : "Normal text";
+  $("readingMode").textContent = value ? "Word view" : "Text view";
   if (persist) {
     readingOptions = {
       ...readingOptions,
@@ -1961,9 +2035,19 @@ function sentenceAround(tokens, i) {
   const same = (j) => tokens[j]?.paragraph === tokens[i].paragraph;
   let start = i,
     end = i;
-  while (start > 0 && i - start < 60 && same(start - 1) && !sentenceEnd.test(tokens[start - 1].text))
+  while (
+    start > 0 &&
+    i - start < 60 &&
+    same(start - 1) &&
+    !sentenceEnd.test(tokens[start - 1].text)
+  )
     start--;
-  while (end < tokens.length - 1 && end - i < 60 && same(end + 1) && !sentenceEnd.test(tokens[end].text))
+  while (
+    end < tokens.length - 1 &&
+    end - i < 60 &&
+    same(end + 1) &&
+    !sentenceEnd.test(tokens[end].text)
+  )
     end++;
   return [start, end];
 }
@@ -2000,16 +2084,29 @@ function hidePeek() {
   else playbackUI();
 }
 {
+  // A quick tap plays or pauses; holding shows the sentence.
   const stage = document.querySelector("#wordReader .stage");
-  let holdTimer = 0;
+  let holdTimer = 0,
+    tap = false;
   stage.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || e.target.closest("#finishCard")) return;
     clearTimeout(holdTimer);
-    holdTimer = setTimeout(showPeek, 250);
+    tap = true;
+    holdTimer = setTimeout(() => {
+      tap = false;
+      showPeek();
+    }, 250);
   });
-  for (const type of ["pointerup", "pointercancel", "pointerleave"])
+  stage.addEventListener("pointerup", () => {
+    clearTimeout(holdTimer);
+    if (tap && !peekState) toggle();
+    tap = false;
+    hidePeek();
+  });
+  for (const type of ["pointercancel", "pointerleave"])
     stage.addEventListener(type, () => {
       clearTimeout(holdTimer);
+      tap = false;
       hidePeek();
     });
   stage.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -2377,7 +2474,14 @@ $("confirmDelete").onclick = async () => {
       await flushStorage();
       erasing = true;
       await eraseLibrary();
-      for (const key of [KEY, KEY + "-position", "still-appearance"])
+      for (const key of [
+        KEY,
+        KEY + "-position",
+        "still-appearance",
+        HABITS,
+        ONBOARDED,
+        PACE_FOUND,
+      ])
         storage.removeItem(key);
       await flushStorage();
       location.reload();
@@ -2394,8 +2498,11 @@ $("confirmDelete").onclick = async () => {
 function repairSummary({ map, notes }) {
   const parts = [];
   if (map.size)
-    parts.push(`Fixed letters the font had mislabelled (${describeGlyphMap(map)}).`);
-  if (notes) parts.push(`Removed ${plural(notes, "note number")} from the text.`);
+    parts.push(
+      `Fixed letters the font had mislabelled (${describeGlyphMap(map)}).`,
+    );
+  if (notes)
+    parts.push(`Removed ${plural(notes, "note number")} from the text.`);
   return parts.length ? parts.join(" ") + " " : "";
 }
 // Text copied out of a PDF carries the same faults as an imported one.
@@ -2597,7 +2704,7 @@ function renderCheckins() {
   $("checkinSummary").textContent = s.total
     ? `${plural(s.total, "check-in")} for this reading: ${s.clear} clear · ${s.mostly} mostly · ${s.lost} lost the thread.`
     : checkinMode() === "off"
-      ? "Check-ins are off. Turn them on in Reading settings, or check in now."
+      ? "Check-ins are off. Turn them on in Settings, or check in now."
       : "Your check-ins for this reading will appear here.";
   const labels = { clear: "Clear", mostly: "Mostly", lost: "Lost the thread" };
   $("checkinList").replaceChildren(
@@ -2640,5 +2747,282 @@ $("checkinNow").onclick = () => {
   openCheckIn(reader.index, { manual: true });
   pendingCheckin.manual = true;
 };
+// ---- Daily goal, streak and reading sessions (see habits.js) ----
+// A session is one stretch of playback. Short interruptions (a peek, a
+// check-in, a sentence rewind) carry on the same session for the summary.
+function startSession() {
+  if (session || reader.playing || !data.tokens.length) return;
+  const carry =
+    lastSession && Date.now() - lastSession.end < 15000 ? lastSession : null;
+  session = {
+    start: performance.now(),
+    words: 0,
+    priorMs: carry?.ms || 0,
+    priorWords: carry?.words || 0,
+  };
+  lastSession = null;
+}
+function endSession() {
+  if (!session) return;
+  const ms = performance.now() - session.start;
+  habits = recordReading(habits, { ms, words: session.words });
+  lastSession = {
+    ms: session.priorMs + ms,
+    words: session.priorWords + session.words,
+    end: Date.now(),
+  };
+  session = null;
+  saveHabits();
+  updateToday();
+}
+function saveHabits() {
+  try {
+    storage.setItem(HABITS, JSON.stringify(habits));
+  } catch {}
+}
+// What the reader sees after pausing: a small, honest "well done".
+function sessionSummary(last) {
+  if (last.ms < 15000 || last.words < 20)
+    return "Paused. Tap the word or press Space to carry on.";
+  const t = today(habits);
+  const goal = t.met
+    ? "Today’s goal is done."
+    : `Today: ${Math.floor(t.ms / 60000)} of ${habits.goal} min.`;
+  const wpm = Math.round(last.words / (last.ms / 60000));
+  return `Nice stretch: ${formatElapsed(last.ms)} · ${plural(last.words, "word")} · ${wpm} wpm. ${goal}`;
+}
+// "4 min left in chapter" (or in the reading), from the timing plan itself,
+// so it already includes slower replays and the reader's adjustments.
+function updateTimeLeft() {
+  const n = data.tokens.length,
+    i = reader.index;
+  let text = "",
+    whole = "";
+  if (n && !reader.finished) {
+    const list = chapterStarts();
+    const at = list.length >= 2 ? chapterAt(i) : -1;
+    const end = at >= 0 ? (list[at + 1]?.index ?? n) : n;
+    const left = (timingSums[end] || 0) - (timingSums[i] || 0);
+    text = `${sentenceCase(formatDuration(left))} left${end < n ? " in chapter" : ""}`;
+    whole = `${sentenceCase(formatDuration((timingSums[n] || 0) - (timingSums[i] || 0)))} left in this reading`;
+  }
+  if (text + whole === timeLeftKey) return;
+  timeLeftKey = text + whole;
+  $("timeLeft").textContent = text;
+  $("timeLeft").title = whole;
+}
+function updateToday() {
+  todayShownAt = performance.now();
+  const extraMs = session ? performance.now() - session.start : 0;
+  const t = today(habits, { extraMs });
+  const s = streak(habits, { extraMs });
+  const words = t.words + (session?.words || 0);
+  const minutes = Math.floor(t.ms / 60000);
+  $("goalArc").setAttribute("stroke-dasharray", `${t.fraction * 100} 100`);
+  $("goalRing").classList.toggle("met", t.met);
+  $("goalRing").classList.toggle("empty", t.ms < 1000);
+  $("goalRing").setAttribute(
+    "aria-label",
+    t.met
+      ? "Today’s goal is done"
+      : `${Math.round(t.fraction * 100)}% of today’s goal`,
+  );
+  $("todayLine").textContent = t.met
+    ? `Goal done · ${formatDuration(t.ms)}${words ? ` · ${plural(words, "word")}` : ""}`
+    : `${minutes} of ${habits.goal} min${words ? ` · ${plural(words, "word")}` : ""}`;
+  const toGo = Math.max(1, Math.ceil((t.goalMs - t.ms) / 60000));
+  $("streakLine").textContent = !s.count
+    ? `Read ${plural(toGo, "more minute")} to start a streak.`
+    : s.metToday
+      ? `${s.count}-day streak. See you tomorrow.`
+      : `${s.count}-day streak. ${plural(toGo, "more minute")} keeps it going.`;
+  $("goalButton").textContent = `Daily goal: ${habits.goal} min`;
+  $("streakCount").textContent = s.count;
+  $("streakChip").classList.toggle("lit", s.metToday);
+  $("streakChip").setAttribute(
+    "aria-label",
+    `${plural(s.count, "day")} in a row. Today: ${minutes} of ${habits.goal} minutes. Change daily goal.`,
+  );
+  $("weekStrip").replaceChildren(
+    ...week(habits, { extraMs }).map((day) => {
+      const li = document.createElement("li");
+      li.className =
+        (day.met ? "met" : day.ms > 0 ? "some" : "") +
+        (day.today ? " is-today" : "");
+      li.setAttribute(
+        "aria-label",
+        `${day.today ? "Today" : day.name}: ${day.met ? "goal done" : day.ms > 0 ? formatDuration(day.ms) : "no reading"}`,
+      );
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.setAttribute("aria-hidden", "true");
+      const label = document.createElement("span");
+      label.textContent = day.label;
+      label.setAttribute("aria-hidden", "true");
+      li.append(dot, label);
+      return li;
+    }),
+  );
+  // Celebrate once a day, the moment the goal is reached while reading.
+  if (t.met && celebratedDay !== dayKey()) {
+    celebratedDay = dayKey();
+    if (session)
+      showToast(
+        `Daily goal done${s.count > 1 ? ` · ${s.count}-day streak` : ""}. Keep going if you like.`,
+      );
+  }
+}
+function showToast(message, ms = 4500) {
+  $("toast").textContent = message;
+  $("toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => ($("toast").hidden = true), ms);
+}
+// The end of a reading: a short "you did it" and the obvious next step.
+function showFinish(show) {
+  $("wordReader").classList.toggle("done", show);
+  $("finishCard").hidden = !show;
+  if (!show) return;
+  const s = streak(habits);
+  $("finishTitle").textContent = `You finished “${title}”`;
+  $("finishStats").textContent = [
+    plural(data.tokens.length, "word"),
+    s.count ? `${s.count}-day streak` : "",
+    today(habits).met
+      ? "today’s goal done"
+      : `${Math.floor(today(habits).ms / 60000)} of ${habits.goal} min today`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const request = ++finishRequest;
+  finishNext = null;
+  $("finishNext").textContent = "Add a reading";
+  listReadings()
+    .then((all) => {
+      if (request !== finishRequest) return;
+      finishNext = all.find(
+        (r) =>
+          r.id !== documentId &&
+          (r.shelfState || "active") === "active" &&
+          !r.finished,
+      );
+      if (finishNext)
+        $("finishNext").textContent = `Up next: ${finishNext.title}`;
+    })
+    .catch(() => {});
+}
+$("finishNext").onclick = async () => {
+  if (!finishNext) return $("newText").click();
+  try {
+    const reading = await getReading(finishNext.id);
+    if (!reading) throw Error();
+    load(reading.text, reading.title, reading);
+    returnToReader();
+  } catch {
+    showLibrary();
+  }
+};
+$("finishShelf").onclick = showLibrary;
+function skipSentence() {
+  if (!data.tokens.length) return;
+  const playing = reader.playing;
+  pause();
+  reader.seek(nextSentence(data.tokens, reader.index));
+  if (normalMode) renderNormal();
+  if (playing) play();
+  checkpoint();
+}
+// First run: what Still is, a daily goal, then (optionally) Find my pace.
+function openWelcome(step) {
+  pause();
+  welcomeFlow = step === "intro";
+  showWelcomeStep(step);
+  if (!$("welcomeDialog").open) $("welcomeDialog").showModal();
+  $("welcomeDialog")
+    .querySelector(
+      `[data-step=${step}] .primary, [data-step=${step}] input:checked`,
+    )
+    ?.focus();
+}
+function showWelcomeStep(step) {
+  for (const el of $("welcomeDialog").querySelectorAll("[data-step]"))
+    el.hidden = el.dataset.step !== step;
+  const [eyebrow, heading] = WELCOME_COPY[step];
+  $("welcomeEyebrow").textContent =
+    step === "goal"
+      ? welcomeFlow
+        ? "STEP 1 OF 2"
+        : "YOUR DAILY GOAL"
+      : eyebrow;
+  $("welcomeTitle").textContent = heading;
+  if (step === "goal") {
+    renderGoalOptions();
+    $("goalSave").textContent = welcomeFlow ? "Continue" : "Save goal";
+  }
+}
+function renderGoalOptions() {
+  $("goalOptions").replaceChildren(
+    ...GOALS.map((g) => {
+      const label = document.createElement("label");
+      label.className = "goal-option";
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "goal";
+      input.value = g.minutes;
+      input.checked = g.minutes === habits.goal;
+      const minutes = document.createElement("strong");
+      minutes.textContent = `${g.minutes} min a day`;
+      const name = document.createElement("span");
+      name.textContent = g.label;
+      const words = document.createElement("span");
+      words.className = "muted";
+      words.textContent = `about ${(Math.round((g.minutes * base) / 100) * 100).toLocaleString()} words at your pace`;
+      label.append(input, minutes, name, words);
+      return label;
+    }),
+  );
+}
+$("welcomeNext").onclick = () => {
+  showWelcomeStep("goal");
+  $("goalOptions").querySelector("input:checked")?.focus();
+};
+$("welcomeSkip").onclick = () => $("welcomeDialog").close();
+$("goalSave").onclick = () => {
+  const goal = Number($("goalOptions").querySelector("input:checked")?.value);
+  habits = normalizeHabits({ ...habits, goal });
+  saveHabits();
+  celebratedDay = today(habits).met ? dayKey() : "";
+  updateToday();
+  if (welcomeFlow) {
+    showWelcomeStep("pace");
+    $("welcomePace").focus();
+  } else {
+    $("welcomeDialog").close();
+    returnToReader();
+  }
+};
+$("welcomeSample").onclick = () => {
+  $("welcomeDialog").close();
+  returnToReader();
+};
+$("welcomePace").onclick = () => {
+  $("welcomeDialog").close();
+  openPaceFinder();
+};
+$("welcomeDialog").addEventListener("close", () => {
+  try {
+    storage.setItem(ONBOARDED, "1");
+  } catch {}
+});
+$("goalButton").onclick = () => openWelcome("goal");
+$("streakChip").onclick = () => openWelcome("goal");
+updateToday();
+{
+  let onboarded = true;
+  try {
+    onboarded = !!storage.getItem(ONBOARDED);
+  } catch {}
+  if (!onboarded && !saved) openWelcome("intro");
+}
 // Signals that startup finished (used by the browser tests).
 document.documentElement.dataset.ready = "true";
