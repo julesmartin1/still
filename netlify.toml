@@ -1,0 +1,11 @@
+# Hosting for the web app. Still is plain static files in still/dist
+# (no build step), so Netlify only needs to know which folder to publish.
+[build]
+  publish = "still/dist"
+  command = ""
+
+# Always fetch the newest service worker so readers get updates promptly.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
