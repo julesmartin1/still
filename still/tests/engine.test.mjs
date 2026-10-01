@@ -115,7 +115,7 @@ test("dictionary supports common inflections and includes real definitions", asy
 
 const sum = (values) => values.reduce((a, b) => a + b, 0);
 const near = (a, b) => assert.ok(Math.abs(a - b) < 0.000001, `${a} != ${b}`);
-test("length weights keep short words neutral and gently extend long words", () => {
+test("length weights keep short words neutral and give long words clearly more time", () => {
   const bare = (word) => ({
     norm: word,
     text: word,
@@ -125,15 +125,15 @@ test("length weights keep short words neutral and gently extend long words", () 
   });
   near(wordWeight(bare("a")), 1);
   near(wordWeight(bare("daily")), 1);
-  near(wordWeight(bare("extraordinary")), 1.32);
-  near(wordWeight(bare("a".repeat(40))), 1.5);
+  near(wordWeight(bare("extraordinary")), 1.64);
+  near(wordWeight(bare("a".repeat(40))), 2);
   near(wordWeight(bare("can't")), 1);
   const tokens = ["We", "notice", "extraordinary", "things", "daily"].map(
     (w, index) => ({ ...bare(w), paragraph: 0, index }),
   );
   const plan = buildTimingPlan(tokens, { base: 300 });
   near(sum(plan), 1000);
-  near(plan[2], (1000 * 1.32) / 5.4);
+  near(plan[2], (1000 * 1.64) / 5.8);
   assert.ok(plan[2] > plan[1] && plan[1] > plan[0]);
 });
 test("each paragraph meets its WPM budget including punctuation and difficulty", () => {

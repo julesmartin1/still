@@ -148,7 +148,10 @@ export function wordWeight(
   { profile = freshProfile(), now = Date.now() } = {},
 ) {
   const letters = (token.norm.match(/\p{L}/gu) || []).length;
-  let weight = clamp(1 + 0.04 * Math.max(0, letters - 5), 1, 1.5);
+  // Longer words take longer to recognise: in normal reading the eye stays
+  // roughly 20-30 ms longer per extra letter. A 10-letter word gets about
+  // 40% more time than a short one, up to double for very long words.
+  let weight = clamp(1 + 0.08 * Math.max(0, letters - 5), 1, 2);
   weight += token.complexity || 0;
   if (token.rare) weight += 0.16;
   const looked = profile.lookups[token.norm];

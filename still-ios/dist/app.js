@@ -716,6 +716,7 @@ function paceRead() {
 }
 function openPaceFinder() {
   pause();
+  $("paceInvite").hidden = true;
   paceRun = { history: [] };
   paceStep();
   $("paceDialog").showModal();
@@ -738,7 +739,6 @@ $("paceFeel").addEventListener("click", (e) => {
 $("paceDialog").addEventListener("close", () => {
   paceRun?.player?.pause();
   paceRun = null;
-  $("paceInvite").hidden = true;
 });
 {
   let found = true;
