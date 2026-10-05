@@ -13,7 +13,7 @@ The web app was tested in Chromium on 29–30 September 2026. The testing combin
 | 5 | Medium | R (and Left Arrow) crashed when citation filtering hid every word. | **Fixed.** |
 | 6 | Medium | Very long readings overflowed localStorage, stalled playback about 240 ms per word, and reopened the wrong reading after a reload. | **Fixed.** Readings over 500k characters keep their text only in the bookshelf. A failed save is not retried on every word. |
 | 7 | Medium | Bookmarks couldn't be deleted (and duplicated), and the Trash couldn't be emptied. | **Fixed.** Delete asks for confirmation in place, saving the same passage again edits it, and the Trash has Empty Trash and Delete permanently. |
-| 8 | Medium | Two-column PDFs came out in the wrong order when paragraph gaps lined up across columns. | **Fixed.** A page-wide gutter is found before splitting at gaps, and sentences continue across column and page breaks. Tested on generated papers only, not real journal PDFs yet. |
+| 8 | Medium | Two-column PDFs came out in the wrong order when paragraph gaps lined up across columns. | **Fixed.** A page-wide gutter is found before splitting at gaps, and sentences continue across column and page breaks. Since checked on 11 real papers (findings 48–53). |
 | 9 | Medium | Right-to-left text was laid out left-to-right. | **Fixed** with `dir="auto"` on every text surface. |
 | 10 | Medium | Screen readers heard nothing during playback. | **Fixed.** Play and pause announce the position, and the progress bar is a real progressbar. |
 | 11 | Low | Old offline caches were never deleted. | **Fixed.** |
@@ -29,7 +29,7 @@ The web app was tested in Chromium on 29–30 September 2026. The testing combin
 | 21 | Low | Trashing the open reading left it open. | **Fixed.** The app opens the next reading. |
 | 22 | Low | Plural wording ("1 words"). | **Fixed.** |
 | 23 | Low | A title edit is lost when Settings is closed with Escape. | **Kept.** Escape means cancel. |
-| 24 | Nit | Markdown symbols are read aloud as-is. | Not done. |
+| 24 | Nit | Markdown symbols are read aloud as-is. | **Fixed.** "Worth a look" flags Markdown (#, **, [links], lists, tables, code) and offers "Remove the symbols", which keeps the words. `.md` files have the symbols removed on import. |
 | 25 | Structural | The web and iOS apps had drifted apart as two copies. | **Fixed.** There is one shared source plus `scripts/sync-shared.mjs`, with a check that fails if they differ. |
 | 26 | Structural | There were no interface tests, which is where most bugs were. | **Fixed.** `still/tests/ui/run.py` has 19 browser checks. |
 
@@ -80,6 +80,21 @@ The handoff says "do not introduce comprehension quizzes", so check-ins aren't q
 
 Worth measuring next, with users' consent: whether people who use check-ins rate "Lost" less often over time, and whether the pace suggestions get accepted.
 
+### Found with real two-column papers (October 2026)
+
+Eleven real papers were run through the import exactly as the app does it: ACL 2007, 2009 and 2014 papers, the OSDI MapReduce paper, the PLDI TraceMonkey paper, three biomedical journal articles, a Z. Naturforsch. article, a JSS article and an AVE workshop paper. The PDFs came from the test sets of open-source PDF tools (PDF.js, GROBID, CERMINE, Science Parse). The output was compared with `pdftotext` and checked by hand at every column and page break. Columns were already read in the right order. These problems were found where the text meets the page furniture:
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| 48 | Medium | A page number centred under two columns was read between them, cutting any sentence that ran from one column to the next ("…statistics between 696 the extraction…"). | **Fixed.** A short line centred on the gutter below both columns is read after them. |
+| 49 | Medium | Page numbers sitting just above the bottom 8% of the page were never removed. | **Fixed.** The margin test uses the line's baseline, so they are now removed with the others. |
+| 50 | Medium | A first-page footer ("Proceedings of… © 2014 Association…") cut the sentence running onto page 2, and the rest of the sentence was glued onto the footer. | **Fixed.** A footer or header that interrupts a sentence is read once that paragraph ends. |
+| 51 | Medium | Footnotes at the foot of a column cut sentences the same way ("HMM-T of- 3The distribution… fers over…"). | **Fixed.** Footnotes (smaller type starting with a note marker) wait for the sentence to finish, like footers. |
+| 52 | Medium | A figure caption beside the text was read line by line between the text's lines. | **Fixed.** A side block is read after the text next to it. |
+| 53 | Medium | Words hyphenated at the end of a line stayed split ("pro- jectivized", "be- cause", "hand- tagged") unless the dictionary had the whole word, and never joined across a column or page break. Each paper had 10 to 26. | **Fixed.** Two known words keep the hyphen ("hand-tagged", "n-gram", "HMM-based"); anything else is a broken word and is joined, except very short pieces such as "state- of". Breaks across columns and pages are joined too. Now 0 to 3 per paper. |
+
+Not changed: tables, charts and equations are still read as runs of words. They can't be read well one word at a time, and the "Worth a look" panel already flags the worst of it.
+
 ## Ease-of-use audit (October 2026)
 
 The goal of this pass: make it easier to start reading, stay with it, and come back tomorrow, for readers whose attention is pulled in many directions. Language-learning apps such as Duolingo solved a similar problem with short daily goals, visible progress and a clear next step, so this pass borrows those ideas while keeping Still calm (no sounds, no leagues, no nagging).
@@ -104,7 +119,6 @@ What to measure next, with consent: whether readers with a goal come back on mor
 - **The iOS app has never been compiled.** It needs a Mac with enough disk space and an Xcode-compatible macOS. After that:
   - run `npm run build` (esbuild) to confirm the new shared files bundle for the `safari18` target;
   - test the PDF page view on an iOS 18 simulator.
-- **Two-column PDF order** should be checked against a handful of real journal articles.
 - **Bundle the original fonts** (Literata and DM Sans) if the pre-change look matters.
 
 ## Sources

@@ -59,3 +59,60 @@ test("dated letters are not mistaken for page headers", () => {
   ).join("\n\n");
   assert.ok(!checkText(text).some((f) => f.id === "headers"));
 });
+
+test("Markdown symbols are flagged and removed, keeping the words", () => {
+  const text = [
+    "## Reading notes ##",
+    "",
+    "The **main** point is _attention_, see [the paper](https://example.com/p) and `RSVP`.",
+    "",
+    "- [x] read chapter 1",
+    "* skim chapter 2",
+    "",
+    "> A quote with an escaped \\*star\\*.",
+    "",
+    "---",
+    "",
+    "| Pace | Words |",
+    "|------|-------|",
+    "| 260 | 1200 |",
+    "",
+    "```",
+    "let x = 1;",
+    "```",
+    "",
+    "![A chart](chart.png) and <https://example.com> ~~old~~ new.",
+    "",
+    "[ref]: https://example.com",
+  ].join("\n");
+  const finding = checkText(text).find((f) => f.id === "markdown");
+  assert.ok(finding && finding.ranges.length);
+  assert.equal(
+    finding.fix(text),
+    [
+      "Reading notes",
+      "The main point is attention, see the paper and RSVP.",
+      "read chapter 1\nskim chapter 2",
+      "A quote with an escaped *star*.",
+      "Pace, Words",
+      "260, 1200",
+      "let x = 1;",
+      "A chart and https://example.com old new.",
+    ].join("\n\n"),
+  );
+  assert.ok(!checkText(finding.fix(text)).some((f) => f.id === "markdown"));
+});
+
+test("plain text with dashes, asterisks and underscores is not taken for Markdown", () => {
+  const text = [
+    "She paused - then went on. 2 * 3 is six, and file_name_here stays.",
+    "",
+    "Shopping:",
+    "- eggs",
+    "- milk",
+    "- bread",
+    "",
+    "A footnote marker* is fine too.",
+  ].join("\n");
+  assert.ok(!checkText(text).some((f) => f.id === "markdown"));
+});

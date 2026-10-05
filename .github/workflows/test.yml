@@ -1,0 +1,43 @@
+# Runs on every push and pull request: the shared-code check, both apps'
+# unit tests, and the web app's browser tests.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Shared code matches and web unit tests pass
+        run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Playwright
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Browser tests
+        working-directory: still
+        run: python tests/ui/run.py
+
+  ios-shared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: still-ios/package-lock.json
+      - name: iOS app unit tests (simulated native bridge)
+        working-directory: still-ios
+        run: |
+          npm ci
+          npm test
