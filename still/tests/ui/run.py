@@ -630,13 +630,36 @@ async def review_scrolls_the_whole_text_and_double_tap_reads_from_a_word(browser
     shown = await page.locator("#paragraph .review-paragraph").count()
     assert shown > 3, shown
     assert await page.locator("#paragraph .token.selected").count() == 1
-    # Scrolling to the top brings in earlier paragraphs.
+    # Your place is marked, and the way back stays out of sight while it shows.
+    assert await page.locator("#paragraph .token.place").count() == 1
+    assert await page.locator("#returnToPlace").is_hidden()
+    # Scrolling to the top brings in earlier paragraphs for a while, then stops
+    # and asks before going further from your place.
     first = int(await page.get_attribute("#paragraph .review-paragraph >> nth=0", "data-paragraph"))
     for _ in range(30):
         await page.evaluate("document.getElementById('paragraph').scrollTop = 0")
         await page.wait_for_timeout(30)
+    auto = int(await page.get_attribute("#paragraph .review-paragraph >> nth=0", "data-paragraph"))
+    assert 0 < auto < first, (first, auto)
+    assert await page.is_visible("#reviewEarlier")
+    assert "before your place" in await page.inner_text("#reviewEarlierNote")
+    # Your place is out of view now, so the way back points down to it.
+    await page.wait_for_selector("#returnToPlace", state="visible")
+    assert "up" not in (await page.get_attribute("#returnToPlace", "class"))
+    for _ in range(20):
+        if await page.locator("#reviewEarlier").is_hidden():
+            break
+        await page.click("#reviewEarlier")
+        await page.evaluate("document.getElementById('paragraph').scrollTop = 0")
     now = int(await page.get_attribute("#paragraph .review-paragraph >> nth=0", "data-paragraph"))
-    assert now == 0 and first > 0, (first, now)
+    assert now == 0, now
+    # Back to my place scrolls to it and chooses it again.
+    await page.click("#paragraph .review-paragraph[data-paragraph='5'] .token >> nth=3")
+    await page.click("#returnToPlace")
+    await page.wait_for_selector("#returnToPlace", state="hidden")
+    assert await page.locator("#paragraph .token.selected.place").count() == 1
+    assert await page.locator("#paragraph .token.place").is_visible()
+    await page.evaluate("document.getElementById('paragraph').scrollTop = 0")
     # A single tap chooses a word; a double tap reads from it.
     target = page.locator("#paragraph .review-paragraph[data-paragraph='2'] .token >> nth=0")
     await target.click()

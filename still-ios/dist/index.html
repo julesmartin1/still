@@ -590,7 +590,36 @@
       />
       <div id="searchResults" class="search-results" hidden></div>
       <p id="searchStatus" class="muted" role="status" hidden></p>
-      <div id="paragraph" class="paragraph" dir="auto"></div>
+      <div class="review-frame">
+        <div id="paragraph" class="paragraph" dir="auto">
+          <div class="review-more">
+            <button id="reviewEarlier" type="button" class="outline" hidden>
+              Load earlier text</button
+            ><span id="reviewEarlierNote" class="muted"></span>
+          </div>
+          <div id="reviewText"></div>
+          <div class="review-more">
+            <span id="reviewLaterNote" class="muted"></span
+            ><button id="reviewLater" type="button" class="outline" hidden>
+              Load more text
+            </button>
+          </div>
+        </div>
+        <button id="returnToPlace" type="button" class="place-pill" hidden>
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M6 13l6 6 6-6" /></svg
+          >Back to my place
+        </button>
+      </div>
       <details id="originalContext" hidden>
         <summary>Show original paragraph with citations</summary>
         <p id="originalParagraph" dir="auto"></p>
@@ -601,8 +630,7 @@
       </div>
       <div id="definition" class="definition" aria-live="polite" hidden></div>
       <div class="dialog-actions review-actions">
-        <button id="returnToPlace" class="text-button">Back to my place</button
-        ><button id="resume" class="primary">Read from here</button>
+        <button id="resume" class="primary">Read from here</button>
       </div>
     </dialog>
     <dialog id="sourceDialog" aria-labelledby="sourceTitle">
