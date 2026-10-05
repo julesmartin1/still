@@ -57,7 +57,11 @@
         <div class="reader-top">
           <span id="mode">READY WHEN YOU ARE</span
           ><span class="reader-meta"
-            ><span id="timeLeft"></span
+            ><button
+              id="timeLeft"
+              type="button"
+              class="meta-toggle"
+            ></button
             ><span id="count">1 / 200 words</span></span
           >
         </div>
@@ -90,6 +94,13 @@
             ↶</button
           ><button id="play" class="primary">
             ▶ <span>Start reading</span></button
+          ><button
+            id="quickForward"
+            class="secondary round"
+            aria-label="Forward one sentence"
+            title="Forward one sentence (→)"
+          >
+            ↷</button
           ><button id="review" class="secondary" title="Review paragraph (R)">
             ☰ <span>Review</span>
           </button>
@@ -447,22 +458,10 @@
           ×
         </button>
       </div>
-      <p class="muted">Choose a word to restart from, or look it up.</p>
-      <div class="paragraph-nav">
-        <button id="prevPara" class="text-button">← Previous</button>
-        <form id="jumpForm" class="paragraph-jump">
-          <label for="jumpParagraph">Paragraph</label
-          ><input
-            id="jumpParagraph"
-            type="number"
-            min="1"
-            step="1"
-            required
-          /><span id="paraNumber"></span
-          ><button class="text-button" type="submit">Go</button>
-        </form>
-        <button id="nextPara" class="text-button">Next →</button>
-      </div>
+      <p class="muted">
+        Scroll through the text. Tap a word to choose it, or double-tap to read
+        from there.
+      </p>
       <label for="findText" class="sr-only">Find in this reading</label
       ><input
         id="findText"
@@ -625,7 +624,11 @@
         ><label for="appearanceTransition">Word change</label
         ><select id="appearanceTransition">
           <option value="soft">Soft (a brief fade-in)</option>
-          <option value="instant">Instant</option>
+          <option value="instant">Instant</option></select
+        ><label for="appearanceProgress">Progress shows</label
+        ><select id="appearanceProgress">
+          <option value="time">Time left</option>
+          <option value="percent">Percent read</option>
         </select>
         <p class="muted">
           Anchoring keeps your eye on one spot: each word's highlighted letter,

@@ -323,21 +323,21 @@ textarea {
 .dialog-actions .secondary {
   border-color: #d4dce9;
 }
-.paragraph-nav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: 13px;
-  color: var(--muted);
-  margin: 18px 0;
-}
 .paragraph {
   font-family: Literata, Georgia, serif;
   font-size: 20px;
   line-height: 1.9;
-  max-height: 38vh;
+  max-height: 50vh;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 12px 6px;
+  margin-top: 14px;
+}
+.review-paragraph {
+  margin: 0 0 1em;
+}
+.paragraph .token {
+  touch-action: manipulation; /* a double tap reads, it doesn't zoom */
 }
 .token {
   font: inherit;
@@ -583,25 +583,6 @@ textarea:disabled {
   height: 100%;
   background: #7496e7;
 }
-.paragraph-jump {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-}
-.paragraph-jump label {
-  margin: 0;
-  font-size: 13px;
-}
-.paragraph-jump #jumpParagraph {
-  width: 62px;
-  padding: 6px;
-  background: transparent;
-  font-size: 14px;
-}
-.paragraph-nav {
-  gap: 12px;
-}
 .search-results {
   display: grid;
   gap: 6px;
@@ -674,15 +655,6 @@ textarea:disabled {
     width: 30px;
     height: 32px;
   }
-  .paragraph-nav {
-    flex-wrap: wrap;
-    justify-content: space-between;
-  }
-  .paragraph-jump {
-    order: 3;
-    width: 100%;
-    justify-content: center;
-  }
   .pace-value {
     gap: 7px;
   }
@@ -704,7 +676,7 @@ textarea:disabled {
     margin-bottom: -8px;
   }
   .paragraph {
-    max-height: 32vh;
+    max-height: 44vh;
   }
   .library-item {
     padding: 16px;
@@ -1626,6 +1598,15 @@ html[data-theme="dark"] .streak-chip.lit .flame {
 }
 #timeLeft:empty {
   display: none;
+}
+.meta-toggle {
+  font: inherit;
+  text-transform: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  cursor: pointer;
 }
 #count {
   letter-spacing: 0;

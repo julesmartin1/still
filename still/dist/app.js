@@ -37,7 +37,6 @@ import {
 } from "./library.js";
 import {
   buildParagraphIndex,
-  paragraphStart,
   findPassages,
 } from "./navigation.js";
 import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
@@ -224,7 +223,6 @@ let data = filteredReading(text, readingOptions),
   reader,
   replayParagraph = null,
   selected = 0,
-  viewParagraph = 0,
   origin = 0,
   lookupRequest = 0,
   timingPlan = [],
@@ -458,6 +456,7 @@ function render() {
   $("play").disabled = !data.tokens.length;
   $("review").disabled = !data.tokens.length;
   $("quickRewind").disabled = !data.tokens.length;
+  $("quickForward").disabled = !data.tokens.length;
   updateNormalHighlight();
   save();
 }
@@ -920,39 +919,129 @@ $("sample").onclick = () => {
 document
   .querySelectorAll("[data-close]")
   .forEach((b) => (b.onclick = () => $(b.dataset.close).close()));
-function renderParagraph({ preserveScroll = false } = {}) {
+// Review shows the whole reading as one scrolling text. Paragraphs are added
+// a window at a time as the reader scrolls, so a long book stays quick.
+const REVIEW_WINDOW = 1200; // about this many words either side
+let reviewRange = null, // [first, last] paragraph on screen
+  lastTap = { index: -1, at: 0 };
+function reviewParagraph(p) {
+  const tokens = paragraphGroups[p] || [];
+  const block = document.createElement("p");
+  block.className = "review-paragraph";
+  block.dataset.paragraph = p;
+  for (const t of tokens) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "token" + (t.index === selected ? " selected" : "");
+    b.dataset.index = t.index;
+    b.tabIndex = t.index === selected ? 0 : -1;
+    b.setAttribute("aria-pressed", t.index === selected);
+    b.textContent = t.text;
+    block.append(b, " ");
+  }
+  return block;
+}
+// Paragraphs from `from` holding about REVIEW_WINDOW words, going `step`.
+function reviewSpan(from, step) {
+  const last = paragraphGroups.length - 1;
+  let p = from,
+    words = 0;
+  while (p >= 0 && p <= last && words < REVIEW_WINDOW) {
+    words += paragraphGroups[p].length;
+    p += step;
+  }
+  return p - step;
+}
+function renderReview() {
+  const p = data.tokens[selected].paragraph,
+    last = paragraphGroups.length - 1;
+  const lo = p > 0 ? reviewSpan(p - 1, -1) : 0,
+    hi = p < last ? reviewSpan(p + 1, 1) : last;
+  reviewRange = [lo, hi];
+  const nodes = [];
+  for (let i = lo; i <= hi; i++) nodes.push(reviewParagraph(i));
+  $("paragraph").replaceChildren(...nodes);
+  showSelection();
+}
+function extendReview() {
+  const box = $("paragraph");
+  if (!reviewRange || !$("reviewDialog").open) return;
+  const [lo, hi] = reviewRange,
+    last = paragraphGroups.length - 1;
+  if (box.scrollTop < 800 && lo > 0) {
+    const from = reviewSpan(lo - 1, -1);
+    const nodes = [];
+    for (let i = from; i < lo; i++) nodes.push(reviewParagraph(i));
+    const height = box.scrollHeight;
+    box.prepend(...nodes);
+    box.scrollTop += box.scrollHeight - height;
+    reviewRange[0] = from;
+  }
+  if (box.scrollHeight - box.scrollTop - box.clientHeight < 800 && hi < last) {
+    const to = reviewSpan(hi + 1, 1);
+    for (let i = hi + 1; i <= to; i++) box.append(reviewParagraph(i));
+    reviewRange[1] = to;
+  }
+}
+$("paragraph").addEventListener("scroll", extendReview, { passive: true });
+function reviewToken(index) {
+  return $("paragraph").querySelector(`.token[data-index="${index}"]`);
+}
+// Moves the selection to `index` (rebuilding the text around it when it is
+// far from what is on screen) and optionally scrolls it into view.
+function selectWord(index, { scroll = false, focus = false } = {}) {
+  const before = $("paragraph").querySelector(".token.selected");
+  if (before) {
+    before.classList.remove("selected");
+    before.tabIndex = -1;
+    before.setAttribute("aria-pressed", "false");
+  }
+  selected = index;
+  const p = data.tokens[index].paragraph;
+  if (!reviewRange || p < reviewRange[0] || p > reviewRange[1]) renderReview();
+  else showSelection();
+  const b = reviewToken(index);
+  if (scroll) b?.scrollIntoView({ block: "center" });
+  if (focus) b?.focus({ preventScroll: true });
+  extendReview();
+}
+function showSelection() {
   lookupRequest++;
   $("definition").hidden = true;
-  const ts = paragraphGroups[viewParagraph];
-  if (!ts.some((t) => t.index === selected)) selected = ts[0].index;
-  const scroll = $("paragraph").scrollTop;
-  const nodes = [];
-  for (const t of ts) {
-    const b = document.createElement("button");
-    b.className = "token" + (t.index === selected ? " selected" : "");
-    b.textContent = t.text;
-    b.setAttribute("aria-pressed", t.index === selected);
-    b.onclick = () => {
-      selected = t.index;
-      renderParagraph({ preserveScroll: true });
-      $("paragraph").querySelector(".selected")?.focus({ preventScroll: true });
-    };
-    nodes.push(b, document.createTextNode(" "));
+  const b = reviewToken(selected);
+  if (b) {
+    b.classList.add("selected");
+    b.tabIndex = 0;
+    b.setAttribute("aria-pressed", "true");
   }
   const originalParagraph = data.tokens[selected].originalParagraph;
   $("originalParagraph").textContent =
     data.original.paragraphs[originalParagraph];
   $("originalContext").hidden =
     !readingOptions.skipCitations && !readingOptions.skipReferences;
-  $("paragraph").replaceChildren(...nodes);
-  $("paragraph").scrollTop = preserveScroll ? scroll : 0;
   $("selectedWord").textContent = data.tokens[selected].text;
-  $("jumpParagraph").value = viewParagraph + 1;
-  $("jumpParagraph").max = data.paragraphs.length;
-  $("paraNumber").textContent = `of ${data.paragraphs.length}`;
-  $("prevPara").disabled = viewParagraph === 0;
-  $("nextPara").disabled = viewParagraph === data.paragraphs.length - 1;
 }
+// Tap a word to choose it; tap it again straight away (a double tap) to
+// read from there.
+$("paragraph").addEventListener("click", (e) => {
+  const b = e.target.closest(".token");
+  if (!b) return;
+  const index = Number(b.dataset.index),
+    now = performance.now();
+  const again = lastTap.index === index && now - lastTap.at < 450;
+  lastTap = again ? { index: -1, at: 0 } : { index, at: now };
+  selectWord(index, { focus: true });
+  if (again) $("resume").click();
+});
+$("paragraph").addEventListener("keydown", (e) => {
+  if (!e.target.closest(".token")) return;
+  const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+  if (!step) return;
+  e.preventDefault();
+  const index = clamp(selected + step, 0, data.tokens.length - 1);
+  selectWord(index, { focus: true });
+  reviewToken(index)?.scrollIntoView({ block: "nearest" });
+});
 function clearSearch() {
   $("findText").value = "";
   $("searchResults").replaceChildren();
@@ -964,46 +1053,19 @@ function review() {
   pause();
   origin = reader.index;
   selected = reader.index;
-  viewParagraph = data.tokens[selected].paragraph;
   intentionalNavigation = false;
+  lastTap = { index: -1, at: 0 };
   clearSearch();
-  renderParagraph();
+  renderReview();
   $("reviewDialog").showModal();
-  $("paragraph")
-    .querySelector(".selected")
-    ?.scrollIntoView({ block: "nearest" });
+  reviewToken(selected)?.scrollIntoView({ block: "center" });
+  extendReview();
 }
 $("review").onclick = review;
-$("prevPara").onclick = () => {
-  viewParagraph--;
-  renderParagraph();
-};
-$("nextPara").onclick = () => {
-  viewParagraph++;
-  renderParagraph();
-};
-$("jumpForm").onsubmit = (e) => {
-  e.preventDefault();
-  const index = paragraphStart(
-    paragraphGroups,
-    Number($("jumpParagraph").value),
-  );
-  if (index === null) return;
-  selected = index;
-  viewParagraph = data.tokens[index].paragraph;
-  intentionalNavigation = true;
-  clearSearch();
-  renderParagraph();
-};
 $("returnToPlace").onclick = () => {
-  selected = origin;
-  viewParagraph = data.tokens[origin].paragraph;
   intentionalNavigation = false;
   clearSearch();
-  renderParagraph();
-  $("paragraph")
-    .querySelector(".selected")
-    ?.scrollIntoView({ block: "nearest" });
+  selectWord(origin, { scroll: true });
 };
 $("findText").oninput = () => {
   const query = $("findText").value;
@@ -1022,14 +1084,9 @@ $("findText").oninput = () => {
       label.textContent = `Paragraph ${result.paragraph + 1}`;
       button.append(label, document.createTextNode(result.excerpt));
       button.onclick = () => {
-        selected = result.index;
-        viewParagraph = result.paragraph;
         intentionalNavigation = true;
         clearSearch();
-        renderParagraph();
-        $("paragraph")
-          .querySelector(".selected")
-          ?.scrollIntoView({ block: "nearest" });
+        selectWord(result.index, { scroll: true });
       };
       return button;
     }),
@@ -2131,6 +2188,7 @@ function rewindSentence() {
   checkpoint();
 }
 $("quickRewind").onclick = rewindSentence;
+$("quickForward").onclick = () => skipSentence();
 function editMark(mark = null) {
   pause();
   if (mark) markDraft = { ...mark };
@@ -2339,6 +2397,8 @@ function applyAppearance() {
     appearance.placement === "anchored" ? "anchored" : "centered";
   $("appearanceTransition").value =
     appearance.transition === "instant" ? "instant" : "soft";
+  $("appearanceProgress").value =
+    appearance.progress === "percent" ? "percent" : "time";
   $("checkinMode").value = checkinMode();
   $("appearanceSize").value = size;
   $("appearanceSizeLabel").textContent = size + "%";
@@ -2353,6 +2413,7 @@ for (const id of [
   "appearanceSize",
   "appearancePlacement",
   "appearanceTransition",
+  "appearanceProgress",
   "checkinMode",
 ])
   $(id).oninput = () => {
@@ -2362,10 +2423,21 @@ for (const id of [
       size: Number($("appearanceSize").value),
       placement: $("appearancePlacement").value,
       transition: $("appearanceTransition").value,
+      progress: $("appearanceProgress").value,
       checkins: $("checkinMode").value,
     };
     applyAppearance();
+    if (reader) updateTimeLeft();
   };
+// Tapping the time left switches to percent read, and back.
+$("timeLeft").onclick = () => {
+  appearance = {
+    ...appearance,
+    progress: appearance.progress === "percent" ? "time" : "percent",
+  };
+  applyAppearance();
+  updateTimeLeft();
+};
 matchMedia("(prefers-color-scheme: dark)").addEventListener(
   "change",
   applyAppearance,
@@ -2813,6 +2885,10 @@ function updateTimeLeft() {
     const left = (timingSums[end] || 0) - (timingSums[i] || 0);
     text = `${sentenceCase(formatDuration(left))} left${end < n ? " in chapter" : ""}`;
     whole = `${sentenceCase(formatDuration((timingSums[n] || 0) - (timingSums[i] || 0)))} left in this reading`;
+    if (appearance.progress === "percent") {
+      whole = `${text}. Tap to show time left.`;
+      text = `${Math.floor(((i + 1) / n) * 100)}% read`;
+    } else whole += ". Tap to show percent read.";
   }
   if (text + whole === timeLeftKey) return;
   timeLeftKey = text + whole;

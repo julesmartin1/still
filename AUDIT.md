@@ -112,6 +112,15 @@ The goal of this pass: make it easier to start reading, stay with it, and come b
 | 46 | The controls gave Review and Play equal weight, and the sentence rewind sat among the tools below. | Play is now the large central button, with **↶ (back a sentence) and Review either side.** The tools row is shorter: Chapters (Sections for papers), Text view, Notes, Settings. It fits one row on phones. |
 | 47 | The "A pace that follows you" panel took half the space below the reader to explain timing. | Replaced by the Today card. A one-line note under the pace keeps the explanation. |
 
+### Follow-up from use (October 2026)
+
+| # | Request | Change |
+|---|---|---|
+| 54 | Going back a sentence had no matching way forward. | **↷ beside Play** moves forward one sentence (as → does), so a reader can step back and return. |
+| 55 | Review showed one paragraph at a time behind Previous / Next, which felt like a lot to manage. | **Review is one scrolling text.** It opens at your place, and earlier and later paragraphs load as you scroll. Find, look up and Back to my place stay. |
+| 56 | Starting from a word in Review took two steps. | **Double-tap a word to read from it.** A single tap still chooses it for look-up. |
+| 57 | Some readers prefer to see how far through they are. | **Progress can show percent read** instead of time left: tap the label in the reader, or choose it in Appearance. The choice is remembered. |
+
 What to measure next, with consent: whether readers with a goal come back on more days, which goal size they keep, and whether the fade-back while reading changes how often they pause.
 
 ## Still open
