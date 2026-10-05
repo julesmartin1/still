@@ -39,29 +39,35 @@
               d="M12.6 2.2c.4 3-1.9 4.6-3.4 6.6C7.6 10.9 6.5 12.6 6.5 15a5.5 5.5 0 0 0 11 0c0-2.3-1-4.1-2.2-5.6.1 1.4-.4 2.6-1.5 3.1.3-3.9-.9-7.6-1.2-10.3z"
             /></svg
           ><span id="streakCount">0</span></button
-        ><button id="library" class="outline">Bookshelf</button
-        ><button id="newText" class="outline" aria-label="Add reading">
-          ＋<span class="wide-only"> Add reading</span>
+        ><button id="library" class="ghost">Bookshelf</button
+        ><button id="newText" class="primary" aria-label="Add reading">
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" /></svg
+          ><span class="wide-only">Add reading</span>
         </button>
       </nav>
     </header>
     <main>
       <div class="topline">
         <div>
-          <p class="eyebrow">YOUR READING SPACE</p>
           <h1 id="title" dir="auto">The art of noticing</h1>
         </div>
         <span id="saved" class="muted">Saved on this device</span>
       </div>
       <section id="wordReader" class="reader" aria-label="Word reader">
         <div class="reader-top">
-          <span id="mode">READY WHEN YOU ARE</span
+          <span id="mode">Ready when you are</span
           ><span class="reader-meta"
-            ><button
-              id="timeLeft"
-              type="button"
-              class="meta-toggle"
-            ></button
+            ><button id="timeLeft" type="button" class="meta-toggle"></button
             ><span id="count">1 / 200 words</span></span
           >
         </div>
@@ -91,18 +97,65 @@
             aria-label="Back one sentence"
             title="Back one sentence (←)"
           >
-            ↶</button
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M9 14 4 9l5-5" />
+              <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+            </svg></button
           ><button id="play" class="primary">
-            ▶ <span>Start reading</span></button
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              stroke="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M8 5.1v13.8a1 1 0 0 0 1.5.86l11-6.9a1 1 0 0 0 0-1.72l-11-6.9A1 1 0 0 0 8 5.1z"
+              />
+            </svg>
+            <span>Start reading</span></button
           ><button
             id="quickForward"
             class="secondary round"
             aria-label="Forward one sentence"
             title="Forward one sentence (→)"
           >
-            ↷</button
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m15 14 5-5-5-5" />
+              <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+            </svg></button
           ><button id="review" class="secondary" title="Review paragraph (R)">
-            ☰ <span>Review</span>
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 6h16M4 12h16M4 18h10" />
+            </svg>
+            <span>Review</span>
           </button>
         </div>
         <div
@@ -147,10 +200,10 @@
         ><span id="sourceNote" class="muted" role="status"></span>
       </div>
       <div class="reading-tools">
-        <button id="contents" class="outline">Chapters</button
-        ><button id="readingMode" class="outline">Text view</button
-        ><button id="bookmarks" class="outline">Notes</button
-        ><button id="readingSettings" class="outline">Settings</button>
+        <button id="contents" class="tool">Chapters</button
+        ><button id="readingMode" class="tool">Text view</button
+        ><button id="bookmarks" class="tool">Notes</button
+        ><button id="readingSettings" class="tool">Settings</button>
       </div>
       <div class="settings">
         <div class="pace">
@@ -241,16 +294,18 @@
       </div>
       <footer>
         <button id="aboutStill" class="text-button">About &amp; privacy</button
-        ><span class="shortcuts"
-          >Space or tap: play / pause · ← →: sentence · ↑ ↓: pace · R: review ·
-          hold S: see sentence</span
-        ><span>One word. A little more room.</span>
+        ><span class="shortcuts" aria-label="Keyboard shortcuts"
+          ><span><kbd>Space</kbd> play or pause</span
+          ><span><kbd>←</kbd><kbd>→</kbd> sentence</span
+          ><span><kbd>↑</kbd><kbd>↓</kbd> pace</span
+          ><span><kbd>R</kbd> review</span
+          ><span>hold <kbd>S</kbd> sentence</span></span
+        >
       </footer>
     </main>
     <dialog id="libraryDialog" aria-labelledby="libraryTitle">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">PICK UP WHERE YOU LEFT OFF</p>
           <h2 id="libraryTitle">Your bookshelf</h2>
         </div>
         <button
@@ -258,21 +313,34 @@
           class="close"
           aria-label="Close bookshelf"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <p class="muted">Readings and their places are saved on this device.</p>
-      <label class="sr-only" for="shelfSearch">Search bookshelf</label
-      ><input
-        id="shelfSearch"
-        type="search"
-        placeholder="Search titles and text…"
-      /><label class="sr-only" for="shelfView">Bookshelf view</label
-      ><select id="shelfView">
-        <option value="active">Reading</option>
-        <option value="archived">Archived</option>
-        <option value="trash">Trash</option>
-      </select>
+      <div class="shelf-toolbar">
+        <label class="sr-only" for="shelfSearch">Search bookshelf</label
+        ><input
+          id="shelfSearch"
+          type="search"
+          placeholder="Search titles and text…"
+        /><label class="sr-only" for="shelfView">Bookshelf view</label
+        ><select id="shelfView">
+          <option value="active">Reading</option>
+          <option value="archived">Archived</option>
+          <option value="trash">Trash</option>
+        </select>
+      </div>
       <p id="libraryStatus" role="status"></p>
       <button id="undoShelf" class="text-button" hidden>Undo last move</button>
       <button id="emptyTrash" class="text-button danger" hidden>
@@ -295,14 +363,27 @@
         </button>
       </details>
       <div class="dialog-actions">
-        <button id="libraryAdd" class="primary">＋ Add reading</button>
+        <button id="libraryAdd" class="primary">
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Add reading
+        </button>
       </div>
     </dialog>
     <dialog id="inputDialog">
       <form id="inputForm">
         <div class="dialog-heading">
           <div>
-            <p class="eyebrow">MAKE YOURSELF AT HOME</p>
             <h2>What are you reading?</h2>
           </div>
           <button
@@ -311,7 +392,18 @@
             class="close"
             aria-label="Close new text"
           >
-            ×
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
           </button>
         </div>
         <label for="textTitle">Title</label
@@ -330,8 +422,8 @@
           <p class="text-check-title">Worth a look before you read</p>
           <ul id="textCheckList"></ul>
         </div>
-        <div class="import-divider">or import a file</div>
         <div class="pdf-upload">
+          <p class="import-divider">Or import a file</p>
           <div class="file-buttons">
             <label class="file-button" for="textFile"
               >Text file<input
@@ -356,12 +448,14 @@
           </div>
           <p id="textFileStatus" role="status"></p>
           <p id="epubStatus" class="muted" role="status"></p>
-          <label for="pdfLayout" class="inline-label">PDF reading order</label
-          ><select id="pdfLayout">
-            <option value="auto">Detect columns automatically</option>
-            <option value="single">Across the page (one column)</option>
-            <option value="two">Left column, then right column</option>
-          </select>
+          <div class="inline-field">
+            <label for="pdfLayout" class="inline-label">PDF reading order</label
+            ><select id="pdfLayout">
+              <option value="auto">Detect columns automatically</option>
+              <option value="single">Across the page (one column)</option>
+              <option value="two">Left column, then right column</option>
+            </select>
+          </div>
           <p id="pdfHint" class="muted">
             PDFs with selectable text · up to 50 MB · processed on your device
           </p>
@@ -403,26 +497,29 @@
             Import separate copy
           </button>
         </div>
-        <label for="importType">Reading type</label
-        ><select id="importType">
-          <option value="book">Book</option>
-          <option value="academic">Academic paper</option>
-          <option value="other" selected>Other</option>
-        </select>
-        <p id="typeHint" class="muted">
-          You can change this later in Settings.
-        </p>
-        <label for="importCheckins">Check-ins</label
-        ><select id="importCheckins" aria-describedby="importCheckinsHint">
-          <option value="off">Off</option>
-          <option value="500">About every 500 words (2 min)</option>
-          <option value="1000">About every 1,000 words (4 min)</option>
-          <option value="2000">About every 2,000 words (8 min)</option>
-          <option value="sections">At the end of each chapter</option>
-        </select>
-        <p id="importCheckinsHint" class="muted">
-          Optional short pauses to sum up what you read, always at the end of a
-          paragraph.
+        <div class="field-grid">
+          <div>
+            <label for="importType">Reading type</label
+            ><select id="importType">
+              <option value="book">Book</option>
+              <option value="academic">Academic paper</option>
+              <option value="other" selected>Other</option>
+            </select>
+          </div>
+          <div>
+            <label for="importCheckins">Check-ins</label
+            ><select id="importCheckins" aria-describedby="importCheckinsHint">
+              <option value="off">Off</option>
+              <option value="500">About every 500 words (2 min)</option>
+              <option value="1000">About every 1,000 words (4 min)</option>
+              <option value="2000">About every 2,000 words (8 min)</option>
+              <option value="sections">At the end of each chapter</option>
+            </select>
+          </div>
+        </div>
+        <p id="importCheckinsHint" class="muted field-hint">
+          Check-ins are short, optional pauses to sum up what you read, always
+          at the end of a paragraph. You can change both later in Settings.
         </p>
         <div id="importAcademic" hidden>
           <label class="check-label"
@@ -459,7 +556,6 @@
     <dialog id="reviewDialog">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">A LITTLE CONTEXT</p>
           <h2>Take another look</h2>
         </div>
         <button
@@ -467,7 +563,18 @@
           class="close"
           aria-label="Close paragraph review"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <p class="muted">
@@ -495,13 +602,12 @@
       <div id="definition" class="definition" aria-live="polite" hidden></div>
       <div class="dialog-actions review-actions">
         <button id="returnToPlace" class="text-button">Back to my place</button
-        ><button id="resume" class="primary">Read from here ▶</button>
+        ><button id="resume" class="primary">Read from here</button>
       </div>
     </dialog>
     <dialog id="sourceDialog" aria-labelledby="sourceTitle">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">IN CONTEXT</p>
           <h2 id="sourceTitle">Original PDF</h2>
         </div>
         <button
@@ -509,12 +615,34 @@
           class="close"
           aria-label="Close original PDF"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <div class="source-toolbar">
         <button id="sourcePrev" class="outline" aria-label="Previous PDF page">
-          ←
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m15 18-6-6 6-6" />
+          </svg>
         </button>
         <form id="sourcePageForm">
           <label for="sourcePage">Page</label
@@ -524,7 +652,18 @@
           ><button class="text-button">Go</button>
         </form>
         <button id="sourceNext" class="outline" aria-label="Next PDF page">
-          →</button
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg></button
         ><label for="sourceZoom" class="sr-only">PDF zoom</label
         ><select id="sourceZoom">
           <option value="1">Fit page width</option>
@@ -563,7 +702,18 @@
           class="close"
           aria-label="Close reading settings"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <label for="readingTitle">Title</label
@@ -582,7 +732,7 @@
         <option value="2000">About every 2,000 words (8 min)</option>
         <option value="sections">At the end of each chapter</option>
       </select>
-      <p class="muted">
+      <p class="muted field-hint">
         A short, ungraded pause at the end of a paragraph to sum up what you
         read. Losing the thread offers a slower replay.
       </p>
@@ -670,7 +820,9 @@
           are already stored on this device.
         </p>
       </details>
-      <button id="saveReadingDetails" class="primary">Save settings</button>
+      <div class="dialog-actions">
+        <button id="saveReadingDetails" class="primary">Save settings</button>
+      </div>
     </dialog>
     <dialog id="contentsDialog" aria-labelledby="contentsTitle">
       <div class="dialog-heading">
@@ -680,7 +832,18 @@
           class="close"
           aria-label="Close sections and chapters"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <p class="muted">
@@ -707,7 +870,18 @@
           class="close"
           aria-label="Close bookmarks"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <button id="markCurrent" class="outline">Save current paragraph</button>
@@ -730,7 +904,18 @@
           class="close"
           aria-label="Close passage note"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <blockquote id="markQuote" dir="auto"></blockquote>
@@ -746,11 +931,21 @@
     <dialog id="paceDialog" aria-labelledby="paceTitle">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">FIND MY PACE</p>
           <h2 id="paceTitle">A comfortable place to start</h2>
         </div>
         <button data-close="paceDialog" class="close" aria-label="Close">
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <p class="muted">
@@ -786,7 +981,6 @@
     <dialog id="checkinDialog" aria-labelledby="checkinTitle">
       <div class="dialog-heading">
         <div>
-          <p class="eyebrow">A QUICK CHECK-IN</p>
           <h2 id="checkinTitle">What was that about?</h2>
         </div>
         <button
@@ -794,7 +988,18 @@
           class="close"
           aria-label="Skip this check-in"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <div id="checkinAsk">
@@ -841,17 +1046,41 @@
     <dialog id="welcomeDialog" aria-labelledby="welcomeTitle">
       <div class="dialog-heading">
         <div>
-          <p id="welcomeEyebrow" class="eyebrow">WELCOME TO STILL</p>
+          <p id="welcomeEyebrow" class="eyebrow">Welcome to Still</p>
           <h2 id="welcomeTitle">Read more, with less effort</h2>
         </div>
         <button data-close="welcomeDialog" class="close" aria-label="Close">
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <div data-step="intro">
         <ul class="welcome-points">
           <li>
-            <span class="point-icon" aria-hidden="true">◎</span>
+            <span class="point-icon" aria-hidden="true"
+              ><svg
+                class="icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="8" />
+                <circle cx="12" cy="12" r="2.5" fill="currentColor" /></svg
+            ></span>
             <span
               ><strong>Your eyes stay still.</strong> Words come to you one at a
               time, so there’s no hunting along the line and nothing else
@@ -859,10 +1088,23 @@
             >
           </li>
           <li>
-            <span class="point-icon" aria-hidden="true">↶</span>
+            <span class="point-icon" aria-hidden="true"
+              ><svg
+                class="icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg
+            ></span>
             <span
               ><strong>Tap to pause. Hold to see the sentence.</strong> Missed
-              something? Go back a sentence with ↶.</span
+              something? Go back a sentence with the arrow beside Play.</span
             >
           </li>
           <li>
@@ -916,7 +1158,18 @@
           data-close="deleteDialog"
           aria-label="Cancel deletion"
         >
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <p id="deleteDescription"></p>
@@ -930,7 +1183,18 @@
       <div class="dialog-heading">
         <h2 id="aboutTitle">About Still</h2>
         <button class="close" data-close="aboutDialog" aria-label="Close about">
-          ×
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
         </button>
       </div>
       <p>
