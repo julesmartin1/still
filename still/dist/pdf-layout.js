@@ -100,8 +100,25 @@ function findGutter(rows, items) {
   }
   return { split, best, shared: bestShared, box, span };
 }
-function columnLines(rows, split) {
+function columnLines(rows, split, span) {
   // Entire spanning rows form boundaries; never split a row by individual PDF fragments.
+  // A short row centred on the gutter below both columns (a page number, a
+  // centred footer) also spans the page: it belongs after both columns, not
+  // at the foot of the left one.
+  const centred = (row) => {
+    const box = bounds(row.items);
+    const both =
+      row.items.some((i) => i.transform[4] + i.width <= split - 3) &&
+      row.items.some((i) => i.transform[4] >= split + 3);
+    return (
+      !both &&
+      Math.abs((box.x + box.right) / 2 - split) < span * 0.06 &&
+      box.right - box.x < span * 0.4
+    );
+  };
+  const lastRight = rows.findLastIndex(
+    (row) => !centred(row) && row.items.some((i) => i.transform[4] >= split),
+  );
   const lines = [];
   let band = [];
   const flush = () => {
@@ -112,17 +129,57 @@ function columnLines(rows, split) {
     );
     band = [];
   };
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
     if (
       row.items.some(
         (i) => i.transform[4] < split && i.transform[4] + i.width > split,
-      )
+      ) ||
+      (index > lastRight && centred(row))
     ) {
       flush();
       lines.push(...makeLines(row.items));
     } else band.push(...row.items);
   }
   flush();
+  return lines;
+}
+// A narrow block beside the text, such as a figure caption in the margin,
+// sits on its own baselines, so sorting lines top to bottom interleaves it
+// with the text line by line. Finds a stretch of lines that a vertical
+// gutter separates into two sides, both several lines long, and reads the
+// left side, then the right.
+function untangleSideBlocks(lines) {
+  const starts = [...new Set(lines.map((l) => Math.round(l.x)))];
+  for (const start of starts) {
+    let run = [];
+    const finish = (end) => {
+      const left = run.filter((i) => lines[i].right <= start - 6),
+        right = run.filter((i) => lines[i].x >= start - 1);
+      let switches = 0;
+      for (let k = 1; k < run.length; k++)
+        if (left.includes(run[k]) !== left.includes(run[k - 1])) switches++;
+      if (left.length >= 3 && right.length >= 3 && switches >= 3) {
+        const from = run[0];
+        lines.splice(
+          from,
+          end - from,
+          ...left.map((i) => lines[i]),
+          ...right.map((i) => lines[i]),
+        );
+        return true;
+      }
+      return false;
+    };
+    for (let i = 0; i <= lines.length; i++) {
+      const line = lines[i];
+      const sideways = line && (line.right <= start - 6 || line.x >= start - 1);
+      if (sideways) run.push(i);
+      else {
+        if (run.length >= 6 && finish(i)) return untangleSideBlocks(lines);
+        run = [];
+      }
+    }
+  }
   return lines;
 }
 function orderedRegions(items, mode, depth = 0) {
@@ -156,7 +213,10 @@ function orderedRegions(items, mode, depth = 0) {
       gutter.best >= 3 &&
       gutter.shared >= rows.length * 0.3
     )
-      return { lines: columnLines(rows, gutter.split), columns: 2 };
+      return {
+        lines: columnLines(rows, gutter.split, gutter.span),
+        columns: 2,
+      };
   }
   // Wide horizontal whitespace separates layouts, e.g. an abstract sidebar from the body.
   const heights = items.map((i) => i.height).sort((a, b) => a - b),
@@ -181,8 +241,9 @@ function orderedRegions(items, mode, depth = 0) {
   let { split, best, box, span } = findGutter(rows, items);
   if (best < 1 && mode !== "two") split = null;
   if (split === null && mode === "two") split = box.x + span / 2;
-  if (split === null) return { lines: makeLines(items), columns: 1 };
-  return { lines: columnLines(rows, split), columns: 2 };
+  if (split === null)
+    return { lines: untangleSideBlocks(makeLines(items)), columns: 1 };
+  return { lines: columnLines(rows, split, span), columns: 2 };
 }
 export function layoutPage(
   raw,
@@ -200,6 +261,45 @@ export function layoutPage(
     }));
   return { width, height, ...orderedRegions(items, mode) };
 }
+// Running headers sit above the body; footers and page numbers sit on a
+// baseline in the bottom margin (often 7–8% up, so their top edge can reach
+// into the last 10%).
+function marginLine(line, page) {
+  return line.y > page.height * 0.92 || line.y < page.height * 0.08;
+}
+// Footnotes at the foot of a column: smaller type, starting with a note
+// marker ("3The distribution…", "* Work done while…"). Cached per page.
+const footnoteCache = new WeakMap();
+function footnoteLines(page) {
+  if (footnoteCache.has(page)) return footnoteCache.get(page);
+  const weights = new Map();
+  for (const l of page.lines) {
+    const h = Math.round(l.height * 2) / 2;
+    weights.set(h, (weights.get(h) || 0) + l.text.length);
+  }
+  const body = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0] || 0;
+  const notes = new Set();
+  let inNote = null;
+  for (const l of page.lines) {
+    const small = l.height <= body * 0.9;
+    if (inNote && small && l.y <= inNote.y + 2) {
+      notes.add(l);
+      inNote = l;
+      continue;
+    }
+    inNote = null;
+    if (
+      small &&
+      l.y < page.height * 0.35 &&
+      /^(?:\d{1,3}|[*†‡§¶])\s?\p{L}/u.test(l.text)
+    ) {
+      notes.add(l);
+      inNote = l;
+    }
+  }
+  footnoteCache.set(page, notes);
+  return notes;
+}
 export function composePdf(
   pages,
   { from = 1, to = pages.length, removeMargins = false } = {},
@@ -209,9 +309,7 @@ export function composePdf(
   const signature = (l) => l.text.toLowerCase().replace(/\d+/g, "#");
   for (const p of pages) {
     for (const key of new Set(
-      p.lines
-        .filter((l) => l.y > p.height * 0.92 || l.top < p.height * 0.08)
-        .map(signature),
+      p.lines.filter((l) => marginLine(l, p)).map(signature),
     ))
       counts.set(key, (counts.get(key) || 0) + 1);
   }
@@ -220,12 +318,44 @@ export function composePdf(
   const locations = [];
   let removed = 0,
     last = null; // previous retained line, across pages
+  // Margin lines that interrupt a sentence (a first-page footer, a header
+  // seen only once) wait until that sentence's paragraph ends.
+  let deferred = [];
+  const emit = (line, page, { paragraph, join }) => {
+    if (join === "remove") text = text.slice(0, -1);
+    if (text && !join) text += paragraph ? "\n\n" : " ";
+    const count = countWords(line.text);
+    locations.push({
+      page: page.number,
+      start: wordIndex - (join ? 1 : 0),
+      end: wordIndex + count - 1 - (join ? 1 : 0),
+      rect: [line.x, line.y, line.right, line.top],
+      text: line.text,
+    });
+    wordIndex += count - (join ? 1 : 0);
+    text += line.text;
+  };
+  const flushDeferred = () => {
+    // Each footer and each footnote is its own paragraph.
+    deferred.forEach(({ line, page, note }, i) => {
+      const before = deferred[i - 1];
+      emit(line, page, {
+        paragraph:
+          !before ||
+          before.page !== page ||
+          before.note !== note ||
+          (note && /^(?:\d{1,3}|[*†‡§¶])\s?\p{L}/u.test(line.text)),
+      });
+    });
+    deferred = [];
+  };
   for (const page of chosen) {
     let previous = null;
     for (const line of page.lines) {
+      const margin = marginLine(line, page);
       if (
         removeMargins &&
-        (line.y > page.height * 0.92 || line.top < page.height * 0.08) &&
+        margin &&
         // A bare page number is safe to drop on any multi-page PDF; other
         // repeated lines need 3+ pages before they count as a header/footer.
         ((pages.length >= 2 && /^\d+$/.test(line.text)) ||
@@ -234,6 +364,18 @@ export function composePdf(
               Math.max(3, Math.ceil(pages.length * 0.5))))
       ) {
         removed++;
+        continue;
+      }
+      const note = footnoteLines(page).has(line);
+      const aside = margin || note;
+      if (
+        aside &&
+        last &&
+        !last.heading &&
+        !last.aside &&
+        !/[.!?:;。！？]["”’)\]]*$/u.test(last.text)
+      ) {
+        deferred.push({ line, page, note });
         continue;
       }
       const gap = previous ? previous.y - line.y : Infinity;
@@ -253,6 +395,7 @@ export function composePdf(
         !heading &&
         last &&
         !last.heading &&
+        !last.aside &&
         !/[.!?:;。！？]["”’)\]]*$/u.test(last.text) &&
         /^["“‘(]?\p{Ll}/u.test(line.text);
       // Books mark paragraphs with a first-line indent or a short last line,
@@ -278,23 +421,14 @@ export function composePdf(
             previous.start &&
             previous.text.length <= 80 &&
             /^["“‘(]?\p{Lu}/u.test(line.text)));
-      const join = !paragraph ? previous?.joinNext : false;
-      if (join === "remove") text = text.slice(0, -1);
-      if (text && !join) text += paragraph ? "\n\n" : " ";
-      const count = countWords(line.text);
-      locations.push({
-        page: page.number,
-        start: wordIndex - (join ? 1 : 0),
-        end: wordIndex + count - 1 - (join ? 1 : 0),
-        rect: [line.x, line.y, line.right, line.top],
-        text: line.text,
-      });
-      wordIndex += count - (join ? 1 : 0);
-      text += line.text;
-      previous = { ...line, heading, start: paragraph };
+      const join = !paragraph ? (previous || last)?.joinNext : false;
+      if (paragraph && deferred.length) flushDeferred();
+      emit(line, page, { paragraph, join });
+      previous = { ...line, heading, aside, start: paragraph };
       last = previous;
     }
   }
+  flushDeferred();
   return { text, locations, removed };
 }
 // Right edge of the text column a line belongs to (the widest line that
@@ -328,32 +462,83 @@ export function sourceLocation(locations, index) {
   return null;
 }
 
+// How to rejoin a word split by a hyphen at the end of a line: "keep" the
+// hyphen (a compound), "remove" it (a word broken across lines), or null to
+// leave it alone. The dictionary decides when it knows either spelling.
+// Otherwise two known words make a compound ("hand-tagged", "n-gram",
+// "HMM-based"), and anything else is a broken word ("pro-jectivized"),
+// except very short pieces, which are too often words the dictionary lacks
+// ("state-of", "language-to").
+async function hyphenJoin(first, second, lookup) {
+  if (await lookup(first + "-" + second)) return "keep";
+  if (await lookup(first + second)) return "remove";
+  const known = await lookup(second);
+  if (
+    known &&
+    (first.length === 1 ||
+      /\p{Lu}/u.test(first) ||
+      (first.length >= 3 && (await lookup(first))))
+  )
+    return "keep";
+  if (first.length >= 2 && second.length >= 3) return "remove";
+  return null;
+}
 export async function markLineJoins(pages, lookup, { signal } = {}) {
   let count = 0;
-  for (const page of pages)
-    for (let i = 0; i < page.lines.length - 1; i++) {
-      signal?.throwIfAborted();
-      const line = page.lines[i],
-        next = page.lines[i + 1];
+  // Body text in reading order across pages, so a word hyphenated at the
+  // foot of one column or page joins the start of the next; footnotes
+  // separately, line by line.
+  const pairs = [];
+  let body = null;
+  for (const page of pages) {
+    const notes = footnoteLines(page);
+    let note = null;
+    for (const line of page.lines) {
       delete line.joinNext;
-      const a = line.text.match(/([\p{L}]+)-$/u),
-        b = next.text.match(/^([\p{Ll}][\p{L}]+)/u);
-      if (
-        !a ||
-        !b ||
-        Math.abs(next.x - line.x) > Math.max(18, line.height * 2) ||
-        line.y - next.y <= 0 ||
-        line.y - next.y > Math.max(line.height, next.height) * 1.65
-      )
+      if (marginLine(line, page)) continue;
+      if (notes.has(line)) {
+        if (note)
+          pairs.push({
+            line: note,
+            next: line,
+            page,
+            nextPage: page,
+            jumps: false,
+          });
+        note = line;
         continue;
-      try {
-        if (await lookup(a[1] + "-" + b[1])) line.joinNext = "keep";
-        else if (await lookup(a[1] + b[1])) line.joinNext = "remove";
-        if (line.joinNext) count++;
-      } catch {
-        /* Without a dictionary, preserve the original spelling. */
       }
+      if (body)
+        pairs.push({
+          line: body.line,
+          next: line,
+          page: body.page,
+          nextPage: page,
+          jumps: true,
+        });
+      body = { line, page };
     }
+  }
+  for (const { line, next, page, nextPage, jumps } of pairs) {
+    signal?.throwIfAborted();
+    const a = line.text.match(/([\p{L}]+)-$/u),
+      b = next.text.match(/^([\p{Ll}][\p{L}]+)/u);
+    const below =
+      page === nextPage &&
+      Math.abs(next.x - line.x) <= Math.max(18, line.height * 2) &&
+      line.y - next.y > 0 &&
+      line.y - next.y <= Math.max(line.height, next.height) * 1.65;
+    // The next column (back up the page) or the next page.
+    const jumped =
+      jumps && (page !== nextPage || (next.y > line.y && next.x > line.x));
+    if (!a || !b || !(below || jumped)) continue;
+    try {
+      line.joinNext = await hyphenJoin(a[1], b[1], lookup);
+      if (line.joinNext) count++;
+    } catch {
+      /* Without a dictionary, preserve the original spelling. */
+    }
+  }
   return count;
 }
 
@@ -370,7 +555,7 @@ export function outlineSections(outline, { text, locations }) {
     let target =
       entry.top == null
         ? onPage[0]
-        : onPage.find((l) => l.rect[3] <= entry.top + 2) ?? null;
+        : (onPage.find((l) => l.rect[3] <= entry.top + 2) ?? null);
     // Pointing below the last line, or at a page with no text: the next text.
     if (!target) target = locations.find((l) => l.page > entry.page);
     if (!target || entry.page < locations[0].page) continue;

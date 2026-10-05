@@ -125,14 +125,14 @@ test("verified line-break repair retains compounds, ambiguous spelling and sourc
       height: 10,
     },
     {
-      text: "order and unknown-",
+      text: "order and state-",
       x: 40,
       y: 674,
       right: 200,
       top: 684,
       height: 10,
     },
-    { text: "suffix.", x: 40, y: 661, right: 200, top: 671, height: 10 },
+    { text: "of play.", x: 40, y: 661, right: 200, top: 671, height: 10 },
   ];
   const pages = [{ number: 1, width: 612, height: 792, lines }];
   assert.equal(
@@ -144,10 +144,10 @@ test("verified line-break repair retains compounds, ambiguous spelling and sourc
   const r = composePdf(pages);
   assert.equal(
     r.text,
-    "Test continuity with higher-order and unknown- suffix.",
+    "Test continuity with higher-order and state- of play.",
   );
-  assert.equal(parseText(r.text).tokens.length, 7);
-  assert.equal(r.locations.at(-1).end, 6);
+  assert.equal(parseText(r.text).tokens.length, 8);
+  assert.equal(r.locations.at(-1).end, 7);
   assert.equal(r.locations[1].start, 1);
   assert.equal(sourceLocation(r.locations, 1).focusIndex, 1);
 });

@@ -31,9 +31,7 @@ export function wrappedLines(text) {
   const typical = lengths[Math.floor(lengths.length * 0.75)];
   // Many lines of similar, moderate length that don't end sentences.
   const wrapped = filled.filter(
-    (l) =>
-      l.trim().length >= typical * 0.8 &&
-      !/[.!?:;"”’)\]]$/.test(l.trim()),
+    (l) => l.trim().length >= typical * 0.8 && !/[.!?:;"”’)\]]$/.test(l.trim()),
   ).length;
   return typical >= 35 && typical <= 110 && wrapped / filled.length > 0.35;
 }
@@ -62,8 +60,7 @@ export function rejoinLines(text) {
     // (a page break in the middle of a sentence).
     if (gap) {
       gap = false;
-      const carriesOn =
-        /[\p{L},;—–-]$/u.test(current) && /^\p{Ll}/u.test(line);
+      const carriesOn = /[\p{L},;—–-]$/u.test(current) && /^\p{Ll}/u.test(line);
       if (!carriesOn) end();
     }
     const headingLike =
@@ -71,7 +68,11 @@ export function rejoinLines(text) {
       /^[\p{Lu}\d]/u.test(line) &&
       !/[,;:—–.!?-]$/.test(line);
     if (headingLike && /[.!?"”’)\]…]$/.test(current)) end();
-    if (current.endsWith("-") && /^\p{Ll}/u.test(line) && /\p{L}-$/u.test(current))
+    if (
+      current.endsWith("-") &&
+      /^\p{Ll}/u.test(line) &&
+      /\p{L}-$/u.test(current)
+    )
       current = current.slice(0, -1) + line; // re-join a hyphenated word
     else current += (current ? " " : "") + line;
     const short = line.length < typical * 0.75;
@@ -89,10 +90,12 @@ export function rejoinLines(text) {
 // snake_case) is left alone.
 const MD_FENCE = /^[ \t]*(?:```|~~~).*$/gmu;
 const MD_HEADING = /^[ \t]{0,3}#{1,6}[ \t]+(?=\S)/gmu;
-const MD_RULE = /^[ \t]{0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+)[ \t]*$/gmu;
+const MD_RULE =
+  /^[ \t]{0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+)[ \t]*$/gmu;
 const MD_QUOTE = /^[ \t]{0,3}>[ \t]?/gmu;
 const MD_BULLET = /^[ \t]*[-*+][ \t]+(?:\[[ xX]\][ \t]+)?(?=\S)/gmu;
-const MD_TABLE_RULE = /^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$/gmu;
+const MD_TABLE_RULE =
+  /^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$/gmu;
 const MD_IMAGE = /!\[([^\]\n]*)\]\([^)\n]*\)/gu;
 const MD_LINK = /\[([^\]\n]+)\](?:\([^)\n]*\)|\[[^\]\n]*\])/gu;
 const MD_LINK_DEF = /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]+\S+.*$/gmu;
@@ -179,10 +182,7 @@ export function checkText(text) {
   const findings = [];
   if (!text.trim()) return findings;
 
-  const odd = collect(
-    text,
-    /\S*[ɐ-ʯ-�\u0000-\u0008\u000e-\u001f]\S*/gu,
-  );
+  const odd = collect(text, /\S*[ɐ-ʯ-�\u0000-\u0008\u000e-\u001f]\S*/gu);
   if (odd.count)
     findings.push({
       id: "odd",
@@ -217,7 +217,8 @@ export function checkText(text) {
       id: "pages",
       message: `${pageNumbers.count} lines are just a number, probably page numbers.`,
       ...pageNumbers,
-      fix: (t) => t.replace(/^[ \t]*(?:page\s+)?\d{1,4}[ \t]*(?:\r?\n|$)/gimu, ""),
+      fix: (t) =>
+        t.replace(/^[ \t]*(?:page\s+)?\d{1,4}[ \t]*(?:\r?\n|$)/gimu, ""),
       fixLabel: "Remove them",
     });
 
@@ -266,10 +267,7 @@ export function checkText(text) {
       ...long,
     });
 
-  const glued = collect(
-    text,
-    /(?<![\p{L}\d])\p{Ll}{3,}\d{1,3}(?![\p{L}\d])/gu,
-  );
+  const glued = collect(text, /(?<![\p{L}\d])\p{Ll}{3,}\d{1,3}(?![\p{L}\d])/gu);
   if (glued.count >= 3)
     findings.push({
       id: "notes",
