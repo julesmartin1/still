@@ -51,6 +51,7 @@ import {
   followUp,
   summarizeCheckins,
   normalizeCheckins,
+  checkinSpacing,
 } from "./checkins.js";
 import {
   parseText,
@@ -257,9 +258,9 @@ let session = null,
   welcomeFlow = false;
 const sentenceCase = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const WELCOME_COPY = {
-  intro: ["WELCOME TO STILL", "Read more, with less effort"],
+  intro: ["Welcome to Still", "Read more, with less effort"],
   goal: ["", "Pick a daily goal"],
-  pace: ["STEP 2 OF 2", "Find a comfortable pace?"],
+  pace: ["Step 2 of 2", "Find a comfortable pace?"],
 };
 // Running totals of the plan, for "N min left" (see engine.planSums).
 let timingSums = new Float64Array(1);
@@ -272,10 +273,8 @@ function refreshTiming() {
   });
   timingSums = planSums(timingPlan);
 }
-const checkinMode = () =>
-  ["interval", "sections", "off"].includes(appearance.checkins)
-    ? appearance.checkins
-    : "interval";
+// Check-ins are chosen per reading (see checkins.js); off unless chosen.
+const checkinMode = () => checkinSpacing(readingOptions.checkinEvery);
 function sectionStarts() {
   const key = readingOptions.sections || text;
   if (sectionCache?.key !== key)
@@ -513,26 +512,43 @@ function updateModeLabel(force = false) {
     el.classList.add("chapter");
   } else {
     el.textContent = reader.playing
-      ? "IN YOUR OWN TIME"
+      ? "In your own time"
       : reader.finished
-        ? "A GOOD PLACE TO PAUSE"
+        ? "A good place to pause"
         : list.length >= 2
-          ? "BEFORE THE FIRST CHAPTER"
-          : "READY WHEN YOU ARE";
+          ? "Before the first chapter"
+          : "Ready when you are";
     el.removeAttribute("title");
     el.classList.remove("chapter");
   }
 }
+const icon = (paths, filled = false) =>
+  `<svg class="icon" viewBox="0 0 24 24" ${
+    filled
+      ? 'fill="currentColor" stroke="none"'
+      : 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+  } aria-hidden="true">${paths}</svg>`;
+const ICONS = {
+  play: icon(
+    '<path d="M8 5.1v13.8a1 1 0 0 0 1.5.86l11-6.9a1 1 0 0 0 0-1.72l-11-6.9A1 1 0 0 0 8 5.1z"/>',
+    true,
+  ),
+  pause: icon(
+    '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+    true,
+  ),
+  again: icon('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
+};
 const touch = matchMedia("(pointer: coarse)");
 function playbackUI() {
   const playing = reader.playing;
   $("play").innerHTML = playing
-    ? "Ⅱ <span>Pause</span>"
+    ? `${ICONS.pause} <span>Pause</span>`
     : reader.finished
-      ? "↻ <span>Read again</span>"
+      ? `${ICONS.again} <span>Read again</span>`
       : reader.index > 0
-        ? "▶ <span>Continue</span>"
-        : "▶ <span>Start reading</span>";
+        ? `${ICONS.play} <span>Continue</span>`
+        : `${ICONS.play} <span>Start reading</span>`;
   updateModeLabel(true);
   // While words play, everything around the reader fades back.
   document.body.classList.toggle("immersive", playing);
@@ -594,8 +610,7 @@ function createReader(index = 0) {
         tokens: data.tokens,
         index: i,
         wordsRead,
-        mode: checkinMode(),
-        base: targetWpm(base, profile),
+        every: checkinMode(),
         sectionStarts: sectionStarts(),
       }),
     onBreak: (i) => {
@@ -838,6 +853,12 @@ $("newText").onclick = () => {
   $("textInput").value = "";
   $("textTitle").value = "";
   $("importType").value = "other";
+  // Check-ins start from the reader's last choice (off until they pick one).
+  try {
+    $("importCheckins").value = String(
+      checkinSpacing(storage.getItem("still-checkin-default")),
+    );
+  } catch {}
   $("importSkipCitations").checked = false;
   $("importSkipReferences").checked = false;
   $("pdfOptions").hidden = true;
@@ -895,6 +916,7 @@ $("inputForm").onsubmit = (e) => {
         skipReferences:
           kind === "academic" && $("importSkipReferences").checked,
         sections: draftSections(draftText) || detectSections(draftText, kind),
+        checkinEvery: checkinSpacing($("importCheckins").value),
       },
     },
     imported,
@@ -1700,6 +1722,11 @@ function previewStart() {
           .slice(0, 500)
       : "") || "Add text or a PDF to preview your starting point.";
 }
+$("importCheckins").onchange = () => {
+  try {
+    storage.setItem("still-checkin-default", $("importCheckins").value);
+  } catch {}
+};
 $("importType").onchange = () => {
   importTypeManual = true;
   updateDraft();
@@ -1713,6 +1740,7 @@ $("readingSettings").onclick = () => {
   pause();
   $("readingTitle").value = title;
   $("readingType").value = readingOptions.documentType;
+  $("checkinMode").value = String(checkinMode());
   updateFilterUI();
   $("settingsDialog").showModal();
 };
@@ -1731,6 +1759,7 @@ $("saveReadingDetails").onclick = () => {
   applyReadingOptions({
     ...readingOptions,
     documentType: type,
+    checkinEvery: checkinSpacing($("checkinMode").value),
     ...(type === "book" ? { skipCitations: false, skipReferences: false } : {}),
     sections:
       type !== readingOptions.documentType
@@ -2384,10 +2413,10 @@ function applyAppearance() {
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   const font =
     {
-      serif: "'Literata', Georgia, serif",
-      sans: "'DM Sans', Arial, sans-serif",
+      serif: "var(--serif)",
+      sans: "var(--sans)",
       mono: "ui-monospace, monospace",
-    }[appearance.font] || "'Literata', Georgia, serif";
+    }[appearance.font] || "var(--serif)";
   document.documentElement.style.setProperty("--reading-font", font);
   const size = clamp(Number(appearance.size) || 100, 80, 150);
   document.documentElement.style.setProperty("--reading-scale", size / 100);
@@ -2399,7 +2428,6 @@ function applyAppearance() {
     appearance.transition === "instant" ? "instant" : "soft";
   $("appearanceProgress").value =
     appearance.progress === "percent" ? "percent" : "time";
-  $("checkinMode").value = checkinMode();
   $("appearanceSize").value = size;
   $("appearanceSizeLabel").textContent = size + "%";
   try {
@@ -2414,7 +2442,6 @@ for (const id of [
   "appearancePlacement",
   "appearanceTransition",
   "appearanceProgress",
-  "checkinMode",
 ])
   $(id).oninput = () => {
     appearance = {
@@ -2424,7 +2451,6 @@ for (const id of [
       placement: $("appearancePlacement").value,
       transition: $("appearanceTransition").value,
       progress: $("appearanceProgress").value,
-      checkins: $("checkinMode").value,
     };
     applyAppearance();
     if (reader) updateTimeLeft();
@@ -2784,7 +2810,7 @@ function renderCheckins() {
   $("checkinSummary").textContent = s.total
     ? `${plural(s.total, "check-in")} for this reading: ${s.clear} clear · ${s.mostly} mostly · ${s.lost} lost the thread.`
     : checkinMode() === "off"
-      ? "Check-ins are off. Turn them on in Settings, or check in now."
+      ? "Check-ins are off for this reading. Turn them on in Settings, or check in now."
       : "Your check-ins for this reading will appear here.";
   const labels = { clear: "Clear", mostly: "Mostly", lost: "Lost the thread" };
   $("checkinList").replaceChildren(
@@ -3035,8 +3061,8 @@ function showWelcomeStep(step) {
   $("welcomeEyebrow").textContent =
     step === "goal"
       ? welcomeFlow
-        ? "STEP 1 OF 2"
-        : "YOUR DAILY GOAL"
+        ? "Step 1 of 2"
+        : "Your daily goal"
       : eyebrow;
   $("welcomeTitle").textContent = heading;
   if (step === "goal") {

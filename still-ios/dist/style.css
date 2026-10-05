@@ -1,12 +1,25 @@
 :root {
-  font-family: "DM Sans", sans-serif;
+  /* Fonts the reader already has: no downloads, and the serif is a real
+     book face on Apple devices (Iowan Old Style, Charter). */
+  --sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --serif:
+    "Iowan Old Style", Charter, "Bitstream Charter", "Sitka Text", Cambria,
+    Georgia, serif;
+  font-family: var(--sans);
   color: #202b43;
   background: #f5f7fb;
   font-synthesis: none;
   font-size: 16px;
+  -webkit-font-smoothing: antialiased;
   --ink: #202b43;
+  --on-ink: #ffffff;
   --blue: #365fe5;
   --muted: #5c687e; /* 4.5:1+ on every light surface */
+  --line: #e2e7ef;
+  --field: #d4dce9;
+  --hover: #e9eef6;
 }
 * {
   box-sizing: border-box;
@@ -57,8 +70,8 @@ header {
   align-items: center;
   gap: 12px;
   font-weight: 700;
-  font-size: 28px;
-  letter-spacing: -1px;
+  font-size: 26px;
+  letter-spacing: -0.5px;
   color: var(--ink);
   text-decoration: none;
 }
@@ -94,16 +107,16 @@ main {
   gap: 16px;
 }
 .eyebrow {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 2px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--muted);
-  margin: 0 0 10px;
+  margin: 0 0 6px;
 }
 h1 {
-  font-family: Literata, Georgia, serif;
-  font-size: 30px;
+  font-family: var(--serif);
+  font-size: 32px;
   font-weight: 400;
+  line-height: 1.2;
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -111,6 +124,12 @@ h2 {
   margin: 0;
   font-size: 21px;
   font-weight: 500;
+}
+.dialog-heading h2 {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 400;
+  line-height: 1.25;
 }
 .muted {
   font-size: 14px;
@@ -129,8 +148,7 @@ h2 {
   display: flex;
   justify-content: space-between;
   color: #a0aec6;
-  font-size: 12px;
-  letter-spacing: 1.5px;
+  font-size: 13px;
 }
 .reader-top span:last-child {
   letter-spacing: 0;
@@ -151,7 +169,7 @@ h2 {
   background: #657a9e;
 }
 #word {
-  font-family: Literata, Georgia, serif;
+  font-family: var(--serif);
   font-size: clamp(32px, 6vw, 66px);
   line-height: 1.3;
   width: 100%;
@@ -173,26 +191,57 @@ h2 {
 }
 .primary,
 .secondary,
-.outline {
-  padding: 13px 20px;
+.outline,
+.ghost,
+.tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 18px;
   border-radius: 10px;
   font-weight: 500;
   font-size: 14px;
-  min-height: 46px;
+  min-height: 44px;
 }
+.icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+/* On the page and in dialogs the main action is solid ink; inside the
+   dark reader it turns light (see .reader .primary). */
 .primary {
-  background: #bdd0ff;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.reader .primary {
+  background: #dbe5ff;
   color: #152644;
 }
 .secondary {
-  background: #ffffff0d;
+  background: transparent;
   color: inherit;
-  border: 1px solid #ffffff29;
+  border: 1px solid var(--field);
+}
+.reader .secondary {
+  background: #ffffff0d;
+  border-color: #ffffff29;
 }
 .outline {
-  border: 1px solid #d8dfeb;
+  border: 1px solid var(--field);
   background: transparent;
   color: var(--ink);
+}
+.ghost,
+.tool {
+  background: transparent;
+  color: var(--ink);
+}
+.ghost:hover,
+.tool:hover {
+  background: var(--hover);
+  filter: none;
 }
 .progress-track {
   height: 4px;
@@ -257,20 +306,38 @@ input[type="range"] {
   font-size: 14px;
 }
 footer {
-  border-top: 1px solid #e2e7ef;
+  border-top: 1px solid var(--line);
   display: flex;
   justify-content: space-between;
+  align-items: center;
   padding: 20px 0;
   color: var(--muted);
   font-size: 12px;
 }
+.shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+kbd {
+  display: inline-block;
+  min-width: 20px;
+  margin-right: 3px;
+  padding: 1px 5px;
+  border: 1px solid var(--field);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  font: 11px/1.4 var(--sans);
+  text-align: center;
+  color: var(--ink);
+}
 dialog {
   border: 1px solid #dce3ef;
-  border-radius: 20px;
-  background: #f9fbff;
+  border-radius: 16px;
+  background: #fbfcfe;
   color: var(--ink);
-  width: min(680px, calc(100% - 28px));
-  padding: 30px;
+  width: min(620px, calc(100% - 28px));
+  padding: 28px 32px 32px;
   max-height: 90dvh;
   overflow-y: auto;
   box-shadow: 0 30px 100px #0004;
@@ -284,47 +351,112 @@ dialog::backdrop {
   justify-content: space-between;
   align-items: flex-start;
   gap: 15px;
-  margin-bottom: 22px;
+  margin-bottom: 18px;
 }
 .close {
-  background: #e9eef7;
+  display: grid;
+  place-items: center;
+  background: transparent;
   border-radius: 50%;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
+  margin: -6px -10px 0 0;
   flex-shrink: 0;
-  font-size: 24px;
+  color: var(--muted);
+}
+.close:hover {
+  background: var(--hover);
   color: var(--ink);
+  filter: none;
 }
-form label {
+.close .icon {
+  width: 20px;
+  height: 20px;
+}
+/* One rhythm for every field: label, control, optional hint. */
+:where(dialog label:not(.check-label, .file-button, .goal-option, .sr-only)) {
   display: block;
-  margin: 18px 0 8px;
+  margin: 20px 0 6px;
   font-size: 14px;
+  font-weight: 500;
 }
-input:not([type="range"]),
+input:not([type="range"], [type="checkbox"], [type="radio"]),
 textarea {
   width: 100%;
-  padding: 12px;
-  border: 1px solid #d4dce9;
-  border-radius: 8px;
+  padding: 11px 12px;
+  border: 1px solid var(--field);
+  border-radius: 10px;
   background: white;
   color: var(--ink);
 }
+input:not([type="range"], [type="checkbox"], [type="radio"]):focus,
+textarea:focus,
+select:focus {
+  border-color: var(--blue);
+}
 textarea {
-  min-height: 230px;
+  min-height: 180px;
   resize: vertical;
   line-height: 1.6;
+}
+:where(dialog p.muted) {
+  margin: 12px 0 0;
+}
+dialog .field-hint {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 16px;
 }
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 12px;
-  margin-top: 22px;
+  margin-top: 28px;
 }
-.dialog-actions .secondary {
-  border-color: #d4dce9;
+dialog details {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 4px;
+}
+dialog details details {
+  border-top: 0;
+  margin-top: 8px;
+}
+dialog summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+dialog summary::-webkit-details-marker {
+  display: none;
+}
+/* A small chevron that turns when the section opens. */
+dialog summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  margin: 0 4px 0 2px;
+  opacity: 0.7;
+}
+dialog details[open] > summary::before {
+  transform: rotate(45deg);
 }
 .paragraph {
-  font-family: Literata, Georgia, serif;
+  font-family: var(--reading-font);
   font-size: 20px;
   line-height: 1.9;
   max-height: 50vh;
@@ -406,8 +538,7 @@ textarea {
   }
   .reader-top {
     padding: 20px;
-    font-size: 10px;
-    letter-spacing: 1px;
+    font-size: 12px;
   }
   .reader-top span:last-child {
     font-size: 12px;
@@ -429,11 +560,11 @@ textarea {
     gap: 28px;
     padding-top: 28px;
   }
-  footer span:last-child {
-    display: none;
-  }
   dialog {
-    padding: 22px;
+    padding: 22px 20px 24px;
+  }
+  .field-grid {
+    grid-template-columns: 1fr;
   }
   .paragraph {
     font-size: 18px;
@@ -453,10 +584,7 @@ textarea {
 }
 
 .pdf-upload {
-  border: 1px dashed #a9bcdf;
-  border-radius: 12px;
-  padding: 18px;
-  background: #edf2fc;
+  margin-top: 20px;
 }
 .pdf-upload .pdf-label {
   display: flex;
@@ -495,10 +623,9 @@ input[type="file"]::file-selector-button {
   color: var(--ink);
 }
 .import-divider {
-  margin-top: 20px;
-  text-align: center;
-  font-size: 13px;
-  color: var(--muted);
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 500;
 }
 [hidden] {
   display: none !important;
@@ -537,12 +664,18 @@ textarea:disabled {
   appearance: none;
 }
 .pace-step {
-  width: 34px;
-  height: 38px;
-  border-radius: 8px;
-  background: #e5ecf8;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid var(--field);
+  background: transparent;
   color: var(--ink);
-  font-size: 22px;
+  font-size: 20px;
+  line-height: 1;
+}
+.pace-step:hover {
+  background: var(--hover);
+  filter: none;
 }
 .library-list {
   display: grid;
@@ -643,8 +776,8 @@ textarea:disabled {
   .header-actions {
     gap: 7px;
   }
-  .header-actions .outline {
-    padding: 10px;
+  .header-actions :is(.ghost, .primary) {
+    padding: 0 12px;
     font-size: 13px;
   }
   .brand {
@@ -696,13 +829,22 @@ textarea:disabled {
 select {
   font: inherit;
   font-size: 16px;
-  padding: 10px;
-  border: 1px solid #b9c6d9;
-  border-radius: 8px;
-  background: white;
-  color: #18243b;
+  min-height: 44px;
+  padding: 0 38px 0 12px;
+  border: 1px solid var(--field);
+  border-radius: 10px;
+  /* A small caret drawn with two gradients (no image, no URL). */
+  background:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%) no-repeat
+      calc(100% - 20px) 50% / 6px 6px,
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%) no-repeat
+      calc(100% - 14px) 50% / 6px 6px,
+    white;
+  appearance: none;
+  color: var(--ink);
   width: 100%;
-  margin: 8px 0 14px;
+  margin: 0;
+  cursor: pointer;
 }
 #pdfOptions {
   border: 1px solid #cbd5e3;
@@ -727,6 +869,7 @@ select {
   align-items: center;
   gap: 10px;
   margin-top: 16px !important;
+  font-size: 15px;
 }
 .check-label input {
   width: 20px !important;
@@ -877,7 +1020,6 @@ select {
 .reading-filters summary {
   cursor: pointer;
   font-size: 14px;
-  color: #365fe5;
 }
 #originalParagraph {
   line-height: 1.7;
@@ -902,9 +1044,16 @@ select {
 
 .reading-tools {
   display: flex;
-  gap: 10px;
+  gap: 4px;
   flex-wrap: wrap;
-  margin-top: 16px;
+  margin: 12px -10px 0;
+}
+.reading-tools .tool {
+  padding: 0 12px;
+  color: var(--muted);
+}
+.reading-tools .tool:hover {
+  color: var(--ink);
 }
 .backup-controls {
   margin-top: 20px;
@@ -969,7 +1118,7 @@ select {
   }
 }
 :root {
-  --reading-font: "Literata", Georgia, serif;
+  --reading-font: var(--serif);
   --reading-scale: 1;
 }
 #word {
@@ -1059,6 +1208,7 @@ select {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+  margin: 16px 0 4px;
 }
 .shelf-toolbar input {
   flex: 1;
@@ -1083,8 +1233,12 @@ html[data-theme="dark"] {
   background: #101827;
   color: #e4eaf5;
   --ink: #e4eaf5;
+  --on-ink: #101827;
   --muted: #a6b4cb;
   --blue: #a5bdff;
+  --line: #26324a;
+  --field: #3a4862;
+  --hover: #1e2a40;
 }
 html[data-theme="dark"] dialog,
 html[data-theme="dark"] .normal-reader,
@@ -1096,16 +1250,13 @@ html[data-theme="dark"] .review-actions {
 html[data-theme="dark"] input:not([type="range"]),
 html[data-theme="dark"] textarea,
 html[data-theme="dark"] select {
-  background: #111a2a;
+  background-color: #111a2a;
   color: #e4eaf5;
   border-color: #43516b;
 }
 html[data-theme="dark"] .definition,
-html[data-theme="dark"] .pdf-upload,
 html[data-theme="dark"] .search-result,
-html[data-theme="dark"] .library-item.current,
-html[data-theme="dark"] .close,
-html[data-theme="dark"] .pace-step {
+html[data-theme="dark"] .library-item.current {
   background: #263650;
   color: #e4eaf5;
 }
@@ -1172,7 +1323,9 @@ select {
 .text-button,
 .primary,
 .secondary,
-.outline {
+.outline,
+.ghost,
+.tool {
   font-size: calc(14px * var(--system-text-scale));
 }
 .topline,
@@ -1180,8 +1333,7 @@ footer {
   flex-wrap: wrap;
   gap: 12px;
 }
-.normal-toolbar button,
-.reading-tools button {
+.normal-toolbar button {
   min-height: 44px;
 }
 #normalPane:focus-visible {
@@ -1207,27 +1359,48 @@ footer {
   align-items: center;
   min-height: 44px;
   padding: 0 16px;
+  border: 1px solid var(--field);
   border-radius: 10px;
-  background: #d6e2ff;
-  color: #203660;
-  font-weight: 600;
+  background: white;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 .file-button:hover {
-  background: #c7d7ff;
+  background: var(--hover);
 }
 .file-button:focus-within {
   outline: 3px solid var(--blue);
   outline-offset: 2px;
 }
-.inline-label {
-  display: block;
-  margin-top: 14px;
-  font-size: 14px;
+.inline-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+dialog .inline-field .inline-label {
+  margin: 0;
+  flex-shrink: 0;
+  font-weight: 400;
+  color: var(--muted);
+}
+.inline-field select {
+  flex: 1;
+  min-width: 0;
 }
 html[data-theme="dark"] .file-button {
-  background: #354e83;
-  color: #fff;
+  background: transparent;
+  border-color: #43516b;
+}
+@media (max-width: 600px) {
+  .inline-field {
+    display: block;
+  }
+  dialog .inline-field .inline-label {
+    margin-bottom: 6px;
+  }
 }
 
 /* ---- Touch targets (44 px minimum) ---- */
@@ -1383,9 +1556,6 @@ html[data-theme="dark"] .text-button.danger {
 html[data-theme="dark"] header {
   border-bottom-color: #26324a;
 }
-.import-divider {
-  margin-bottom: 10px;
-}
 .file-buttons .file-button {
   flex: 1 1 auto;
   justify-content: center;
@@ -1532,15 +1702,20 @@ html[data-theme="dark"] .text-check li .text-button {
   min-height: 44px;
   padding: 0 14px 0 10px;
   border-radius: 999px;
-  border: 1px solid #d8dfeb;
+  border: 0;
   background: transparent;
   color: var(--muted);
-  font-weight: 700;
-  font-size: 15px;
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.streak-chip:hover {
+  background: var(--hover);
+  filter: none;
 }
 .flame {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   fill: #b8c2d3;
   transition: fill 0.3s;
 }
@@ -1552,9 +1727,6 @@ html[data-theme="dark"] .text-check li .text-button {
 .streak-chip.lit .flame,
 .point-icon .flame {
   fill: #f26b1d;
-}
-html[data-theme="dark"] .streak-chip {
-  border-color: #3a4862;
 }
 html[data-theme="dark"] .streak-chip.lit {
   background: #3b2416;
@@ -1572,9 +1744,8 @@ html[data-theme="dark"] .streak-chip.lit .flame {
     display: none;
   }
   .header-actions #newText {
-    min-width: 44px;
-    font-size: 20px;
-    padding: 6px 12px;
+    width: 44px;
+    padding: 0;
   }
   .streak-chip {
     padding: 0 10px 0 6px;
@@ -1628,7 +1799,14 @@ html[data-theme="dark"] .streak-chip.lit .flame {
 .controls .round {
   width: 46px;
   padding: 0;
-  font-size: 20px;
+}
+.controls .icon {
+  width: 20px;
+  height: 20px;
+}
+#play .icon {
+  width: 16px;
+  height: 16px;
 }
 .toast {
   position: absolute;
@@ -1723,7 +1901,6 @@ html[data-theme="dark"] .streak-chip.lit .flame {
   .controls .secondary:not(.round) {
     width: 46px;
     padding: 0;
-    font-size: 18px;
   }
   .reader-meta #count {
     display: none;
@@ -1733,8 +1910,8 @@ html[data-theme="dark"] .streak-chip.lit .flame {
     grid-template-columns: repeat(4, 1fr);
     gap: 6px;
   }
-  .reading-tools .outline {
-    padding: 10px 4px;
+  .reading-tools .tool {
+    padding: 0 4px;
     font-size: calc(13px * var(--system-text-scale));
   }
 }
@@ -1936,18 +2113,21 @@ html[data-theme="dark"] #goalCheck {
 }
 .point-icon {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  background: #e5ecfb;
+  background: #e8eefb;
   color: var(--blue);
-  font-size: 20px;
+}
+.point-icon .icon {
+  width: 18px;
+  height: 18px;
 }
 .point-icon .flame {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
 }
 .goal-options {
   border: 0;
