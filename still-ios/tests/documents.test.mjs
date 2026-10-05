@@ -8,6 +8,30 @@ import {
   fileFingerprint,
 } from "../dist/document.js";
 import { encodeBackup, decodeBackup } from "../dist/backup.js";
+test("chapters are found in real book layouts, not in contents pages", () => {
+  const text = [
+    "Contents",
+    "Chapter 1....................5",
+    "Chapter 2....................9",
+    "CHAPTER 1. Loomings.",
+    "CHAPTER 2. The Carpet-Bag.",
+    "CHAPTER 3. The Spouter-Inn.",
+    "Chapter 1 It is a truth universally acknowledged, that a single man in possession of a good fortune must be in want of a wife.",
+    "part of his aunt, her resentment gave way.",
+    "Chapter 2 Mr. Bennet was among the earliest of those who waited on Mr. Bingley. He had always intended to visit him, though to the last always assuring his wife that he should not go.",
+    "BOOK I. (Folio), CHAPTER I. (Sperm Whale).—This whale, among the English of old vaguely known as the Trumpa whale, and the Physeter whale, and the Anvil Headed whale.",
+    "CHAPTER XI. Who Stole the Tarts?",
+    "The King and Queen of Hearts were seated on their throne.",
+  ].join("\n\n");
+  assert.deepEqual(
+    detectSections(text, "book").map((s) => [s.title, s.paragraph]),
+    [
+      ["Chapter 1", 7],
+      ["Chapter 2", 9],
+      ["CHAPTER XI. Who Stole the Tarts?", 11],
+    ],
+  );
+});
 test("document type suggestions and section anchors distinguish papers from books", () => {
   const paper =
     "Abstract\n\nStudy overview.\n\n1. Introduction\n\nSome prose.\n\nReferences\n\nSmith (2020).";

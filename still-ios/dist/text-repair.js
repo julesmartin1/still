@@ -15,7 +15,9 @@
 // Note numbers lose their superscript when text is extracted, so "garden³"
 // becomes "garden3". Numbers glued to the end of words are removed only when
 // they count up through the text (1, 2, 3...), which is what note markers do
-// and what postcodes, model numbers and dates don't.
+// and what postcodes, model numbers and dates don't. Names like "SHA-1",
+// "v2", "1.E.1" or "md5" are left alone: a note follows a word of two or more
+// letters and at most closing punctuation, and never repeats word for word.
 
 const LIGATURES = ["fi", "fl", "ff", "ffi", "ffl", "ft", "st", "ct", "Th"];
 // IPA letters and private-use code points: where mislabelled glyphs land.
@@ -87,26 +89,43 @@ export function applyGlyphMap(text, map) {
 }
 
 // A number glued to the end of a word, optionally after closing punctuation
-// and a footnote symbol: "garden3", "Wahlheim.∗12", "‘Albert19".
+// and a footnote symbol: "garden3", "Wahlheim.∗12", "‘Albert19". The word
+// stands on its own and has a lower-case letter, and the number isn't part of
+// a longer one, so "SHA-1", "4.0", "WSL2", "open3_detach" and "v1.8-rc2" stay.
 const NOTE =
-  /(?<=(?:^|[^\p{L}\d])\p{L}+(?:(?![∗*†‡])[\p{P}\p{S}]){0,4})([∗*†‡]?)(\d{1,3})(?![\p{L}\d])/gu;
+  /(?<=(?:^|[\s"'“‘(\[—–])((?=\p{L}{2})\p{L}*\p{Ll}\p{L}*[.,;:!?"'”’)\]»]{0,4}))([∗*†‡]?)(\d{1,3})(?![\p{L}\d_@/=-]|[.,:]\d)/gu;
 
 // Removes note markers from an array of strings (lines or whole texts, in
 // reading order). Returns the new strings and how many markers were removed.
 export function stripNoteMarkers(texts) {
   const found = [];
+  const seen = new Map(); // "word3" -> how often it occurs
   texts.forEach((text, t) => {
-    for (const m of text.matchAll(NOTE))
-      found.push({ t, index: m.index, length: m[0].length, n: Number(m[2]) });
+    for (const m of text.matchAll(NOTE)) {
+      const key = m[1].replace(/\P{L}/gu, "").toLowerCase() + m[3];
+      seen.set(key, (seen.get(key) || 0) + 1);
+      found.push({
+        t,
+        index: m.index,
+        length: m[0].length,
+        n: Number(m[3]),
+        key,
+      });
+    }
   });
   // Longest-running count: each marker 1-5 above the last, or a restart at 1.
+  // A restart counts only if it goes on to 2 (notes numbered per chapter),
+  // so a "1" that keeps coming back on its own is not a note.
   let last = 0;
-  const chain = [];
-  for (const f of found)
-    if ((f.n > last && f.n <= last + 5) || (f.n === 1 && last > 0)) {
-      chain.push(f);
-      last = f.n;
-    }
+  const runs = [[]];
+  for (const f of found) {
+    if (seen.get(f.key) > 1) continue;
+    if (f.n === 1 && last > 0) runs.push([]);
+    else if (!(f.n > last && f.n <= last + 5)) continue;
+    runs.at(-1).push(f);
+    last = f.n;
+  }
+  const chain = runs.filter((r) => r.length >= 2).flat();
   if (chain.length < 3) return { texts, removed: 0 };
   const out = [...texts];
   for (let i = chain.length - 1; i >= 0; i--) {
@@ -114,7 +133,8 @@ export function stripNoteMarkers(texts) {
     out[t] = out[t].slice(0, index) + out[t].slice(index + length);
   }
   // Footnote symbols left on their own after a word ("told.∗").
-  for (let t = 0; t < out.length; t++) out[t] = out[t].replace(/(?<=\S)[∗†‡]/g, "");
+  for (let t = 0; t < out.length; t++)
+    out[t] = out[t].replace(/(?<=\S)[∗†‡]/g, "");
   return { texts: out, removed: chain.length };
 }
 

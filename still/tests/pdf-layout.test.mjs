@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { layoutPage, composePdf, sourceLocation } from "../dist/pdf-layout.js";
+import {
+  layoutPage,
+  composePdf,
+  sourceLocation,
+  contentsLine,
+  splitLongDialogue,
+} from "../dist/pdf-layout.js";
 import { parseText } from "../dist/engine.js";
 const item = (str, x, y, width = 180) => ({
   str,
@@ -142,10 +148,7 @@ test("verified line-break repair retains compounds, ambiguous spelling and sourc
     2,
   );
   const r = composePdf(pages);
-  assert.equal(
-    r.text,
-    "Test continuity with higher-order and state- of play.",
-  );
+  assert.equal(r.text, "Test continuity with higher-order and state- of play.");
   assert.equal(parseText(r.text).tokens.length, 8);
   assert.equal(r.locations.at(-1).end, 7);
   assert.equal(r.locations[1].start, 1);
@@ -188,26 +191,47 @@ test("table-of-contents entries land on the line they point at", async () => {
   const ref = { num: 7 };
   const doc = {
     getOutline: async () => [
-      { title: "Part One", dest: [0, { name: "Fit" }], items: [
-        { title: "  Chapter   1 ", dest: "c1", items: [] },
-        { title: "Chapter 2", dest: [ref, { name: "XYZ" }, 0, 300, null], items: [] },
-      ] },
+      {
+        title: "Part One",
+        dest: [0, { name: "Fit" }],
+        items: [
+          { title: "  Chapter   1 ", dest: "c1", items: [] },
+          {
+            title: "Chapter 2",
+            dest: [ref, { name: "XYZ" }, 0, 300, null],
+            items: [],
+          },
+        ],
+      },
       { title: "Broken", dest: null, items: [] },
     ],
     getDestination: async () => [0, { name: "XYZ" }, 0, 500, null],
     getPageIndex: async (r) => (r === ref ? 1 : 0),
   };
   const outline = await readOutline(doc);
-  assert.deepEqual(outline.map((o) => [o.title, o.page, o.top, o.depth]), [
-    ["Part One", 1, null, 0],
-    ["Chapter 1", 1, 500, 1],
-    ["Chapter 2", 2, 300, 1],
-  ]);
-  const text = "Part One\n\nChapter 1\n\nSome words here.\n\nChapter 2\n\nMore words.";
-  const loc = (page, top, start, end) => ({ page, rect: [0, top - 10, 100, top], start, end });
+  assert.deepEqual(
+    outline.map((o) => [o.title, o.page, o.top, o.depth]),
+    [
+      ["Part One", 1, null, 0],
+      ["Chapter 1", 1, 500, 1],
+      ["Chapter 2", 2, 300, 1],
+    ],
+  );
+  const text =
+    "Part One\n\nChapter 1\n\nSome words here.\n\nChapter 2\n\nMore words.";
+  const loc = (page, top, start, end) => ({
+    page,
+    rect: [0, top - 10, 100, top],
+    start,
+    end,
+  });
   const locations = [
-    loc(1, 600, 0, 1), loc(1, 490, 2, 3), loc(1, 470, 4, 6),
-    loc(2, 600, 7, 7), loc(2, 290, 7, 8), loc(2, 270, 9, 10),
+    loc(1, 600, 0, 1),
+    loc(1, 490, 2, 3),
+    loc(1, 470, 4, 6),
+    loc(2, 600, 7, 7),
+    loc(2, 290, 7, 8),
+    loc(2, 270, 9, 10),
   ];
   // The second page's first line (top 600) is above Chapter 2's link point.
   locations[3] = loc(2, 600, 7, 6);
@@ -216,4 +240,40 @@ test("table-of-contents entries land on the line they point at", async () => {
     { title: "Chapter 1", paragraph: 2 },
     { title: "Chapter 2", paragraph: 4 },
   ]);
+});
+
+test("contents lines with dot leaders are recognised and skipped", () => {
+  assert.ok(contentsLine("Chapter 1....................................5"));
+  assert.ok(contentsLine("Preface . . . . . . . . . xi"));
+  assert.ok(
+    contentsLine("Letter 1..........3 Letter 2..........6 Letter 3.......9"),
+  );
+  assert.ok(!contentsLine("He waited.... 5 minutes passed."));
+  assert.ok(!contentsLine("And then.... nothing."));
+  const lines = [
+    "Contents",
+    "Chapter 1.............5",
+    "It was a fine day.",
+  ].map((text, i) => ({
+    text,
+    x: 40,
+    y: 700 - i * 30,
+    right: 250,
+    top: 710 - i * 30,
+    height: 10,
+  }));
+  const out = composePdf([{ number: 1, width: 612, height: 792, lines }]);
+  assert.equal(out.contents, 1);
+  assert.equal(out.text, "Contents\n\nIt was a fine day.");
+});
+
+test("a chapter printed as one block is split where the speaker changes", () => {
+  const filler = Array.from({ length: 420 }, () => "word").join(" ");
+  const block = `${filler}. "She did, indeed, Louisa." "Not at all," he replied.`;
+  const out = splitLongDialogue(block);
+  assert.ok(out.endsWith('Louisa."\n\n"Not at all," he replied.'), out);
+  assert.equal(out.split("\n\n").length, 2);
+  assert.equal(parseText(out).tokens.length, parseText(block).tokens.length);
+  const short = '"Yes." "No."';
+  assert.equal(splitLongDialogue(short), short);
 });

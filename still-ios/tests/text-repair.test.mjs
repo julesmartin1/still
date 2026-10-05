@@ -10,7 +10,9 @@ import {
 
 // A tiny dictionary standing in for WordNet.
 const WORDS = new Set(
-  "first find field figure office officer affairs offer differ effect flowers floor flood fly afflicted ruffle".split(" "),
+  "first find field figure office officer affairs offer differ effect flowers floor flood fly afflicted ruffle".split(
+    " ",
+  ),
 );
 const lookup = async (w) => (WORDS.has(w.toLowerCase()) ? { word: w } : null);
 
@@ -62,8 +64,31 @@ test("note numbers are removed only when they count up", () => {
     texts[0],
     "in a garden by the spring, near Melusine and the river. Then ‘Albert came.",
   );
-  const keep = "Vitamin B12 and the A4 page, COVID19, M4V 3B2, in the 1880s, at 3:15.";
+  const keep =
+    "Vitamin B12 and the A4 page, COVID19, M4V 3B2, in the 1880s, at 3:15.";
   assert.equal(stripNoteMarkers([keep]).texts[0], keep);
+});
+
+test("names and numbers in books are not mistaken for notes", () => {
+  // From Pro Git and Project Gutenberg's licence: the old rule read each
+  // "1" as a note numbering restart and deleted them all.
+  const keep = [
+    "Git uses a SHA-1 hash. A SHA-1 hash looks like this, and SHA-1 again.",
+    "licensed under by-nc-sa/3.0 terms, see paragraph 1.E.1 and 1.E.2,",
+    "then 1.E.3, with v1 := ld state[764] and v2 := i2f(v1) in WSL1 or WSL2,",
+    "installing libcurl4-gnutls-dev and v1.8.5-rc2 from git.team1.example.",
+  ];
+  assert.deepEqual(stripNoteMarkers(keep).texts, keep);
+  // Notes numbered per chapter still go: a restart counts once it reaches 2.
+  const { texts, removed } = stripNoteMarkers([
+    "a garden1 by the spring.2 Then",
+    "the hill1 and the river,2 near the sea.3",
+  ]);
+  assert.equal(removed, 5);
+  assert.deepEqual(texts, [
+    "a garden by the spring. Then",
+    "the hill and the river, near the sea.",
+  ]);
 });
 
 test("PDF lines are repaired in place", async () => {
