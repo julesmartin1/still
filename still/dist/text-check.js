@@ -83,6 +83,98 @@ export function rejoinLines(text) {
   return paragraphs.join("\n\n");
 }
 
+// Markdown: notes and drafts often carry #, **, - and [links](...), which
+// would otherwise be shown as words. These patterns only match Markdown's own
+// syntax, so ordinary punctuation (a dash mid-sentence, a lone asterisk,
+// snake_case) is left alone.
+const MD_FENCE = /^[ \t]*(?:```|~~~).*$/gmu;
+const MD_HEADING = /^[ \t]{0,3}#{1,6}[ \t]+(?=\S)/gmu;
+const MD_RULE = /^[ \t]{0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,}|=+)[ \t]*$/gmu;
+const MD_QUOTE = /^[ \t]{0,3}>[ \t]?/gmu;
+const MD_BULLET = /^[ \t]*[-*+][ \t]+(?:\[[ xX]\][ \t]+)?(?=\S)/gmu;
+const MD_TABLE_RULE = /^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(?:\|[ \t]*:?-{3,}:?[ \t]*)+\|?[ \t]*$/gmu;
+const MD_IMAGE = /!\[([^\]\n]*)\]\([^)\n]*\)/gu;
+const MD_LINK = /\[([^\]\n]+)\](?:\([^)\n]*\)|\[[^\]\n]*\])/gu;
+const MD_LINK_DEF = /^[ \t]{0,3}\[[^\]\n]+\]:[ \t]+\S+.*$/gmu;
+const MD_AUTOLINK = /<((?:https?:\/\/|mailto:)[^>\s]+)>/gu;
+const MD_CODE = /`+([^`\n]+?)`+/gu;
+const MD_STRONG = /(\*\*|__)(?=\S)([^\n]+?)(?<=\S)\1/gu;
+const MD_EMPHASIS =
+  /(?<![\p{L}\d*])\*(?=[^\s*])([^*\n]+?)(?<=[^\s*])\*(?![\p{L}\d*])|(?<![\p{L}\d_])_(?=[^\s_])([^_\n]+?)(?<=[^\s_])_(?![\p{L}\d_])/gu;
+const MD_STRIKE = /~~(?=\S)([^\n]+?)(?<=\S)~~/gu;
+
+export function markdownSymbols(text) {
+  const kinds = [
+    MD_FENCE,
+    MD_HEADING,
+    MD_QUOTE,
+    MD_TABLE_RULE,
+    MD_IMAGE,
+    MD_LINK,
+    MD_CODE,
+    MD_STRONG,
+    MD_EMPHASIS,
+    MD_STRIKE,
+  ];
+  const found = [];
+  for (const regex of kinds) found.push(...collect(text, regex).ranges);
+  const bullets = collect(text, MD_BULLET);
+  const count = found.length;
+  // Bullets alone are common in plain text; count them once something
+  // plainly Markdown is there too.
+  if (!count) return { count: 0, ranges: [] };
+  const ranges = [...found, ...bullets.ranges]
+    .sort((a, b) => a[0] - b[0])
+    .slice(0, MAX_EXAMPLES);
+  return { count: count + bullets.count, ranges };
+}
+
+// Removes Markdown syntax and keeps the words: "## Notes" becomes "Notes",
+// "[the paper](https://...)" becomes "the paper", "**very**" becomes "very".
+export function stripMarkdown(text) {
+  // A backslash escapes punctuation in Markdown ("\\*" means "*"). Hide
+  // escaped characters while the syntax is removed, then put them back.
+  const escaped = [];
+  const lines = text
+    .replace(/\r\n?/g, "\n")
+    .replace(/\\([\\`*_{}\[\]()#+\-.!>|~])/gu, (_, c) => {
+      escaped.push(c);
+      return "\uE000";
+    });
+  let i = 0;
+  return (
+    lines
+      .replace(MD_FENCE, "")
+      .replace(MD_LINK_DEF, "")
+      .replace(MD_TABLE_RULE, "")
+      .replace(MD_RULE, "")
+      .replace(MD_HEADING, "")
+      .replace(/^([^\n]*?)[ \t]+#+[ \t]*$/gmu, (line, body) =>
+        /\S/.test(body) ? body : line,
+      )
+      .replace(MD_QUOTE, "")
+      .replace(MD_BULLET, "")
+      // Table rows: "| a | b |" reads as "a, b".
+      .replace(/^[ \t]*\|(.*\|.*)\|[ \t]*$/gmu, (_, row) =>
+        row
+          .split("|")
+          .map((cell) => cell.trim())
+          .filter(Boolean)
+          .join(", "),
+      )
+      .replace(MD_IMAGE, "$1")
+      .replace(MD_LINK, "$1")
+      .replace(MD_AUTOLINK, "$1")
+      .replace(MD_CODE, "$1")
+      .replace(MD_STRONG, "$2")
+      .replace(MD_STRIKE, "$1")
+      .replace(MD_EMPHASIS, (_, a, b) => a ?? b)
+      .replace(/\uE000/gu, () => escaped[i++])
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+  );
+}
+
 export function checkText(text) {
   const findings = [];
   if (!text.trim()) return findings;
@@ -107,6 +199,16 @@ export function checkText(text) {
       ranges: [],
       fix: rejoinLines,
       fixLabel: "Rejoin lines",
+    });
+
+  const markdown = markdownSymbols(text);
+  if (markdown.count >= 3)
+    findings.push({
+      id: "markdown",
+      message: `${markdown.count} Markdown ${markdown.count === 1 ? "mark" : "marks"} (like #, ** or [links]) would be shown as words.`,
+      ...markdown,
+      fix: stripMarkdown,
+      fixLabel: "Remove the symbols",
     });
 
   const pageNumbers = collect(text, /^[ \t]*(?:page\s+)?\d{1,4}[ \t]*$/gimu);

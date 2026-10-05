@@ -42,7 +42,7 @@ import {
 } from "./navigation.js";
 import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
-import { checkText } from "./text-check.js";
+import { checkText, stripMarkdown } from "./text-check.js";
 import { PASSAGES, nextPace, suggestedPace } from "./pace-finder.js";
 import { repairPdfLines, repairText, describeGlyphMap } from "./text-repair.js";
 import { splitAtFocus, fadeDuration } from "./word-display.js";
@@ -2532,14 +2532,22 @@ $("textFile").onchange = async () => {
       );
     pdfDraft = null;
     epubDraft = null;
-    const fixed = await repairText(value, lookupWord);
+    // A Markdown file's symbols are never meant to be read as words.
+    const markdown = /\.(?:md|markdown)$/i.test(file.name);
+    const fixed = await repairText(
+      markdown ? stripMarkdown(value) : value,
+      lookupWord,
+    );
     $("textInput").value = fixed.text;
     $("textTitle").value = file.name.replace(/\.[^.]+$/, "").slice(0, 240);
     $("pdfOptions").hidden = true;
     $("pdfStatus").hidden = true;
     updateDraft();
     $("textFileStatus").textContent =
-      "Text imported. " + repairSummary(fixed) + "Check it before opening.";
+      "Text imported. " +
+      (markdown ? "Removed Markdown symbols. " : "") +
+      repairSummary(fixed) +
+      "Check it before opening.";
   } catch (e) {
     $("textFileStatus").textContent = e.message;
   } finally {

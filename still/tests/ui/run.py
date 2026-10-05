@@ -415,6 +415,32 @@ async def import_flags_printed_line_breaks_and_rejoins_them(browser):
 
 
 @check
+async def markdown_symbols_are_flagged_and_removed(browser):
+    ctx, page = await fresh(browser)
+    await page.click("#newText")
+    text = "# Notes\n\nRead **this** and [the paper](https://example.com).\n\n- first\n- second"
+    await page.evaluate(
+        "t => { const e = document.getElementById('textInput'); e.value = t; e.dispatchEvent(new Event('input')); }",
+        text,
+    )
+    await page.wait_for_selector("#textCheck:not([hidden])", timeout=3000)
+    await page.locator("#textCheckList button", has_text="Remove the symbols").click()
+    value = await page.input_value("#textInput")
+    assert value == "Notes\n\nRead this and the paper.\n\nfirst\nsecond", value
+    # A .md file has its symbols removed on import.
+    await page.set_input_files(
+        "#textFile",
+        files=[{"name": "notes.md", "mimeType": "text/markdown", "buffer": text.encode()}],
+    )
+    await page.wait_for_function(
+        "document.getElementById('textFileStatus').textContent.includes('Markdown')", timeout=5000
+    )
+    assert (await page.input_value("#textInput")).startswith("Notes\n\nRead this")
+    assert await page.input_value("#textTitle") == "notes"
+    await ctx.close()
+
+
+@check
 async def holding_the_word_shows_its_sentence(browser):
     ctx, page = await fresh(browser)
     await open_text(page, "First one here. The quick brown fox jumps over the dog. Last one.")

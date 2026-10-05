@@ -29,7 +29,7 @@ The web app was tested in Chromium on 29–30 September 2026. The testing combin
 | 21 | Low | Trashing the open reading left it open. | **Fixed.** The app opens the next reading. |
 | 22 | Low | Plural wording ("1 words"). | **Fixed.** |
 | 23 | Low | A title edit is lost when Settings is closed with Escape. | **Kept.** Escape means cancel. |
-| 24 | Nit | Markdown symbols are read aloud as-is. | Not done. |
+| 24 | Nit | Markdown symbols are read aloud as-is. | **Fixed.** "Worth a look" flags Markdown (#, **, [links], lists, tables, code) and offers "Remove the symbols", which keeps the words. `.md` files have the symbols removed on import. |
 | 25 | Structural | The web and iOS apps had drifted apart as two copies. | **Fixed.** There is one shared source plus `scripts/sync-shared.mjs`, with a check that fails if they differ. |
 | 26 | Structural | There were no interface tests, which is where most bugs were. | **Fixed.** `still/tests/ui/run.py` has 19 browser checks. |
 
