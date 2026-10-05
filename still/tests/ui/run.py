@@ -64,7 +64,7 @@ async def fresh(browser, onboarded=True, storage=None, **options):
     return ctx, page
 
 
-async def open_text(page, text, title="Test reading", kind=None):
+async def open_text(page, text, title="Test reading", kind=None, checkins=None):
     await page.click("#newText")
     await page.fill("#textTitle", title)
     await page.evaluate(
@@ -73,6 +73,8 @@ async def open_text(page, text, title="Test reading", kind=None):
     )
     if kind:
         await page.select_option("#importType", kind)
+    if checkins:
+        await page.select_option("#importCheckins", checkins)
     await page.click("#inputForm [type=submit]")
     await page.wait_for_timeout(200)
 
@@ -344,7 +346,7 @@ async def check_in_pauses_at_a_section_end_and_resumes(browser):
 @check
 async def lost_the_thread_offers_a_slower_replay(browser):
     ctx, page = await fresh(browser)
-    await open_text(page, prose(90, "c"))
+    await open_text(page, prose(90, "c"), checkins="500")
     await page.fill("#speedValue", "600")
     await page.press("#speedValue", "Enter")
     await page.click("#play")
@@ -357,6 +359,31 @@ async def lost_the_thread_offers_a_slower_replay(browser):
     await page.wait_for_timeout(300)
     assert "Pause" in await page.inner_text("#play")
     assert "slower replay" in await page.inner_text("#learning")
+    await ctx.close()
+
+
+@check
+async def check_ins_are_offered_on_import_and_spaced_by_words(browser):
+    ctx, page = await fresh(browser)
+    # Off by default: a reading with no choice never pauses.
+    await page.click("#newText")
+    assert await page.input_value("#importCheckins") == "off"
+    await page.click("#inputDialog [data-close]")
+    text = "\n\n".join(prose(100, f"p{n}x") for n in range(6))
+    await open_text(page, text, checkins="500")
+    await page.fill("#speedValue", "600")
+    await page.press("#speedValue", "Enter")
+    await page.click("#play")
+    # About 50 s at the fastest pace: check-ins are deliberately not frequent.
+    await page.wait_for_function("document.getElementById('checkinDialog').open", timeout=90000)
+    count = int((await page.text_content("#count")).split(" ")[0])
+    # At the end of the fifth paragraph: 500 words in, never mid-paragraph.
+    assert count == 500, count
+    await page.click("#checkinSkip")
+    await page.click("#play")
+    # The next reading remembers the choice.
+    await page.click("#newText")
+    assert await page.input_value("#importCheckins") == "500"
     await ctx.close()
 
 

@@ -13,26 +13,36 @@
 //   recap comes before the rating.
 // - One-word-at-a-time reading removes the glances back that normally repair
 //   missed meaning, so "I lost the thread" leads straight to a slower replay.
-import { clamp } from "./engine.js";
-
-export const CHECKIN_MODES = ["interval", "sections", "off"];
 export const RATINGS = ["clear", "mostly", "lost"];
-export const CHECKIN_MINUTES = 3; // "every few minutes" of reading time
+// Check-ins are optional and chosen per reading: off (the default), about
+// every so many words, or at the end of each section. 500 words is about
+// two minutes at an average pace, long enough to have something to recap
+// and short enough that a drifting mind is caught early; 1,000 and 2,000
+// suit readers who want fewer interruptions.
+export const CHECKIN_SPACINGS = [500, 1000, 2000];
 export const MIN_SEGMENT_WORDS = 60; // never check in after a tiny stretch
 export const MIN_END_WORDS = 80; // end-of-reading check-in threshold
+
+// The stored setting, normalised: "off", "sections" or a word count.
+export function checkinSpacing(value) {
+  if (value === "sections") return "sections";
+  const words = Number(value);
+  return CHECKIN_SPACINGS.includes(words) ? words : "off";
+}
 
 // Whether to pause for a check-in after the word at `index`.
 // `wordsRead` counts words actually shown since the last check-in.
 // `sectionStarts` holds 1-based original paragraph numbers of headings.
+// Check-ins only ever fall at a paragraph end, so they never cut a thought.
 export function checkInDue({
   tokens,
   index,
   wordsRead,
-  mode = "interval",
-  base = 260,
+  every = "off",
   sectionStarts = new Set(),
 }) {
-  if (mode === "off") return false;
+  const spacing = checkinSpacing(every);
+  if (spacing === "off") return false;
   const token = tokens[index],
     next = tokens[index + 1];
   if (!token?.paragraphEnd || !next) return false;
@@ -40,14 +50,14 @@ export function checkInDue({
   const atSection = sectionStarts.has(
     (next.originalParagraph ?? next.paragraph) + 1,
   );
-  if (mode === "sections") return atSection;
-  const interval = Math.round(clamp(base, 80, 600) * CHECKIN_MINUTES);
-  // Prefer a section boundary once at least half the interval has passed.
-  return wordsRead >= interval || (atSection && wordsRead >= interval / 2);
+  if (spacing === "sections") return atSection;
+  // A section end is a better place to stop, so take one once most of the
+  // stretch has been read rather than breaking into the next section.
+  return wordsRead >= spacing || (atSection && wordsRead >= spacing * 0.6);
 }
 
-export const endCheckInDue = (wordsRead, mode = "interval") =>
-  mode !== "off" && wordsRead >= MIN_END_WORDS;
+export const endCheckInDue = (wordsRead, every = "off") =>
+  checkinSpacing(every) !== "off" && wordsRead >= MIN_END_WORDS;
 
 // What to offer after a rating: a slower replay after "lost", or a slightly
 // faster pace after three clear check-ins in a row.

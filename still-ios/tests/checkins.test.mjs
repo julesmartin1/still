@@ -8,6 +8,7 @@ import {
   summarizeCheckins,
   normalizeCheckins,
   MIN_SEGMENT_WORDS,
+  checkinSpacing,
 } from "../dist/checkins.js";
 
 const paragraphs = (n, words) =>
@@ -17,31 +18,42 @@ const paragraphs = (n, words) =>
       Array.from({ length: words }, (_, w) => `p${p}w${w}`).join(" ") + ".",
   ).join("\n\n");
 
-test("check-ins only happen at paragraph ends after enough reading", () => {
+test("check-ins are off unless chosen, and only fall at paragraph ends", () => {
   const { tokens } = parseText(paragraphs(10, 100));
   const due = (index, wordsRead, extra = {}) =>
-    checkInDue({ tokens, index, wordsRead, base: 100, ...extra });
-  // interval at 100 WPM = 300 words
-  assert.equal(due(99, 100), false, "too early");
-  assert.equal(due(298, 400), false, "not a paragraph end");
-  assert.equal(due(299, 300), true);
-  assert.equal(due(299, 300, { mode: "off" }), false);
+    checkInDue({ tokens, index, wordsRead, every: 500, ...extra });
+  assert.equal(checkInDue({ tokens, index: 499, wordsRead: 500 }), false);
+  assert.equal(due(399, 400), false, "too early");
+  assert.equal(due(598, 600), false, "not a paragraph end");
+  assert.equal(due(499, 500), true);
+  assert.equal(due(499, 500, { every: "off" }), false);
+  assert.equal(due(499, 500, { every: 1000 }), false);
   assert.equal(
     due(999, 1000),
     false,
     "the last word is handled by the end check-in",
   );
+  assert.equal(endCheckInDue(100), false);
+  assert.equal(endCheckInDue(100, 500), true);
 });
 
-test("section boundaries are preferred once half the interval has passed", () => {
+test("the setting is normalised to off, a known spacing or sections", () => {
+  assert.equal(checkinSpacing(undefined), "off");
+  assert.equal(checkinSpacing("interval"), "off");
+  assert.equal(checkinSpacing("1000"), 1000);
+  assert.equal(checkinSpacing(750), "off");
+  assert.equal(checkinSpacing("sections"), "sections");
+});
+
+test("a section end is taken once most of the stretch has been read", () => {
   const { tokens } = parseText(paragraphs(10, 100));
-  const sectionStarts = new Set([3]); // paragraph 3 (1-based) starts a section
+  const sectionStarts = new Set([5]); // paragraph 5 (1-based) starts a section
   assert.equal(
     checkInDue({
       tokens,
-      index: 199,
-      wordsRead: 160,
-      base: 100,
+      index: 399,
+      wordsRead: 300,
+      every: 500,
       sectionStarts,
     }),
     true,
@@ -49,20 +61,21 @@ test("section boundaries are preferred once half the interval has passed", () =>
   assert.equal(
     checkInDue({
       tokens,
-      index: 199,
-      wordsRead: 140,
-      base: 100,
+      index: 399,
+      wordsRead: 250,
+      every: 500,
       sectionStarts,
     }),
     false,
   );
+  const sectionStarts3 = new Set([3]);
   assert.equal(
     checkInDue({
       tokens,
       index: 199,
       wordsRead: MIN_SEGMENT_WORDS,
-      mode: "sections",
-      sectionStarts,
+      every: "sections",
+      sectionStarts: sectionStarts3,
     }),
     true,
   );
@@ -71,8 +84,8 @@ test("section boundaries are preferred once half the interval has passed", () =>
       tokens,
       index: 99,
       wordsRead: 100,
-      mode: "sections",
-      sectionStarts,
+      every: "sections",
+      sectionStarts: sectionStarts3,
     }),
     false,
   );
@@ -80,7 +93,7 @@ test("section boundaries are preferred once half the interval has passed", () =>
 
 test("end-of-reading check-in needs a real stretch of reading", () => {
   assert.equal(endCheckInDue(50), false);
-  assert.equal(endCheckInDue(120), true);
+  assert.equal(endCheckInDue(120, 500), true);
   assert.equal(endCheckInDue(120, "off"), false);
 });
 

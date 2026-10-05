@@ -412,6 +412,18 @@
         <p id="typeHint" class="muted">
           You can change this later in Settings.
         </p>
+        <label for="importCheckins">Check-ins</label
+        ><select id="importCheckins" aria-describedby="importCheckinsHint">
+          <option value="off">Off</option>
+          <option value="500">About every 500 words (2 min)</option>
+          <option value="1000">About every 1,000 words (4 min)</option>
+          <option value="2000">About every 2,000 words (8 min)</option>
+          <option value="sections">At the end of each chapter</option>
+        </select>
+        <p id="importCheckinsHint" class="muted">
+          Optional short pauses to sum up what you read, always at the end of a
+          paragraph.
+        </p>
         <div id="importAcademic" hidden>
           <label class="check-label"
             ><input id="importSkipCitations" type="checkbox" /> Skip inline
@@ -562,15 +574,17 @@
         <option value="academic">Academic paper</option>
         <option value="other">Other</option>
       </select>
-      <label for="checkinMode">Comprehension check-ins</label
+      <label for="checkinMode">Check-ins</label
       ><select id="checkinMode">
-        <option value="interval">Every few minutes, at a paragraph end</option>
-        <option value="sections">At the end of each section</option>
         <option value="off">Off</option>
+        <option value="500">About every 500 words (2 min)</option>
+        <option value="1000">About every 1,000 words (4 min)</option>
+        <option value="2000">About every 2,000 words (8 min)</option>
+        <option value="sections">At the end of each chapter</option>
       </select>
       <p class="muted">
-        A quick, ungraded pause to recap and say how well it landed. Losing the
-        thread offers a slower replay.
+        A short, ungraded pause at the end of a paragraph to sum up what you
+        read. Losing the thread offers a slower replay.
       </p>
       <details id="citationSettings">
         <summary>Citation options</summary>

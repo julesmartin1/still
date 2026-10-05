@@ -51,6 +51,7 @@ import {
   followUp,
   summarizeCheckins,
   normalizeCheckins,
+  checkinSpacing,
 } from "./checkins.js";
 import {
   parseText,
@@ -272,10 +273,8 @@ function refreshTiming() {
   });
   timingSums = planSums(timingPlan);
 }
-const checkinMode = () =>
-  ["interval", "sections", "off"].includes(appearance.checkins)
-    ? appearance.checkins
-    : "interval";
+// Check-ins are chosen per reading (see checkins.js); off unless chosen.
+const checkinMode = () => checkinSpacing(readingOptions.checkinEvery);
 function sectionStarts() {
   const key = readingOptions.sections || text;
   if (sectionCache?.key !== key)
@@ -594,8 +593,7 @@ function createReader(index = 0) {
         tokens: data.tokens,
         index: i,
         wordsRead,
-        mode: checkinMode(),
-        base: targetWpm(base, profile),
+        every: checkinMode(),
         sectionStarts: sectionStarts(),
       }),
     onBreak: (i) => {
@@ -838,6 +836,12 @@ $("newText").onclick = () => {
   $("textInput").value = "";
   $("textTitle").value = "";
   $("importType").value = "other";
+  // Check-ins start from the reader's last choice (off until they pick one).
+  try {
+    $("importCheckins").value = String(
+      checkinSpacing(storage.getItem("still-checkin-default")),
+    );
+  } catch {}
   $("importSkipCitations").checked = false;
   $("importSkipReferences").checked = false;
   $("pdfOptions").hidden = true;
@@ -895,6 +899,7 @@ $("inputForm").onsubmit = (e) => {
         skipReferences:
           kind === "academic" && $("importSkipReferences").checked,
         sections: draftSections(draftText) || detectSections(draftText, kind),
+        checkinEvery: checkinSpacing($("importCheckins").value),
       },
     },
     imported,
@@ -1700,6 +1705,11 @@ function previewStart() {
           .slice(0, 500)
       : "") || "Add text or a PDF to preview your starting point.";
 }
+$("importCheckins").onchange = () => {
+  try {
+    storage.setItem("still-checkin-default", $("importCheckins").value);
+  } catch {}
+};
 $("importType").onchange = () => {
   importTypeManual = true;
   updateDraft();
@@ -1713,6 +1723,7 @@ $("readingSettings").onclick = () => {
   pause();
   $("readingTitle").value = title;
   $("readingType").value = readingOptions.documentType;
+  $("checkinMode").value = String(checkinMode());
   updateFilterUI();
   $("settingsDialog").showModal();
 };
@@ -1731,6 +1742,7 @@ $("saveReadingDetails").onclick = () => {
   applyReadingOptions({
     ...readingOptions,
     documentType: type,
+    checkinEvery: checkinSpacing($("checkinMode").value),
     ...(type === "book" ? { skipCitations: false, skipReferences: false } : {}),
     sections:
       type !== readingOptions.documentType
@@ -2399,7 +2411,6 @@ function applyAppearance() {
     appearance.transition === "instant" ? "instant" : "soft";
   $("appearanceProgress").value =
     appearance.progress === "percent" ? "percent" : "time";
-  $("checkinMode").value = checkinMode();
   $("appearanceSize").value = size;
   $("appearanceSizeLabel").textContent = size + "%";
   try {
@@ -2414,7 +2425,6 @@ for (const id of [
   "appearancePlacement",
   "appearanceTransition",
   "appearanceProgress",
-  "checkinMode",
 ])
   $(id).oninput = () => {
     appearance = {
@@ -2424,7 +2434,6 @@ for (const id of [
       placement: $("appearancePlacement").value,
       transition: $("appearanceTransition").value,
       progress: $("appearanceProgress").value,
-      checkins: $("checkinMode").value,
     };
     applyAppearance();
     if (reader) updateTimeLeft();
@@ -2784,7 +2793,7 @@ function renderCheckins() {
   $("checkinSummary").textContent = s.total
     ? `${plural(s.total, "check-in")} for this reading: ${s.clear} clear · ${s.mostly} mostly · ${s.lost} lost the thread.`
     : checkinMode() === "off"
-      ? "Check-ins are off. Turn them on in Settings, or check in now."
+      ? "Check-ins are off for this reading. Turn them on in Settings, or check in now."
       : "Your check-ins for this reading will appear here.";
   const labels = { clear: "Clear", mostly: "Mostly", lost: "Lost the thread" };
   $("checkinList").replaceChildren(
