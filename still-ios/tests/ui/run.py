@@ -576,6 +576,73 @@ async def arrow_keys_change_pace_and_skip_sentences(browser):
 
 
 @check
+async def back_and_forward_buttons_move_by_sentence(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, "One two three. Four five six. Seven eight.")
+    await page.click("#quickForward")
+    assert await page.text_content("#word") == "Four"
+    await page.click("#quickForward")
+    assert await page.text_content("#word") == "Seven"
+    await page.click("#quickRewind")
+    assert await page.text_content("#word") == "Four"
+    await page.click("#quickForward")
+    assert await page.text_content("#word") == "Seven"
+    await ctx.close()
+
+
+@check
+async def review_scrolls_the_whole_text_and_double_tap_reads_from_a_word(browser):
+    ctx, page = await fresh(browser)
+    paragraphs = [f"Paragraph {n} begins here. " + "word " * 100 + "end." for n in range(80)]
+    await open_text(page, "\n\n".join(paragraphs))
+    for _ in range(120):
+        await page.keyboard.press("ArrowRight")
+    await page.click("#review")
+    assert not await page.locator("#prevPara").count()
+    # The paragraphs around the place are already there to scroll through.
+    shown = await page.locator("#paragraph .review-paragraph").count()
+    assert shown > 3, shown
+    assert await page.locator("#paragraph .token.selected").count() == 1
+    # Scrolling to the top brings in earlier paragraphs.
+    first = int(await page.get_attribute("#paragraph .review-paragraph >> nth=0", "data-paragraph"))
+    for _ in range(30):
+        await page.evaluate("document.getElementById('paragraph').scrollTop = 0")
+        await page.wait_for_timeout(30)
+    now = int(await page.get_attribute("#paragraph .review-paragraph >> nth=0", "data-paragraph"))
+    assert now == 0 and first > 0, (first, now)
+    # A single tap chooses a word; a double tap reads from it.
+    target = page.locator("#paragraph .review-paragraph[data-paragraph='2'] .token >> nth=0")
+    await target.click()
+    assert await page.text_content("#selectedWord") == "Paragraph"
+    assert await page.is_visible("#reviewDialog")
+    await page.wait_for_timeout(600)
+    await target.dblclick()
+    await page.wait_for_selector("#reviewDialog", state="hidden")
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Pause')", timeout=3000)
+    await page.click("#play")
+    count = await page.text_content("#count")
+    # Paragraph 2 starts at word 211 (105 words each); playing moves on a word or two.
+    assert int(count.split(" ")[0]) in (211, 212, 213), count
+    await ctx.close()
+
+
+@check
+async def progress_can_show_percent_read(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, " ".join(["word"] * 200))
+    for _ in range(3):
+        await page.keyboard.press("ArrowRight")
+    assert "left" in await page.inner_text("#timeLeft")
+    await page.click("#timeLeft")
+    assert (await page.inner_text("#timeLeft")).endswith("% read")
+    await page.reload()
+    await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    assert (await page.inner_text("#timeLeft")).endswith("% read")
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).progress") == "percent"
+    await ctx.close()
+
+
+@check
 async def finishing_offers_the_next_reading(browser):
     ctx, page = await fresh(browser)
     await open_text(page, "An unread book waits here.", title="Waiting book")
