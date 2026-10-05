@@ -939,9 +939,13 @@ document
   .querySelectorAll("[data-close]")
   .forEach((b) => (b.onclick = () => $(b.dataset.close).close()));
 // Review shows the whole reading as one scrolling text. Paragraphs are added
-// a window at a time as the reader scrolls, so a long book stays quick.
+// a window at a time as the reader scrolls, so a long book stays quick. Past
+// AUTO_LIMIT words from where the text was opened, more text waits for a tap,
+// so drifting far from your place is a choice rather than an accident.
 const REVIEW_WINDOW = 1200; // about this many words either side
+const AUTO_LIMIT = 2400;
 let reviewRange = null, // [first, last] paragraph on screen
+  reviewAnchor = 0, // word the text was built around
   lastTap = { index: -1, at: 0 };
 function reviewParagraph(p) {
   const tokens = paragraphGroups[p] || [];
@@ -951,7 +955,10 @@ function reviewParagraph(p) {
   for (const t of tokens) {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "token" + (t.index === selected ? " selected" : "");
+    b.className =
+      "token" +
+      (t.index === selected ? " selected" : "") +
+      (t.index === origin ? " place" : "");
     b.dataset.index = t.index;
     b.tabIndex = t.index === selected ? 0 : -1;
     b.setAttribute("aria-pressed", t.index === selected);
@@ -971,38 +978,108 @@ function reviewSpan(from, step) {
   }
   return p - step;
 }
+const firstWord = (p) => paragraphGroups[p]?.[0]?.index ?? 0;
+const lastWord = (p) => paragraphGroups[p]?.at(-1)?.index ?? 0;
 function renderReview() {
   const p = data.tokens[selected].paragraph,
     last = paragraphGroups.length - 1;
   const lo = p > 0 ? reviewSpan(p - 1, -1) : 0,
     hi = p < last ? reviewSpan(p + 1, 1) : last;
   reviewRange = [lo, hi];
+  reviewAnchor = selected;
   const nodes = [];
   for (let i = lo; i <= hi; i++) nodes.push(reviewParagraph(i));
-  $("paragraph").replaceChildren(...nodes);
+  $("reviewText").replaceChildren(...nodes);
+  showMoreButtons();
   showSelection();
+}
+// May the text grow on its own in this direction, or should it ask first?
+function autoLoads(step) {
+  const [lo, hi] = reviewRange;
+  return step < 0
+    ? reviewAnchor - firstWord(lo) < AUTO_LIMIT
+    : lastWord(hi) - reviewAnchor < AUTO_LIMIT;
+}
+function distanceNote(word) {
+  const away = word - origin,
+    minutes = Math.max(1, Math.round(Math.abs(away) / base));
+  return `About ${minutes} min of reading ${away < 0 ? "before" : "after"} your place`;
+}
+function showMoreButtons() {
+  const [lo, hi] = reviewRange,
+    last = paragraphGroups.length - 1;
+  const earlier = lo > 0 && !autoLoads(-1),
+    later = hi < last && !autoLoads(1);
+  $("reviewEarlier").hidden = !earlier;
+  $("reviewEarlierNote").textContent = earlier
+    ? distanceNote(lastWord(lo - 1))
+    : "";
+  $("reviewLater").hidden = !later;
+  $("reviewLaterNote").textContent = later
+    ? distanceNote(firstWord(hi + 1))
+    : "";
+}
+function loadEarlier() {
+  const box = $("paragraph"),
+    lo = reviewRange[0];
+  const from = reviewSpan(lo - 1, -1);
+  const nodes = [];
+  for (let i = from; i < lo; i++) nodes.push(reviewParagraph(i));
+  const height = box.scrollHeight;
+  $("reviewText").prepend(...nodes);
+  reviewRange[0] = from;
+  showMoreButtons();
+  box.scrollTop += box.scrollHeight - height;
+}
+function loadLater() {
+  const hi = reviewRange[1];
+  const to = reviewSpan(hi + 1, 1);
+  for (let i = hi + 1; i <= to; i++) $("reviewText").append(reviewParagraph(i));
+  reviewRange[1] = to;
+  showMoreButtons();
 }
 function extendReview() {
   const box = $("paragraph");
   if (!reviewRange || !$("reviewDialog").open) return;
-  const [lo, hi] = reviewRange,
-    last = paragraphGroups.length - 1;
-  if (box.scrollTop < 800 && lo > 0) {
-    const from = reviewSpan(lo - 1, -1);
-    const nodes = [];
-    for (let i = from; i < lo; i++) nodes.push(reviewParagraph(i));
-    const height = box.scrollHeight;
-    box.prepend(...nodes);
-    box.scrollTop += box.scrollHeight - height;
-    reviewRange[0] = from;
-  }
-  if (box.scrollHeight - box.scrollTop - box.clientHeight < 800 && hi < last) {
-    const to = reviewSpan(hi + 1, 1);
-    for (let i = hi + 1; i <= to; i++) box.append(reviewParagraph(i));
-    reviewRange[1] = to;
-  }
+  const last = paragraphGroups.length - 1;
+  if (box.scrollTop < 800 && reviewRange[0] > 0 && autoLoads(-1)) loadEarlier();
+  if (
+    box.scrollHeight - box.scrollTop - box.clientHeight < 800 &&
+    reviewRange[1] < last &&
+    autoLoads(1)
+  )
+    loadLater();
 }
-$("paragraph").addEventListener("scroll", extendReview, { passive: true });
+$("reviewEarlier").onclick = loadEarlier;
+$("reviewLater").onclick = loadLater;
+// The way back appears once your place has scrolled out of sight, pointing
+// towards it.
+function showReturnToPlace() {
+  const pill = $("returnToPlace"),
+    box = $("paragraph");
+  if (!reviewRange || !$("reviewDialog").open) return (pill.hidden = true);
+  const b = reviewToken(origin);
+  let above;
+  if (b) {
+    const view = box.getBoundingClientRect(),
+      word = b.getBoundingClientRect();
+    if (word.bottom > view.top && word.top < view.bottom)
+      return (pill.hidden = true);
+    above = word.bottom <= view.top;
+  } else above = data.tokens[origin].paragraph < reviewRange[0];
+  pill.classList.toggle("up", above);
+  pill.hidden = false;
+}
+let reviewFrame = 0;
+$("paragraph").addEventListener(
+  "scroll",
+  () => {
+    extendReview();
+    cancelAnimationFrame(reviewFrame);
+    reviewFrame = requestAnimationFrame(showReturnToPlace);
+  },
+  { passive: true },
+);
 function reviewToken(index) {
   return $("paragraph").querySelector(`.token[data-index="${index}"]`);
 }
@@ -1079,12 +1156,14 @@ function review() {
   $("reviewDialog").showModal();
   reviewToken(selected)?.scrollIntoView({ block: "center" });
   extendReview();
+  showReturnToPlace();
 }
 $("review").onclick = review;
 $("returnToPlace").onclick = () => {
   intentionalNavigation = false;
   clearSearch();
   selectWord(origin, { scroll: true });
+  showReturnToPlace();
 };
 $("findText").oninput = () => {
   const query = $("findText").value;
