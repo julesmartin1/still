@@ -121,6 +121,19 @@ The goal of this pass: make it easier to start reading, stay with it, and come b
 | 56 | Starting from a word in Review took two steps. | **Double-tap a word to read from it.** A single tap still chooses it for look-up. |
 | 57 | Some readers prefer to see how far through they are. | **Progress can show percent read** instead of time left: tap the label in the reader, or choose it in Appearance. The choice is remembered. |
 
+### Real book PDFs (October 2026)
+
+Tested with *Alice in Wonderland* (Word export), *Pride and Prejudice* and *Frankenstein* (Acrobat Distiller), *Moby Dick* (printed from Chrome), *Pro Git* (501-page Asciidoctor book) and a two-column paper. All import in under 8 seconds.
+
+| # | Problem | Change |
+|---|---|---|
+| 58 | Note-number removal deleted real numbers: "SHA-1 hash" became "SHA- hash", "4.0" became ".0", "paragraph 1.E.1" became "1.E.", and maths lost its subscripts. A lone "1" was read as notes restarting. | **A note number follows a standalone word with a lower-case letter and at most closing punctuation, never repeats word for word, and a restart counts only once it reaches 2.** False removals in the six books went from 400+ to none. |
+| 59 | Compounds broken at a line end with a short piece stayed split: "sloop- of-war", "tete-a- tete". | **Pieces of a hyphen chain keep their hyphen and join**, whatever their length. |
+| 60 | Dotted contents pages ("Chapter 1 ........ 5") were read word by word and listed as chapters. | **Contents lines with dot leaders are skipped** (the range status says how many), and a run of three or more headings with no text between them is treated as a contents list. *Moby Dick* now lists all 135 chapters instead of stopping at 50. |
+| 61 | *Pride and Prejudice* prints "Chapter 8 At five o'clock…" on one line. Each chapter split after its first line, and chapter titles were whole sentences. "part of his aunt" counted as a heading. | **Run-in headings are titled by their number** ("Chapter 8") and don't break the paragraph. Headings must start with a capital and use a number word. Centred headings are measured against the text below them. |
+| 62 | That edition also prints each chapter as one block, dialogue included, so check-ins and Review had no paragraph ends for thousands of words. | **Blocks over 400 words split where the speaker changes** (a closing quote after a full stop, then an opening quote). Word positions are unchanged. |
+| 63 | Wrapped chapter titles were cut short ("CHAPTER XI. Who Stole the"). | **A heading that wraps onto a short second line stays one heading.** |
+
 What to measure next, with consent: whether readers with a goal come back on more days, which goal size they keep, and whether the fade-back while reading changes how often they pause.
 
 ## Still open
@@ -128,7 +141,7 @@ What to measure next, with consent: whether readers with a goal come back on mor
 - **The iOS app has never been compiled.** It needs a Mac with enough disk space and an Xcode-compatible macOS. After that:
   - run `npm run build` (esbuild) to confirm the new shared files bundle for the `safari18` target;
   - test the PDF page view on an iOS 18 simulator.
-- **Bundle the original fonts** (Literata and DM Sans) if the pre-change look matters.
+- **Fonts.** The page now uses system fonts (Iowan Old Style or Charter for reading on Apple devices). Literata and DM Sans were named in the CSS but never bundled; bundle a reading face only if a specific look is wanted on Android and Windows.
 
 ## Sources
 

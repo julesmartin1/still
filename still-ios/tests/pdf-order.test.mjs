@@ -213,6 +213,28 @@ test("line-end hyphens: compounds keep them, broken words lose them", async () =
   );
 });
 
+test("a compound broken at a hyphen keeps its hyphen however short its pieces", async () => {
+  const lines = [
+    "commanding an American sloop-",
+    "of-war of the first class, and a tete-a-",
+    "tete with Mrs. Bennet. Rig-",
+    "a-dig, dig, dig!",
+  ].map((text, i) => ({
+    text,
+    x: 40,
+    y: 700 - i * 13,
+    right: 250,
+    top: 710 - i * 13,
+    height: 10,
+  }));
+  const page = { number: 1, width: 612, height: 792, lines };
+  await markLineJoins([page], async () => null);
+  assert.equal(
+    composePdf([page]).text,
+    "commanding an American sloop-of-war of the first class, and a tete-a-tete with Mrs. Bennet. Rig-a-dig, dig, dig!",
+  );
+});
+
 test("a word hyphenated at the foot of a column joins the next column", async () => {
   const items = columns(6, {
     left: { 5: "for the dimen-" },

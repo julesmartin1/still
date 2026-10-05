@@ -1,5 +1,10 @@
 import { parseText } from "./engine.js";
 export const documentTypes = ["book", "academic", "other"];
+// "Chapter 8 At five o'clock…": a chapter number run straight into the first
+// sentence (a capitalised word, then a lower-case one), not a titled heading
+// like "CHAPTER 2. The Carpet-Bag." or "CHAPTER V. Advice from a Caterpillar".
+export const RUN_IN =
+  /^(?:chapter|part|book|letter)\s+[\p{L}\d]+\s+\p{Lu}\p{Ll}*\s+\p{Ll}/iu;
 export function inferType(text) {
   const sample = text.slice(0, 22000);
   if (
@@ -67,24 +72,66 @@ export function suggestTitle({
 export function detectSections(text, type = "other") {
   const parsed = parseText(text);
   const result = [];
+  const number =
+    "(?:\\d+|[IVXLCDM]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|the\\s+(?:first|last))";
+  const book = new RegExp(
+    `^(?:(?:chapter|part|book|letter)\\s+${number}|prologue|epilogue)\\b`,
+    "i",
+  );
+  const paper =
+    /^(?:\d+(?:\.\d+)*[.)]?\s+)?(?:abstract|introduction|background|literature review|methods?|methodology|materials(?: and methods)?|results|discussion|conclusions?|references|bibliography|acknowledg(?:e)?ments?|appendix)\b/i;
+  const pattern =
+    type === "book"
+      ? book
+      : type === "academic"
+        ? paper
+        : new RegExp(book.source + "|" + paper.source, "i");
+  // "Chapter 1 ....... 5": a contents entry, not the chapter itself.
+  const contents = /(?:\s?[.…·]){4,}\s?(?:\d{1,4}|[ivxlcdm]{1,7})\s*$/i;
   parsed.paragraphs.forEach((p, i) => {
     const first = p.trim().split("\n")[0].trim();
-    const book =
-      /^(?:chapter\s+(?:\d+|[IVXLCDM]+|[A-Za-z]+)|prologue|epilogue|part\s+(?:\d+|[IVXLCDM]+|[A-Za-z]+))\b/i;
-    const paper =
-      /^(?:\d+(?:\.\d+)*[.)]?\s+)?(?:abstract|introduction|background|literature review|methods?|methodology|materials(?: and methods)?|results|discussion|conclusions?|references|bibliography|acknowledg(?:e)?ments?|appendix)\b/i;
-    if (
-      first.length <= 130 &&
-      (type === "book"
-        ? book
-        : type === "academic"
-          ? paper
-          : new RegExp(book.source + "|" + paper.source, "i")
-      ).test(first)
-    )
-      result.push({ title: first.slice(0, 120), paragraph: i + 1 });
+    // Headings start with a capital or a number; a paragraph that starts
+    // "part of the…" or "method provides…" is running text.
+    if (!/^[\p{Lu}\d]/u.test(first) || contents.test(first)) return;
+    let title = first.length <= 130 ? first : "";
+    if (title && !pattern.test(title)) return;
+    // A heading run into its first sentence ("Chapter 8 At five o'clock…",
+    // or any heading that opens a long paragraph) is titled by its number.
+    if (!title || RUN_IN.test(title)) {
+      // Straight into a capitalised word or a quotation: "Chapter 2 Mr.
+      // Bennet…", not "BOOK I. (Folio), CHAPTER I. (Sperm Whale).—This…"
+      const number = /^\s+["“‘]?\p{Lu}/u.test(first.replace(book, ""))
+        ? first.match(book)
+        : null;
+      if (!number || type === "academic") return;
+      title = number[0];
+    }
+    result.push({
+      title: title.slice(0, 120),
+      paragraph: i + 1,
+      alone: p.trim() === first && title === first,
+    });
   });
-  return result.slice(0, 200);
+  // A contents list without dot leaders: three or more headings, each a
+  // paragraph of its own, one straight after another with no text between.
+  // The chapters themselves come later.
+  const listed = new Set();
+  for (let i = 0; i < result.length; ) {
+    let j = i;
+    while (
+      j + 1 < result.length &&
+      result[j].alone &&
+      result[j + 1].alone &&
+      result[j + 1].paragraph === result[j].paragraph + 1
+    )
+      j++;
+    if (j - i >= 2) for (let k = i; k <= j; k++) listed.add(k);
+    i = j + 1;
+  }
+  return result
+    .filter((_, i) => !listed.has(i))
+    .slice(0, 200)
+    .map(({ title, paragraph }) => ({ title, paragraph }));
 }
 export function paragraphAnchor(text, number) {
   const data = parseText(text);

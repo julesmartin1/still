@@ -35,10 +35,7 @@ import {
   eraseLibrary,
   searchReadingText,
 } from "./library.js";
-import {
-  buildParagraphIndex,
-  findPassages,
-} from "./navigation.js";
+import { buildParagraphIndex, findPassages } from "./navigation.js";
 import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
 import { checkText, stripMarkdown } from "./text-check.js";
@@ -1563,7 +1560,7 @@ function applyPdfRange() {
   $("textInput").value = composed.text;
   $("textInput").setCustomValidity("");
   $("pdfRangeStatus").textContent =
-    `Pages ${from}–${to} · ${plural(composed.locations.at(-1).end + 1, "word")} · ${plural(composed.removed, "header/footer line")} removed. Original page view will be available.`;
+    `Pages ${from}–${to} · ${plural(composed.locations.at(-1).end + 1, "word")} · ${plural(composed.removed, "header/footer line")} removed${composed.contents ? ` · ${plural(composed.contents, "contents line")} skipped` : ""}. Original page view will be available.`;
   updateDraft();
 }
 $("applyPdfRange").onclick = applyPdfRange;

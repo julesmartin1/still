@@ -1,3 +1,4 @@
+import { RUN_IN } from "./document.js";
 import { countWords, parseText } from "./engine.js";
 // Geometry-based reading order. Every retained line carries its source rectangle.
 function bounds(items) {
@@ -300,6 +301,36 @@ function footnoteLines(page) {
   footnoteCache.set(page, notes);
   return notes;
 }
+// Some editions print a whole chapter as one block, dialogue and all. A
+// block that long hides every natural pause (check-ins and review work by
+// paragraph), so it is split where one speaker's line ends and the next
+// begins: a closing quote after a full stop, then an opening quote. Only
+// whitespace changes, so word positions stay the same.
+const LONG_PARAGRAPH = 400; // words
+export function splitLongDialogue(text) {
+  return text
+    .split("\n\n")
+    .map((p) =>
+      p.split(/\s+/).length > LONG_PARAGRAPH
+        ? p.replace(/([.!?…—-]["”’])[ \t]+(?=["“‘]\p{L})/gu, "$1\n\n")
+        : p,
+    )
+    .join("\n\n");
+}
+// A table-of-contents line: titles joined to page numbers by dot leaders,
+// "Chapter 1 ........ 5", sometimes several entries on one line. Nobody reads
+// those word by word, and the chapter list covers what they're for.
+const LEADER = /(?:\s?[.…·•]){4,}\s?/u;
+const PAGE_REF = /^(?:\d{1,4}|[ivxlcdm]{1,7})\b/i;
+export function contentsLine(text) {
+  const parts = text.trim().split(LEADER);
+  return (
+    parts.length >= 2 &&
+    parts[0].length > 0 &&
+    parts.slice(1).every((p) => PAGE_REF.test(p)) &&
+    /^(?:\d{1,4}|[ivxlcdm]{1,7})$/i.test(parts.at(-1))
+  );
+}
 export function composePdf(
   pages,
   { from = 1, to = pages.length, removeMargins = false } = {},
@@ -317,6 +348,7 @@ export function composePdf(
     wordIndex = 0;
   const locations = [];
   let removed = 0,
+    contents = 0,
     last = null; // previous retained line, across pages
   // Margin lines that interrupt a sentence (a first-page footer, a header
   // seen only once) wait until that sentence's paragraph ends.
@@ -352,6 +384,10 @@ export function composePdf(
   for (const page of chosen) {
     let previous = null;
     for (const line of page.lines) {
+      if (contentsLine(line.text)) {
+        contents++;
+        continue;
+      }
       const margin = marginLine(line, page);
       if (
         removeMargins &&
@@ -379,11 +415,17 @@ export function composePdf(
         continue;
       }
       const gap = previous ? previous.y - line.y : Infinity;
+      // A heading line that runs the full width carries on into the text
+      // ("Chapter 8 At five o'clock the two ladies…"), so the next line
+      // belongs to the same paragraph.
       const heading =
         line.text.length <= 130 &&
         /^(?:(?:\d+(?:\.\d+)*[.)]?\s+)?(?:abstract|introduction|background|methods?|methodology|results|discussion|conclusions?|references|bibliography|works cited)\b|(?:chapter|part)\s+\S+|prologue\b|epilogue\b|appendix\b)/i.test(
           line.text,
-        );
+        ) &&
+        /^[\p{Lu}\d]/u.test(line.text) &&
+        !RUN_IN.test(line.text) &&
+        line.right < spanRight(page, line) - Math.max(line.height * 3, 20);
       const jumped =
         !previous ||
         gap < 0 ||
@@ -409,8 +451,20 @@ export function composePdf(
         previous &&
         previous.right <
           columnRight(page, previous) - Math.max(previous.height * 3, 20);
+      // A heading that wraps onto a second short line ("CHAPTER XI. Who
+      // Stole the" / "Tarts?") stays one heading.
+      const headingWraps =
+        previous?.heading &&
+        !heading &&
+        !/[.!?:;]["”’)\]]*$/u.test(previous.text) &&
+        line.text.length <= 40 &&
+        previous.text.length + line.text.length <= 80 &&
+        gap > 0 &&
+        gap <= Math.max(previous.height, line.height) * 1.65 &&
+        line.right < spanRight(page, line) - Math.max(line.height * 3, 20);
       const paragraph =
         !continues &&
+        !headingWraps &&
         (heading ||
           previous?.heading ||
           jumped ||
@@ -424,16 +478,31 @@ export function composePdf(
       const join = !paragraph ? (previous || last)?.joinNext : false;
       if (paragraph && deferred.length) flushDeferred();
       emit(line, page, { paragraph, join });
-      previous = { ...line, heading, aside, start: paragraph };
+      previous = {
+        ...line,
+        heading: heading || headingWraps,
+        aside,
+        start: paragraph,
+      };
       last = previous;
     }
   }
   flushDeferred();
-  return { text, locations, removed };
+  return { text: splitLongDialogue(text), locations, removed, contents };
 }
 // Right edge of the text column a line belongs to (the widest line that
 // starts near it), cached per page.
 const columnRights = new WeakMap();
+// The right edge of the text a line sits in: the furthest right of any line
+// overlapping it across the page, so a centred heading is measured against
+// the body text below it rather than against itself.
+function spanRight(page, line) {
+  return Math.max(
+    ...page.lines
+      .filter((l) => l.x <= line.right && l.right >= line.x)
+      .map((l) => l.right),
+  );
+}
 function columnRight(page, line) {
   if (!columnRights.has(page)) columnRights.set(page, new Map());
   const cache = columnRights.get(page);
@@ -521,8 +590,10 @@ export async function markLineJoins(pages, lookup, { signal } = {}) {
   }
   for (const { line, next, page, nextPage, jumps } of pairs) {
     signal?.throwIfAborted();
-    const a = line.text.match(/([\p{L}]+)-$/u),
-      b = next.text.match(/^([\p{Ll}][\p{L}]+)/u);
+    // Pieces of a longer compound ("tete-a-" / "tete", "sloop-" /
+    // "of-war") keep their hyphen whatever their length.
+    const a = line.text.match(/((?:\p{L}+-)*)(\p{L}+)-$/u),
+      b = next.text.match(/^(\p{Ll}\p{L}*)(-\p{L})?/u);
     const below =
       page === nextPage &&
       Math.abs(next.x - line.x) <= Math.max(18, line.height * 2) &&
@@ -532,8 +603,10 @@ export async function markLineJoins(pages, lookup, { signal } = {}) {
     const jumped =
       jumps && (page !== nextPage || (next.y > line.y && next.x > line.x));
     if (!a || !b || !(below || jumped)) continue;
+    const chain = Boolean(a[1] || b[2]);
+    if (!chain && b[1].length < 2) continue;
     try {
-      line.joinNext = await hyphenJoin(a[1], b[1], lookup);
+      line.joinNext = chain ? "keep" : await hyphenJoin(a[2], b[1], lookup);
       if (line.joinNext) count++;
     } catch {
       /* Without a dictionary, preserve the original spelling. */
