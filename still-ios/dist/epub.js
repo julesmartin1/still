@@ -1,4 +1,5 @@
 import { tidyPunctuation } from "./text-repair.js";
+const MAX_BOOK_CHARACTERS = 20000000;
 const decoder = new TextDecoder();
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -147,6 +148,77 @@ function xml(value) {
     throw Error("This EPUB contains unreadable chapter markup.");
   return doc;
 }
+// A chapter that isn't well-formed XML (a stray "<Your Name Here>" in an
+// otherwise fine book) is read the forgiving HTML way rather than failing
+// the whole import.
+function chapter(value) {
+  try {
+    return xml(value);
+  } catch (error) {
+    if (!/unreadable/.test(error.message)) throw error;
+    return new DOMParser().parseFromString(value, "text/html");
+  }
+}
+// Parts of a book that aren't read straight through: title and copyright
+// pages, colophons, indexes, tables of contents, and notes. Note numbers in
+// the text ("ashamed.2") and the "↩" links back from notes go too, since a
+// reader can't follow them one word at a time.
+const SKIPPED = new Set([
+  "titlepage",
+  "halftitlepage",
+  "imprint",
+  "colophon",
+  "copyright-page",
+  "toc",
+  "loi",
+  "lot",
+  "index",
+  "footnotes",
+  "endnotes",
+  "rearnotes",
+  "footnote",
+  "endnote",
+  "rearnote",
+  "noteref",
+  "backlink",
+]);
+const NOTE_MARK = /^\s*(?:\[\s*\d{1,3}\s*\]|\d{1,3}|[*†‡§])\s*$/u;
+function skipped(el) {
+  const kinds =
+    `${el.getAttribute("epub:type") || ""} ${(el.getAttribute("role") || "").replace(/\bdoc-/g, "")}`
+      .toLowerCase()
+      .split(/\s+/);
+  if (kinds.some((k) => SKIPPED.has(k))) return true;
+  // Project Gutenberg's header and licence.
+  if (/^pg-(?:header|footer)$/.test(el.getAttribute("id") || "")) return true;
+  if (/\bpg-boilerplate\b/.test(el.getAttribute("class") || "")) return true;
+  // A bare note number linking to a note ("<a href='#fn3'>3</a>") or
+  // marking where one starts ("<a name='note1'>[1]</a>").
+  if (el.localName?.toLowerCase() === "a" && NOTE_MARK.test(el.textContent)) {
+    const href = el.getAttribute("href") || "";
+    return (
+      (!href && (el.hasAttribute("name") || el.hasAttribute("id"))) ||
+      (href.includes("#") &&
+        (/note|fn|foot/i.test(href) ||
+          /note|foot/i.test(el.getAttribute("class") || "") ||
+          el.parentElement?.localName?.toLowerCase() === "sup"))
+    );
+  }
+  return false;
+}
+// A table-of-contents entry that is only a number ("I", "2") under a part or
+// story is named with it: "Part I: A Voyage to Lilliput · I".
+function tocTitle(a) {
+  const title = a.textContent.replace(/\s+/g, " ").trim();
+  if (!/^(?:[ivxlcdm]+|\d+)\.?$/i.test(title)) return title;
+  const parent = a.parentElement?.parentElement?.parentElement;
+  if (parent?.localName?.toLowerCase() !== "li") return title;
+  const label = [...parent.children].find((c) =>
+    /^(?:a|span)$/i.test(c.localName),
+  );
+  const name = label?.textContent.replace(/\s+/g, " ").trim();
+  return name ? `${name} · ${title}` : title;
+}
 function resolvePath(base, href) {
   const u = new URL(href, "https://epub.invalid/" + base);
   if (u.origin !== "https://epub.invalid")
@@ -208,10 +280,11 @@ export async function extractEpub(
     const item = manifest.get(spine[n].getAttribute("idref"));
     if (!item) throw Error("An EPUB chapter is missing from the manifest.");
     const path = resolvePath(packagePath, item.getAttribute("href")).path;
-    const doc = xml(await zip.read(path));
+    const doc = chapter(await zip.read(path));
     doc
       .querySelectorAll("script,style,nav,iframe,object,noscript")
       .forEach((e) => e.remove());
+    for (const el of doc.querySelectorAll("*")) if (skipped(el)) el.remove();
     const body = doc.querySelector("body");
     if (!body) continue;
     const first = paragraphs.length + 1;
@@ -255,6 +328,10 @@ export async function extractEpub(
     };
     walk(body);
     flush();
+    // Nothing left to read (a title page): links to it lead nowhere.
+    if (paragraphs.length < first)
+      for (const key of anchors.keys())
+        if (key === path || key.startsWith(path + "#")) anchors.delete(key);
     const heading = [...body.querySelectorAll("h1,h2,h3")]
       .map((h) => h.textContent.replace(/\s+/g, " ").trim())
       .find(Boolean);
@@ -263,8 +340,36 @@ export async function extractEpub(
         title: (heading || "Chapter " + (n + 1)).slice(0, 120),
         paragraph: first,
       });
-    if (characters > 2000000)
+    // Longer than one reading is fine (the app offers it in parts); this
+    // only guards memory.
+    if (characters > MAX_BOOK_CHARACTERS)
       throw Error("This EPUB contains too much text. Import a smaller book.");
+  }
+  // Project Gutenberg EPUBs without marked-up boilerplate still carry the
+  // START / END lines around the book.
+  const start = paragraphs.findIndex((p) =>
+      /^\*{3}\s*START OF (?:THE|THIS) PROJECT GUTENBERG/i.test(p),
+    ),
+    end = paragraphs.findIndex((p) =>
+      /^\*{3}\s*END OF (?:THE|THIS) PROJECT GUTENBERG/i.test(p),
+    );
+  if (start >= 0 || end > 0) {
+    const from = start + 1,
+      to = end > from ? end : paragraphs.length;
+    paragraphs.splice(to);
+    paragraphs.splice(0, from);
+    for (const [key, value] of anchors) {
+      if (value <= from || value > to) anchors.delete(key);
+      else anchors.set(key, value - from);
+    }
+    for (let i = sections.length - 1; i >= 0; i--) {
+      sections[i].paragraph -= from;
+      if (
+        sections[i].paragraph < 1 ||
+        sections[i].paragraph > paragraphs.length
+      )
+        sections.splice(i, 1);
+    }
   }
   if (!paragraphs.length)
     throw Error("No readable text was found in this EPUB.");
@@ -286,7 +391,7 @@ export async function extractEpub(
             "toc",
         ) || doc.querySelector("nav");
       toc = [...(tocNav?.querySelectorAll("a[href]") || [])].map((a) => ({
-        title: a.textContent.trim(),
+        title: tocTitle(a),
         ...resolvePath(path, a.getAttribute("href")),
       }));
     } else if (ncx) {
@@ -320,6 +425,74 @@ export async function extractEpub(
       .trim()
       .slice(0, 240),
     sections: mapped.length ? mapped : sections,
+    // Where each chapter file starts, for splitting a long book into parts.
+    chapterStarts: sections,
     chapters: spine.length,
   };
+}
+
+// A book longer than one reading is offered in parts. Parts break at
+// table-of-contents entries where possible, and between paragraphs when a
+// single chapter is itself too long.
+export function bookParts(book, limit) {
+  if (book.text.length <= limit) return [book];
+  const paragraphs = book.text.split("\n\n");
+  const marks = book.sections.map((s) => ({ ...s }));
+  const chapters = (book.chapterStarts || []).map((s) => ({ ...s }));
+  const starts = new Set();
+  const markStarts = () => {
+    starts.clear();
+    for (const s of [...marks, ...chapters]) starts.add(s.paragraph - 1);
+  };
+  markStarts();
+  const budget = Math.floor(limit * 0.95);
+  const parts = [];
+  let from = 0;
+  while (from < paragraphs.length) {
+    let size = 0,
+      to = from,
+      lastBreak = -1;
+    while (to < paragraphs.length) {
+      const next = size + paragraphs[to].length + (to > from ? 2 : 0);
+      if (next > budget && to > from) break;
+      size = next;
+      to++;
+      if (starts.has(to)) lastBreak = to;
+    }
+    // Prefer ending at a chapter, unless that would leave the part short.
+    if (to < paragraphs.length && lastBreak > from) {
+      let kept = 0;
+      for (let i = from; i < lastBreak; i++) kept += paragraphs[i].length + 2;
+      if (kept >= budget / 2) to = lastBreak;
+    }
+    // One paragraph longer than a reading: cut it at a sentence or space.
+    if (to === from + 1 && paragraphs[from].length > budget) {
+      const long = paragraphs[from];
+      let cut = long.lastIndexOf(". ", budget - 1);
+      if (cut < budget / 2) cut = long.lastIndexOf(" ", budget - 1);
+      if (cut < budget / 2) cut = budget;
+      paragraphs.splice(
+        from,
+        1,
+        long.slice(0, cut + 1).trim(),
+        long.slice(cut + 1).trim(),
+      );
+      for (const s of [...marks, ...chapters])
+        if (s.paragraph - 1 > from) s.paragraph++;
+      markStarts();
+      continue;
+    }
+    const inPart = (list) =>
+      list
+        .filter((s) => s.paragraph - 1 >= from && s.paragraph - 1 < to)
+        .map((s) => ({ ...s, paragraph: s.paragraph - from }));
+    parts.push({
+      ...book,
+      text: paragraphs.slice(from, to).join("\n\n"),
+      sections: inPart(marks),
+      chapterStarts: inPart(chapters),
+    });
+    from = to;
+  }
+  return parts;
 }

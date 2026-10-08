@@ -155,16 +155,19 @@ export async function extractPdf(
     } catch {
       /* A broken table of contents should not stop the import. */
     }
+    const composed = composePdf(pageModels);
     return {
       outline,
-      ...composePdf(pageModels),
+      ...composed,
       pageModels,
-      text: composePdf(pageModels).text,
-      title: suggestTitle({
-        metadata: metadata?.info?.Title,
-        pages: pageModels,
-        filename: file.name,
-      }),
+      text: composed.text,
+      title:
+        composed.gutenbergTitle ||
+        suggestTitle({
+          metadata: metadata?.info?.Title,
+          pages: pageModels,
+          filename: file.name,
+        }),
       pages: doc.numPages,
       blankPages,
     };

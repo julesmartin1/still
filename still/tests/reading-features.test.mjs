@@ -6,7 +6,7 @@ import {
   shelfMatches,
 } from "../dist/reading-features.js";
 import { parseText } from "../dist/engine.js";
-import { unzipEpub } from "../dist/epub.js";
+import { bookParts, unzipEpub } from "../dist/epub.js";
 test("sentence rewind handles mid-sentence, boundaries, abbreviations and paragraphs", () => {
   const t = parseText(
     "Dr. Rose walked home. A bird sang.\n\nNext paragraph starts here.",
@@ -58,4 +58,49 @@ test("EPUB deflate extraction retains the spine and complete chapter text", asyn
   );
   assert.match(await zip.read("OEBPS/z.xhtml"), /First chapter/);
   await assert.rejects(zip.read("missing"), /chapter is missing/);
+});
+
+test("a book longer than one reading is split into parts at chapters", () => {
+  const paragraphs = [],
+    sections = [];
+  for (let c = 0; c < 6; c++) {
+    sections.push({
+      title: "Chapter " + (c + 1),
+      paragraph: paragraphs.length + 1,
+    });
+    for (let p = 0; p < 4; p++)
+      paragraphs.push(`c${c}p${p} ` + "word ".repeat(50));
+  }
+  paragraphs.push("A very long sentence. ".repeat(200));
+  const book = { title: "Book", text: paragraphs.join("\n\n"), sections };
+  assert.deepEqual(bookParts(book, book.text.length), [book]);
+  const parts = bookParts(book, 2400);
+  for (const part of parts) assert.ok(part.text.length <= 2400 * 0.95);
+  // Two chapters (about 2,000 characters) fit in each of the first parts,
+  // and each part starts on a chapter. The one paragraph too long for a
+  // reading is cut at a sentence.
+  assert.deepEqual(
+    parts.map((p) => p.sections.map((s) => [s.title, s.paragraph])),
+    [
+      [
+        ["Chapter 1", 1],
+        ["Chapter 2", 5],
+      ],
+      [
+        ["Chapter 3", 1],
+        ["Chapter 4", 5],
+      ],
+      [
+        ["Chapter 5", 1],
+        ["Chapter 6", 5],
+      ],
+      [],
+      [],
+    ],
+  );
+  for (const part of parts.slice(3))
+    assert.match(part.text, /^A very.*sentence\.$/s);
+  const words = (t) => t.split(/\s+/).filter(Boolean);
+  assert.deepEqual(words(parts.map((p) => p.text).join(" ")), words(book.text));
+  assert.equal(book.sections[1].paragraph, 5);
 });
