@@ -13,7 +13,7 @@ export const PASSAGES = [
 ];
 
 export const START = 250;
-export const MIN = 120;
+export const MIN = 60;
 export const MAX = 600;
 
 const clampPace = (n) => Math.min(MAX, Math.max(MIN, Math.round(n / 10) * 10));

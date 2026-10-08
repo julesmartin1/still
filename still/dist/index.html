@@ -209,32 +209,24 @@
         <div class="pace">
           <label for="speed">Your average pace</label>
           <div class="pace-value">
-            <button
-              id="slower"
-              class="pace-step"
-              aria-label="Slow down 10 words per minute"
-            >
+            <button id="slower" class="pace-step" aria-label="Slow down">
               −</button
             ><input
               id="speedValue"
               type="number"
-              min="80"
+              min="40"
               max="600"
               step="1"
               value="260"
               aria-label="Average words per minute"
-            /><button
-              id="faster"
-              class="pace-step"
-              aria-label="Speed up 10 words per minute"
-            >
+            /><button id="faster" class="pace-step" aria-label="Speed up">
               +</button
             ><span>words / min</span>
           </div>
           <input
             id="speed"
             type="range"
-            min="80"
+            min="40"
             max="600"
             step="1"
             value="260"
@@ -247,6 +239,17 @@
             ><span id="paceInvite" class="muted" hidden>
               New here? It takes about a minute.</span
             >
+          </p>
+          <label class="check-label sentence-stop"
+            ><input
+              id="sentenceStop"
+              type="checkbox"
+              aria-describedby="sentenceStopHint"
+            />
+            Pause after each sentence</label
+          >
+          <p id="sentenceStopHint" class="muted field-hint">
+            Take each sentence in, then tap for the next one.
           </p>
           <div class="adapt-bottom">
             <span id="learning">Learning as you read</span
@@ -820,7 +823,11 @@
         ><label for="appearanceProgress">Progress shows</label
         ><select id="appearanceProgress">
           <option value="time">Time left</option>
-          <option value="percent">Percent read</option>
+          <option value="percent">Percent read</option></select
+        ><label for="appearanceSpacing">Letter spacing</label
+        ><select id="appearanceSpacing">
+          <option value="normal">Normal</option>
+          <option value="wide">Wide (easier for some readers)</option>
         </select>
         <p class="muted">
           Anchoring keeps your eye on one spot: each word's highlighted letter,
@@ -833,7 +840,7 @@
           id="appearanceSize"
           type="range"
           min="80"
-          max="150"
+          max="200"
           step="5"
           value="100"
         /><span id="appearanceSizeLabel">100%</span>

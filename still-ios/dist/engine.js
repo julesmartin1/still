@@ -162,9 +162,13 @@ export function wordWeight(
   if (token.paragraphEnd) weight += 0.6;
   return weight;
 }
+// The slowest pace suits a new reader or someone learning the language
+// (a word every 1.5 s); the fastest is near the limit of comprehension.
+export const MIN_WPM = 40;
+export const MAX_WPM = 600;
 export function targetWpm(base, profile = freshProfile(), replay = false) {
   return (
-    clamp(base, 80, 600) /
+    clamp(base, MIN_WPM, MAX_WPM) /
     (1 + clamp(profile.slowdown || 0, 0, 0.2)) /
     (replay ? 1.16 : 1)
   );

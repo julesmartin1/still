@@ -140,7 +140,7 @@ test("each paragraph meets its WPM budget including punctuation and difficulty",
   const { tokens } = parseText(
     "We notice extraordinary things daily.\n\nYes, the constructor pauses; this is a longer sentence with unfamiliar terminology and more words to give the pacing algorithm enough material to consider.",
   );
-  for (const base of [80, 260, 300, 600]) {
+  for (const base of [40, 80, 260, 300, 600]) {
     const plan = buildTimingPlan(tokens, { base });
     for (const p of [0, 1]) {
       const indices = tokens
@@ -236,7 +236,7 @@ test("short words retain the minimum even among long words and punctuation", () 
   const { tokens } = parseText(
     "a extraordinary; incomprehensibilities. an extraordinary; incomprehensibilities!",
   );
-  for (const base of [80, 260, 300, 400, 500, 600]) {
+  for (const base of [40, 80, 260, 300, 400, 500, 600]) {
     const plan = buildTimingPlan(tokens, { base });
     const average = 60000 / base;
     near(sum(plan), tokens.length * average);

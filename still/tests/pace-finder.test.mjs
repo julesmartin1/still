@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PASSAGES, START, nextPace, suggestedPace } from "../dist/pace-finder.js";
+import { PASSAGES, START, MIN, nextPace, suggestedPace } from "../dist/pace-finder.js";
 import { countWords } from "../dist/engine.js";
 
 const run = (feelAt) => {
@@ -44,5 +44,10 @@ test("never goes back above a pace that felt fast, and never repeats", () => {
 
 test("everything comfortable keeps climbing; nothing comfortable eases off", () => {
   assert.equal(run(() => "comfortable").pace, 370);
-  assert.equal(suggestedPace([{ wpm: 250, feel: "too-fast" }, { wpm: 190, feel: "too-fast" }, { wpm: 130, feel: "fast" }]), 120);
+  assert.equal(suggestedPace([{ wpm: 250, feel: "too-fast" }, { wpm: 190, feel: "too-fast" }, { wpm: 130, feel: "fast" }]), 90);
+});
+
+test("a reader for whom every passage is fast can land on a slow pace", () => {
+  const { pace } = run(() => "too-fast");
+  assert.ok(pace >= MIN && pace <= 100, pace);
 });

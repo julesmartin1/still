@@ -61,6 +61,8 @@ import {
   Playback,
   clamp,
   sentenceEnd,
+  MIN_WPM,
+  MAX_WPM,
   warmUpFactor,
   planSums,
 } from "./engine.js";
@@ -118,7 +120,9 @@ let text =
   typeof saved?.text === "string" && saved.text.trim() ? saved.text : SAMPLE;
 let title =
   typeof saved?.title === "string" ? saved.title : "The art of noticing";
-let base = Number.isFinite(saved?.base) ? clamp(saved.base, 80, 600) : 260;
+let base = Number.isFinite(saved?.base)
+  ? clamp(saved.base, MIN_WPM, MAX_WPM)
+  : 260;
 let profile = freshProfile();
 if (
   saved?.profile &&
@@ -246,6 +250,8 @@ try {
 let session = null,
   lastSession = null,
   warmFrom = 0,
+  sentenceBreakAt = -1, // stopped after this word ("Pause after each sentence")
+  checkinBreak = false,
   celebratedDay = today(habits).met ? dayKey() : "",
   todayShownAt = 0,
   timeLeftKey = "",
@@ -443,8 +449,8 @@ function render() {
   $("title").textContent = title;
   $("speed").value = base;
   if (document.activeElement !== $("speedValue")) $("speedValue").value = base;
-  $("slower").disabled = base <= 80;
-  $("faster").disabled = base >= 600;
+  $("slower").disabled = base <= MIN_WPM;
+  $("faster").disabled = base >= MAX_WPM;
   const replaying =
     t?.paragraph === replayParagraph || !!replaySet?.has(t?.paragraph);
   $("learning").textContent =
@@ -554,11 +560,15 @@ function playbackUI() {
   $("status").textContent =
     playing || reader.finished
       ? ""
-      : lastSession
-        ? sessionSummary(lastSession)
-        : touch.matches
-          ? "Tap the word to start. Hold it to see the whole sentence."
-          : "Press Space or tap the word to start. Hold it to see the whole sentence.";
+      : sentenceBreakAt === reader.index
+        ? touch.matches
+          ? "End of the sentence. Tap the word for the next one."
+          : "End of the sentence. Tap the word or press Space for the next one."
+        : lastSession
+          ? sessionSummary(lastSession)
+          : touch.matches
+            ? "Tap the word to start. Hold it to see the whole sentence."
+            : "Press Space or tap the word to start. Hold it to see the whole sentence.";
   // Words are not announced one by one (far too fast for a screen reader);
   // announce the state and position whenever playback starts or stops.
   const position = data.tokens.length
@@ -601,21 +611,30 @@ function createReader(index = 0) {
       if (endCheckInDue(wordsRead, checkinMode()))
         openCheckIn(data.tokens.length - 1, { end: true });
     },
-    breakAfter: (i) =>
-      !!data.tokens[i]?.paragraphEnd &&
-      checkInDue({
-        tokens: data.tokens,
-        index: i,
-        wordsRead,
-        every: checkinMode(),
-        sectionStarts: sectionStarts(),
-      }),
+    breakAfter: (i) => {
+      const token = data.tokens[i];
+      checkinBreak =
+        !!token?.paragraphEnd &&
+        checkInDue({
+          tokens: data.tokens,
+          index: i,
+          wordsRead,
+          every: checkinMode(),
+          sectionStarts: sectionStarts(),
+        });
+      return (
+        checkinBreak ||
+        (!!appearance.sentenceStop &&
+          (token.paragraphEnd || sentenceEnd.test(token.text)))
+      );
+    },
     onBreak: (i) => {
+      if (!checkinBreak) sentenceBreakAt = i;
       endSession();
       playbackUI();
       save();
       checkpoint();
-      openCheckIn(i);
+      if (checkinBreak) openCheckIn(i);
     },
   });
   reader.seek(Number.isInteger(index) ? index : 0);
@@ -632,6 +651,10 @@ function pause() {
 function play() {
   if (normalMode) setReadingMode(false);
   // The first few words after starting get extra time (engine.warmUpFactor).
+  // After a sentence pause the last word stays on screen; carry on after it.
+  if (sentenceBreakAt === reader.index && !reader.finished)
+    reader.index = Math.min(reader.index + 1, data.tokens.length - 1);
+  sentenceBreakAt = -1;
   warmFrom = reader.finished ? 0 : reader.index;
   startSession();
   reader.play();
@@ -695,7 +718,9 @@ function load(nextText, nextTitle, existing = null, importedSource = null) {
       readingOptions.skipCitations || readingOptions.skipReferences
         ? "academic"
         : inferType(text);
-  base = Number.isFinite(existing?.base) ? clamp(existing.base, 80, 600) : base;
+  base = Number.isFinite(existing?.base)
+    ? clamp(existing.base, MIN_WPM, MAX_WPM)
+    : base;
   profile = existing?.profile || freshProfile();
   filterAnchor = existing?.sourceIndex ?? existing?.index ?? 0;
   data = filteredReading(text, readingOptions);
@@ -723,7 +748,7 @@ function setPace(value) {
     $("speedValue").value = base;
     return;
   }
-  base = clamp(Math.round(number), 80, 600);
+  base = clamp(Math.round(number), MIN_WPM, MAX_WPM);
   profile = { ...profile, slowdown: 0 };
   replayParagraph = null;
   replaySet = null;
@@ -829,8 +854,11 @@ $("speedValue").onkeydown = (e) => {
     $("play").focus({ preventScroll: true });
   }
 };
-$("slower").onclick = () => setPace(base - 10);
-$("faster").onclick = () => setPace(base + 10);
+// Steps are finer at slow paces, where 10 words a minute is a big change.
+const paceIncrement = (direction) =>
+  direction < 0 ? (base <= 120 ? 5 : 10) : base < 120 ? 5 : 10;
+$("slower").onclick = () => setPace(base - paceIncrement(-1));
+$("faster").onclick = () => setPace(base + paceIncrement(1));
 $("reset").onclick = () => {
   profile = freshProfile();
   replayParagraph = null;
@@ -1270,7 +1298,8 @@ document.addEventListener("keydown", (e) => {
   // Up/Down change the pace in the word view (Text view keeps them for scrolling).
   if (!normalMode && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
     e.preventDefault();
-    setPace(base + (e.key === "ArrowUp" ? 10 : -10));
+    const direction = e.key === "ArrowUp" ? 1 : -1;
+    setPace(base + direction * paceIncrement(direction));
     showToast(`${base} words / min`, 1200);
   }
   if (!e.repeat && e.key.toLowerCase() === "s") {
@@ -2494,8 +2523,12 @@ function applyAppearance() {
       mono: "ui-monospace, monospace",
     }[appearance.font] || "var(--serif)";
   document.documentElement.style.setProperty("--reading-font", font);
-  const size = clamp(Number(appearance.size) || 100, 80, 150);
+  const size = clamp(Number(appearance.size) || 100, 80, 200);
   document.documentElement.style.setProperty("--reading-scale", size / 100);
+  const wide = appearance.spacing === "wide";
+  document.documentElement.classList.toggle("wide-spacing", wide);
+  $("appearanceSpacing").value = wide ? "wide" : "normal";
+  $("sentenceStop").checked = !!appearance.sentenceStop;
   $("appearanceTheme").value = theme;
   $("appearanceFont").value = appearance.font || "serif";
   $("appearancePlacement").value =
@@ -2518,9 +2551,14 @@ for (const id of [
   "appearancePlacement",
   "appearanceTransition",
   "appearanceProgress",
+  "appearanceSpacing",
+  "sentenceStop",
 ])
   $(id).oninput = () => {
     appearance = {
+      ...appearance,
+      spacing: $("appearanceSpacing").value,
+      sentenceStop: $("sentenceStop").checked,
       theme: $("appearanceTheme").value,
       font: $("appearanceFont").value,
       size: Number($("appearanceSize").value),
@@ -2833,10 +2871,10 @@ function rateCheckIn(rating) {
     showFollowUp(
       eased
         ? "Your last three check-ins were clear. Go back to your usual pace?"
-        : `Your last three check-ins were clear. Try ${Math.min(600, base + 10)} WPM?`,
+        : `Your last three check-ins were clear. Try ${Math.min(MAX_WPM, base + 10)} WPM?`,
       ["Keep this pace", () => finishCheckIn()],
       [
-        eased ? "Use my usual pace" : `Try ${Math.min(600, base + 10)} WPM`,
+        eased ? "Use my usual pace" : `Try ${Math.min(MAX_WPM, base + 10)} WPM`,
         () => {
           if (eased) profile = { ...profile, slowdown: 0 };
           else setPace(base + 10);

@@ -134,6 +134,15 @@ Tested with *Alice in Wonderland* (Word export), *Pride and Prejudice* and *Fran
 | 62 | That edition also prints each chapter as one block, dialogue included, so check-ins and Review had no paragraph ends for thousands of words. | **Blocks over 400 words split where the speaker changes** (a closing quote after a full stop, then an opening quote). Word positions are unchanged. |
 | 63 | Wrapped chapter titles were cut short ("CHAPTER XI. Who Stole the"). | **A heading that wraps onto a short second line stays one heading.** |
 
+### Easier reading (October 2026)
+
+| # | Request | Change |
+|---|---|---|
+| 64 | Scrolling far in Review made it easy to lose your place. | **Your place is underlined, and "Back to my place" appears whenever it is out of view**, pointing towards it. Text loads on its own for about 2,400 words either way; past that, "Load earlier text" / "Load more text" say how many minutes of reading away it is. |
+| 65 | The slowest pace was 80 words a minute, too fast for new readers and language learners. | **Paces go down to 40 words a minute** (a word every 1.5 s), with 5-word steps below 120. Find my pace can now suggest paces down to 60. |
+| 66 | Some readers need a moment after each sentence. | **Pause after each sentence** (under the pace): playback stops on each sentence's last word, and a tap or Space carries on. |
+| 67 | Low-vision and dyslexic readers asked for more room. | **Text size goes up to 200%**, and Appearance has **wide letter spacing** (0.12 em letters, 0.16 em words, the WCAG text-spacing amounts) for the word, Review and Text view. |
+
 What to measure next, with consent: whether readers with a goal come back on more days, which goal size they keep, and whether the fade-back while reading changes how often they pause.
 
 ## Still open
