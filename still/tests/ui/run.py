@@ -693,6 +693,31 @@ async def progress_can_show_percent_read(browser):
 
 
 @check
+async def slow_paces_and_pausing_after_each_sentence(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, "One two three. Four five six.\n\nSeven eight")
+    # Paces go down to 40 words a minute, in finer steps at the slow end.
+    await page.fill("#speedValue", "40")
+    await page.press("#speedValue", "Enter")
+    assert await page.input_value("#speedValue") == "40"
+    assert await page.is_disabled("#slower")
+    await page.click("#faster")
+    assert await page.input_value("#speedValue") == "45"
+    await page.fill("#speedValue", "600")
+    await page.press("#speedValue", "Enter")
+    # With the pause on, playback stops on each sentence's last word.
+    await page.check("#sentenceStop")
+    for last in ("three.", "six.", "eight"):
+        await page.click("#play")
+        await page.wait_for_function("!document.getElementById('play').textContent.includes('Pause')", timeout=5000)
+        assert (await page.inner_text("#word")).strip() == last
+        if last != "eight":
+            assert "End of the sentence" in await page.inner_text("#status")
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).sentenceStop") is True
+    await ctx.close()
+
+
+@check
 async def finishing_offers_the_next_reading(browser):
     ctx, page = await fresh(browser)
     await open_text(page, "An unread book waits here.", title="Waiting book")

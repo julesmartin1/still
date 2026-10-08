@@ -1742,6 +1742,21 @@ html[data-theme="dark"] .text-check li .text-button {
 .pace-find .muted {
   margin-left: 8px;
 }
+.sentence-stop {
+  margin-top: 8px !important;
+  min-height: 44px;
+}
+.sentence-stop + .field-hint {
+  margin: 0 0 4px 30px;
+  font-size: 13px;
+}
+/* Wide letter spacing (Appearance), at the WCAG text-spacing amounts. */
+.wide-spacing #word,
+.wide-spacing .paragraph,
+.wide-spacing .normal-text {
+  letter-spacing: 0.12em;
+  word-spacing: 0.16em;
+}
 .pace-stage {
   margin: 14px 0 4px;
   height: 150px;
