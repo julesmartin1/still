@@ -264,21 +264,104 @@ export function layoutPage(
 }
 // Running headers sit above the body; footers and page numbers sit on a
 // baseline in the bottom margin (often 7–8% up, so their top edge can reach
-// into the last 10%).
+// into the last 10%). A page printed with narrow margins (a web page saved
+// as PDF) puts body text in that band too, so a line there only counts as
+// margin when it stands apart: smaller type than the body, or a gap wider
+// than a line's spacing between it and the text beside it. Cached per page.
+const marginCache = new WeakMap(),
+  documentBody = new WeakMap();
+// The body type size across the whole document, so a nearly empty last page
+// (a line or two of text under a header and a long footer) is judged by the
+// same measure as the rest.
+function measureDocument(pages) {
+  const weights = new Map();
+  for (const p of pages)
+    for (const l of p.lines) {
+      const h = Math.round(l.height * 2) / 2;
+      weights.set(h, (weights.get(h) || 0) + l.text.length);
+    }
+  const body = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (body) for (const p of pages) documentBody.set(p, body);
+}
 function marginLine(line, page) {
-  return line.y > page.height * 0.92 || line.y < page.height * 0.08;
+  const body = documentBody.get(page) || bodyHeight(page);
+  let cached = marginCache.get(page);
+  if (cached?.body !== body) {
+    cached = { body, lines: marginLines(page, body) };
+    marginCache.set(page, cached);
+  }
+  return cached.lines.has(line);
+}
+function marginLines(page, body) {
+  const top = page.height * 0.92,
+    bottom = page.height * 0.08,
+    margins = new Set();
+  // From the middle of the page outwards, so a line beyond a margin line
+  // (the second line of a two-line footer) is margin too.
+  const middle = page.height / 2;
+  const banded = page.lines
+    .filter((l) => l.y > top || l.y < bottom)
+    .sort((a, b) => Math.abs(a.y - middle) - Math.abs(b.y - middle));
+  if (!banded.length) return margins;
+  const spacing = lineSpacing(page, body);
+  for (const line of banded) {
+    // The nearest line towards the middle of the page, leaving out the
+    // opposite margin: on a nearly empty page the last lines of text can sit
+    // in the top band with only a footer below them.
+    const inward = line.y > top ? -1 : 1;
+    let nearest = null;
+    for (const other of page.lines) {
+      const d = (other.y - line.y) * inward;
+      const opposite = inward < 0 ? other.y < bottom : other.y > top;
+      if (d > 1 && !opposite && (!nearest || d < (nearest.y - line.y) * inward))
+        nearest = other;
+    }
+    const apart =
+      nearest &&
+      Math.abs(nearest.y - line.y) >
+        Math.max(line.height * 1.65, spacing * 1.4);
+    // Smaller type next to text of its own size is a block of small print
+    // (a licence, notes), not a header.
+    const small =
+      line.height <= body * 0.9 &&
+      (!nearest ||
+        Math.abs(nearest.height - line.height) >
+          Math.max(nearest.height, line.height) * 0.05);
+    // A bare page number ("696", "xii") sits close to the text in some layouts.
+    const pageNumber = /^(?:\d{1,4}|[ivxlcdm]{1,7})$/.test(line.text.trim());
+    if (small || apart || pageNumber || margins.has(nearest)) margins.add(line);
+  }
+  return margins;
+}
+// The usual distance between baselines on a page (web pages saved as PDF
+// often set lines further apart than books do).
+function lineSpacing(page, body) {
+  const ys = [...new Set(page.lines.map((l) => Math.round(l.y)))].sort(
+    (a, b) => b - a,
+  );
+  const gaps = [];
+  for (let i = 1; i < ys.length; i++) {
+    const gap = ys[i - 1] - ys[i];
+    if (gap > 0 && gap < body * 3) gaps.push(gap);
+  }
+  gaps.sort((a, b) => a - b);
+  return gaps[Math.floor(gaps.length / 2)] || body * 1.2;
+}
+// The most common type size on a page, weighted by text length.
+function bodyHeight(page) {
+  const weights = new Map();
+  for (const l of page.lines) {
+    const h = Math.round(l.height * 2) / 2;
+    weights.set(h, (weights.get(h) || 0) + l.text.length);
+  }
+  return [...weights].sort((a, b) => b[1] - a[1])[0]?.[0] || 0;
 }
 // Footnotes at the foot of a column: smaller type, starting with a note
 // marker ("3The distribution…", "* Work done while…"). Cached per page.
 const footnoteCache = new WeakMap();
 function footnoteLines(page) {
   if (footnoteCache.has(page)) return footnoteCache.get(page);
-  const weights = new Map();
-  for (const l of page.lines) {
-    const h = Math.round(l.height * 2) / 2;
-    weights.set(h, (weights.get(h) || 0) + l.text.length);
-  }
-  const body = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0] || 0;
+  const body = bodyHeight(page);
   const notes = new Set();
   let inNote = null;
   for (const l of page.lines) {
@@ -337,7 +420,15 @@ export function composePdf(
 ) {
   const chosen = pages.filter((p) => p.number >= from && p.number <= to),
     counts = new Map();
-  const signature = (l) => l.text.toLowerCase().replace(/\d+/g, "#");
+  measureDocument(pages);
+  // Numbers vary from page to page, and a browser shortens a long footer
+  // ("…/se… 1/12", "…/s… 10/12") by different amounts, so cut-off pieces
+  // are left out too.
+  const signature = (l) =>
+    l.text
+      .toLowerCase()
+      .replace(/\S*(?:…|\.\.\.)\S*/g, "…")
+      .replace(/\d+/g, "#");
   for (const p of pages) {
     for (const key of new Set(
       p.lines.filter((l) => marginLine(l, p)).map(signature),
@@ -559,6 +650,7 @@ export async function markLineJoins(pages, lookup, { signal } = {}) {
   // separately, line by line.
   const pairs = [];
   let body = null;
+  measureDocument(pages);
   for (const page of pages) {
     const notes = footnoteLines(page);
     let note = null;

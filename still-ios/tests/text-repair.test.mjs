@@ -6,6 +6,7 @@ import {
   repairText,
   repairPdfLines,
   stripNoteMarkers,
+  tidyPunctuation,
 } from "../dist/text-repair.js";
 
 // A tiny dictionary standing in for WordNet.
@@ -103,4 +104,21 @@ test("PDF lines are repaired in place", async () => {
     pages.flatMap((p) => p.lines.map((l) => l.text)),
     ["the first field", "an offer to differ", "his affairs and figure"],
   );
+});
+
+test("dashes no longer glue words together, and punctuation never stands alone", () => {
+  for (const [before, after] of [
+    ["That government--what is it?", "That government— what is it?"],
+    ["a belt\u2060—one of them", "a belt— one of them"],
+    ["a word — another", "a word— another"],
+    ["I will not tolerate , he said", "I will not tolerate, he said"],
+    ["and so . . . on", "and so… on"],
+    ["« Bonjour » dit-il ( oui ) !", "«Bonjour» dit-il (oui)!"],
+    ["the end.1 ↩", "the end.1"],
+    // Left alone: number ranges, hyphenated words, Spanish dialogue dashes.
+    ["the years 1914—1918", "the years 1914—1918"],
+    ["self-reliance, to-day", "self-reliance, to-day"],
+    ["—Bueno —dijo Juan—, vamos.", "—Bueno —dijo Juan—, vamos."],
+  ])
+    assert.equal(tidyPunctuation(before), after);
 });

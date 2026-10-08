@@ -247,3 +247,41 @@ test("a word hyphenated at the foot of a column joins the next column", async ()
   );
   assert.match(composePdf([page]).text, /for the dimensions of the space\./);
 });
+
+// A web page saved as PDF with narrow margins: body text runs into the top
+// and bottom 8% of the page, under a small printed header and over a footer.
+function webPage(number, words) {
+  const items = [
+    sized("10/8/26, 4:31 AM", 30, 770, 60, 8),
+    sized("Self-Reliance", 280, 770, 60, 8),
+  ];
+  words.forEach((text, i) =>
+    items.push(sized(text, 40, 752 - i * 19, 520, 12)),
+  );
+  items.push(
+    sized(`file:///essays/self-reliance.html ${number}/3`, 30, 17, 300, 8),
+  );
+  return { number, ...layoutPage(items, { width: 612, height: 792 }) };
+}
+
+test("narrow-margin pages keep body text near the edges in order", () => {
+  const lines = (from, n) =>
+    Array.from(
+      { length: n },
+      (_, i) => `line ${from + i} of the essay goes on`,
+    );
+  const first = lines(1, 37);
+  first[0] = "If an angry bigot assumes this bountiful cause";
+  first[36] = "and the paragraph carries on";
+  const second = lines(38, 37);
+  second[0] = "onto the next page as one sentence.";
+  const pages = [
+    webPage(1, first),
+    webPage(2, second),
+    webPage(3, lines(75, 10)),
+  ];
+  const { text } = composePdf(pages, { removeMargins: true });
+  assert.ok(text.startsWith("If an angry bigot assumes"), text.slice(0, 80));
+  assert.match(text, /carries on onto the next page as one sentence\./);
+  assert.doesNotMatch(text, /AM|file:/);
+});

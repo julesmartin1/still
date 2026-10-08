@@ -139,8 +139,30 @@ export function stripNoteMarkers(texts) {
 }
 
 // Whole-text convenience for pasted text and text files.
+// One word on screen at a time means punctuation set apart by spaces would
+// flash on its own ("tolerate ,", ". . ."), and words a dash glues together
+// ("government--what", "belt—one") would show as one long, shrunken word.
+// The dash stays with the word before it, like a comma.
+export function tidyPunctuation(text) {
+  return (
+    text
+      // Word joiners (Standard Ebooks puts one before each dash) and the
+      // "↩" links back from endnotes.
+      .replace(/\u2060/gu, "")
+      .replace(/[ \t]*↩\uFE0E?/gu, "")
+      .replace(/\.(?:[ \t]+\.){2,3}/gu, "…")
+      .replace(/(?<=\S)[ \t]+(?:--|—|–)(?=[ \t]+\S)/gu, "—")
+      .replace(
+        /(\p{L}[.,;:!?'’"”)\]]*)(?:--|—)[ \t]*(?=["“‘(¿¡]?\p{L})/gu,
+        "$1— ",
+      )
+      .replace(/(?<=\S)[ \t]+([,.;:!?…»”)\]]+)(?=\s|$)/gu, "$1")
+      .replace(/(^|[ \t])([(\[“«¿¡]+)[ \t]+(?=\S)/gmu, "$1$2")
+  );
+}
+
 export async function repairText(text, lookup, options) {
-  const normalized = normalizeGlyphs(text);
+  const normalized = tidyPunctuation(normalizeGlyphs(text));
   const map = await learnGlyphMap([normalized], lookup, options);
   const notes = stripNoteMarkers([applyGlyphMap(normalized, map)]);
   return { text: notes.texts[0], map, notes: notes.removed };
@@ -155,7 +177,8 @@ export function describeGlyphMap(map) {
 // so the links from words back to their place on the page stay correct.
 export async function repairPdfLines(pages, lookup, options) {
   const lines = pages.flatMap((p) => p.lines);
-  for (const line of lines) line.text = normalizeGlyphs(line.text);
+  for (const line of lines)
+    line.text = tidyPunctuation(normalizeGlyphs(line.text));
   const map = await learnGlyphMap(
     lines.map((l) => l.text),
     lookup,

@@ -178,6 +178,47 @@ export function stripMarkdown(text) {
   );
 }
 
+// Text files are usually UTF-8, but older ones (many Project Gutenberg
+// files among them) are Latin-1 / Windows-1252, where UTF-8 decoding turns
+// every accented letter into "�".
+export function decodeText(bytes) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("windows-1252").decode(bytes);
+  }
+}
+
+// Project Gutenberg files wrap the book in a header and a long licence
+// (about a quarter of a short essay). The book lies between the START and
+// END markers; the header names its title.
+const PG_START =
+  /^[ \t]*\*{3}[ \t]*START OF (?:THE|THIS) PROJECT GUTENBERG E-?BOOK\b[^\n]*$/im;
+const PG_END =
+  /^[ \t]*\*{3}[ \t]*END OF (?:THE|THIS) PROJECT GUTENBERG E-?BOOK\b[^\n]*$/im;
+export function gutenbergBook(text) {
+  text = text.replace(/\r\n?/g, "\n");
+  const start = PG_START.exec(text);
+  if (!start) return null;
+  const header = text.slice(0, start.index);
+  let body = text.slice(start.index + start[0].length);
+  const end = PG_END.exec(body);
+  if (end) body = body.slice(0, end.index);
+  // Credits just inside the markers ("Produced by…", "End of the Project
+  // Gutenberg EBook of…") belong to the edition, not the book.
+  body = body
+    .trim()
+    .replace(
+      /^(?:(?:Produced|Typed|Transcribed|Prepared|Scanned)[^\n]*\bby\b[^]*?)(?:\n[ \t]*\n|$)/i,
+      "",
+    )
+    .replace(/\n[ \t]*End of (?:the |this )?Project Gutenberg[^]*$/i, "")
+    .trim();
+  // The first line only: indented lines under it are a subtitle.
+  const title = /^Title:[ \t]*(.+)/m.exec(header)?.[1].trim();
+  return { text: body, title: title || "" };
+}
+
 export function checkText(text) {
   const findings = [];
   if (!text.trim()) return findings;
