@@ -219,6 +219,34 @@ export function gutenbergBook(text) {
   return { text: body, title: title || "" };
 }
 
+// "exam- ple" becomes "example" when the dictionary knows the whole word;
+// "well- known" keeps its hyphen ("well-known"). A
+// hyphen before "and" or "to" is meant ("independent- and free-minded").
+const SUSPENDED = /^(?:and|or|nor|to|but|than|as|then|versus|vs)$/i;
+export async function rejoinSplitWords(text, lookup) {
+  const known = async (word) => {
+    try {
+      return !!(lookup && (await lookup(word)));
+    } catch {
+      return false;
+    }
+  };
+  const replacements = [];
+  for (const m of text.matchAll(/(\p{L}+)-[ \t]+(\p{Ll}+)/gu)) {
+    const [, left, right] = m;
+    if (SUSPENDED.test(right)) continue;
+    const whole = await known(left + right);
+    replacements.push([
+      m.index,
+      m[0].length,
+      whole ? left + right : `${left}-${right}`,
+    ]);
+  }
+  for (const [index, length, value] of replacements.reverse())
+    text = text.slice(0, index) + value + text.slice(index + length);
+  return text;
+}
+
 export function checkText(text) {
   const findings = [];
   if (!text.trim()) return findings;
@@ -264,16 +292,26 @@ export function checkText(text) {
     });
 
   // Short lines repeated many times: running headers and footers.
-  const counts = new Map();
+  const counts = new Map(),
+    variants = new Map();
   for (const m of text.matchAll(/^[ \t]*(\S[^\n]{2,60}?)[ \t]*$/gmu)) {
     const key = m[1].replace(/\d+/g, "#");
     counts.set(key, (counts.get(key) || 0) + 1);
+    if (!variants.has(key)) variants.set(key, new Set());
+    variants.get(key).add(m[1]);
   }
   const MONTH =
     /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i;
+  // Numbered headings ("Section 5.1", "Chapter 12") repeat their shape but
+  // not their number; a running header repeats the same words page after page.
+  const NUMBERED =
+    /^(?:section|chapter|part|book|lecture|letter|essay|canto|act|scene|article|lesson|stave|sect\.|chap\.|§)\s*#(?:\.#)*\.?$/iu;
   const repeated = [...counts].filter(
     ([k, n]) =>
-      n >= 6 && (k.match(/\p{L}/gu) || []).length >= 6 && !MONTH.test(k),
+      n >= 6 &&
+      (k.match(/\p{L}/gu) || []).length >= 6 &&
+      !MONTH.test(k) &&
+      !(NUMBERED.test(k) && variants.get(k).size >= n * 0.8),
   );
   if (repeated.length) {
     const keys = new Set(repeated.map(([k]) => k));
@@ -292,12 +330,18 @@ export function checkText(text) {
     });
   }
 
-  const split = collect(text, /\p{L}+-[ \t]+\p{Ll}+/gu);
+  const split = collect(
+    text,
+    /\p{L}+-[ \t]+(\p{Ll}+)/gu,
+    (m) => !SUSPENDED.test(m[1]),
+  );
   if (split.count >= 3)
     findings.push({
       id: "split",
       message: `${split.count} words look split by a line-end hyphen, like “exam- ple”.`,
       ...split,
+      fix: rejoinSplitWords,
+      fixLabel: "Join them",
     });
 
   const long = collect(text, /[^\s—–-]{30,}/gu, (m) => !/^https?:/i.test(m[0]));

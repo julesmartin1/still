@@ -9,6 +9,7 @@ function bounds(items) {
     top: Math.max(...items.map((i) => i.transform[5] + i.height)),
   };
 }
+const SPACED = /^\p{L}(?: \p{L}){2,}$/u;
 function makeLines(items) {
   const lines = [];
   for (const item of [...items].sort(
@@ -48,9 +49,26 @@ function makeLines(items) {
       }
       return chunks.map((items) => {
         const parts = items.sort((a, b) => a.transform[4] - b.transform[4]);
+        // Letter-spaced type ("V i n c e n t e") comes out with a space
+        // after every letter. Such a line is rebuilt from its pieces, with a
+        // space only where the gap is wider than the letter spacing.
+        const spaced = parts.some((p) => SPACED.test(p.str));
+        const height = Math.max(...parts.map((p) => p.height));
         let text = "",
           previous;
         for (const p of parts) {
+          if (spaced) {
+            if (!p.str.trim()) continue;
+            if (
+              previous &&
+              p.transform[4] - (previous.transform[4] + previous.width) >
+                height * 0.5
+            )
+              text += " ";
+            text += SPACED.test(p.str) ? p.str.replace(/ /g, "") : p.str;
+            previous = p;
+            continue;
+          }
           if (
             previous &&
             p.transform[4] - (previous.transform[4] + previous.width) >
@@ -414,6 +432,58 @@ export function contentsLine(text) {
     /^(?:\d{1,4}|[ivxlcdm]{1,7})$/i.test(parts.at(-1))
   );
 }
+// A Project Gutenberg book printed to PDF keeps the header before the START
+// marker and the long licence after the END marker. Returns the lines
+// outside the book, or an empty set when there are no markers.
+function gutenbergLines(pages) {
+  const lines = pages.flatMap((p) => p.lines);
+  const start = lines.findIndex((l) =>
+    /^\*{3}\s*START OF (?:THE|THIS) PROJECT GUTENBERG/i.test(l.text),
+  );
+  if (start < 0) return new Set();
+  let first = start + 1;
+  // The marker can wrap onto a second line ("… SANGRE Y ARENA ***").
+  if (!/\*{3}\s*$/.test(lines[start].text))
+    for (let i = first; i < Math.min(first + 3, lines.length); i++)
+      if (/\*{3}\s*$/.test(lines[i].text)) {
+        first = i + 1;
+        break;
+      }
+  // Credits just inside the marker: "Produced by …" and the lines that wrap
+  // with it, up to a sentence end, or a gap unless the line plainly runs on
+  // ("… Library and the").
+  if (
+    /^(?:Produced|Typed|Transcribed|Prepared|Scanned)\b.*\bby\b/i.test(
+      lines[first]?.text || "",
+    )
+  ) {
+    let i = first;
+    while (i + 1 < lines.length && i - first < 4) {
+      const line = lines[i],
+        next = lines[i + 1];
+      const gap = line.y - next.y;
+      if (
+        /[.!?]\s*$/.test(line.text) ||
+        !(
+          (gap > 0 && gap <= Math.max(line.height, next.height) * 1.65) ||
+          /(?:,|\b(?:and|the|of|by|at|for|with|from))$/i.test(line.text)
+        )
+      )
+        break;
+      i++;
+    }
+    first = i + 1;
+  }
+  let end = lines.findIndex(
+    (l, i) =>
+      i >= first &&
+      (/^\*{3}\s*END OF (?:THE|THIS) PROJECT GUTENBERG/i.test(l.text) ||
+        /^End of (?:the |this )?Project Gutenberg/i.test(l.text)),
+  );
+  if (end < 0) end = lines.length;
+  return new Set([...lines.slice(0, first), ...lines.slice(end)]);
+}
+
 export function composePdf(
   pages,
   { from = 1, to = pages.length, removeMargins = false } = {},
@@ -421,6 +491,7 @@ export function composePdf(
   const chosen = pages.filter((p) => p.number >= from && p.number <= to),
     counts = new Map();
   measureDocument(pages);
+  const boilerplate = gutenbergLines(pages);
   // Numbers vary from page to page, and a browser shortens a long footer
   // ("…/se… 1/12", "…/s… 10/12") by different amounts, so cut-off pieces
   // are left out too.
@@ -475,6 +546,7 @@ export function composePdf(
   for (const page of chosen) {
     let previous = null;
     for (const line of page.lines) {
+      if (boilerplate.has(line)) continue;
       if (contentsLine(line.text)) {
         contents++;
         continue;
@@ -579,7 +651,13 @@ export function composePdf(
     }
   }
   flushDeferred();
-  return { text: splitLongDialogue(text), locations, removed, contents };
+  return {
+    text: splitLongDialogue(text),
+    locations,
+    removed,
+    contents,
+    gutenberg: boilerplate.size > 0,
+  };
 }
 // Right edge of the text column a line belongs to (the widest line that
 // starts near it), cached per page.

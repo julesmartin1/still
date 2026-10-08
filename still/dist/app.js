@@ -1,5 +1,5 @@
 import { native, storage, flushStorage, exportFile } from "./native-runtime.js";
-import { extractEpub } from "./epub.js";
+import { bookParts, extractEpub } from "./epub.js";
 import {
   previousSentence,
   nextSentence,
@@ -877,6 +877,7 @@ $("newText").onclick = () => {
   pdfDraft = null;
   epubDraft = null;
   $("epubStatus").textContent = "";
+  $("epubParts").hidden = true;
   lastPdfFile = null;
   importTypeManual = false;
   duplicatePending = null;
@@ -1437,6 +1438,7 @@ $("retryPdf").onclick = () => {
 async function importPdf(file, { allowDuplicate = false } = {}) {
   if (pdfController) return;
   epubDraft = null;
+  $("epubParts").hidden = true;
   lastPdfFile = file;
   $("retryPdf").hidden = true;
   $("pdfErrorDetails").hidden = true;
@@ -1496,6 +1498,7 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
       `Imported ${plural(result.pages, "page")}.`,
       result.blankPages &&
         `${plural(result.blankPages, "page had", "pages had")} no selectable text and ${result.blankPages === 1 ? "was" : "were"} skipped.`,
+      pdfDraft.gutenberg && "Skipped the Project Gutenberg header and licence.",
       chapters &&
         `Found ${plural(chapters, "chapter")} in the PDF's table of contents.`,
       columns &&
@@ -1786,8 +1789,14 @@ function renderTextCheck() {
         fix.type = "button";
         fix.className = "text-button";
         fix.textContent = finding.fixLabel || "Fix";
-        fix.onclick = () => {
-          box.value = finding.fix(box.value);
+        fix.onclick = async () => {
+          const before = box.value;
+          fix.disabled = true;
+          const value = await finding.fix(before, lookupWord);
+          fix.disabled = false;
+          // Typing while a fix looked words up wins over the fix.
+          if (box.value !== before) return;
+          box.value = value;
           box.dispatchEvent(new Event("input"));
           renderTextCheck();
         };
@@ -2588,6 +2597,20 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener(
   applyAppearance,
 );
 applyAppearance();
+let epubParts = [];
+function chooseEpubPart(index) {
+  const part = epubParts[index];
+  if (!part) return;
+  epubDraft = part;
+  $("textTitle").value =
+    epubParts.length > 1
+      ? `${part.title} (part ${index + 1} of ${epubParts.length})`
+      : part.title;
+  $("textInput").value = part.text;
+  $("textInput").setCustomValidity("");
+  updateDraft();
+}
+$("epubPart").onchange = () => chooseEpubPart(Number($("epubPart").value));
 $("epubFile").onchange = async () => {
   const file = $("epubFile").files[0];
   if (!file || pdfController) return;
@@ -2602,18 +2625,35 @@ $("epubFile").onchange = async () => {
         ($("epubStatus").textContent = `Reading chapter ${n} of ${total}…`),
     });
     if (controller.signal.aborted) return;
-    epubDraft = result;
     pdfDraft = null;
     importTypeManual = true;
     $("importType").value = "book";
-    $("textTitle").value = result.title;
-    $("textInput").value = result.text;
     $("pdfOptions").hidden = true;
     $("pdfStatus").hidden = true;
-    $("textInput").setCustomValidity("");
-    updateDraft();
+    epubParts = bookParts(result, MAX_READING_CHARACTERS);
+    const select = $("epubPart");
+    select.replaceChildren(
+      ...epubParts.map((part, i) => {
+        const titles = (
+          part.sections.length ? part.sections : part.chapterStarts || []
+        ).map((s) => s.title);
+        const range = titles.length
+          ? titles.length > 1
+            ? `: ${titles[0]} to ${titles.at(-1)}`
+            : `: ${titles[0]}`
+          : "";
+        return new Option(
+          `Part ${i + 1} of ${epubParts.length}${range}`.slice(0, 160),
+          String(i),
+        );
+      }),
+    );
+    $("epubParts").hidden = epubParts.length < 2;
+    chooseEpubPart(0);
     $("epubStatus").textContent =
-      `Imported ${plural(result.chapters, "chapter")} with ${plural(result.sections.length, "table-of-contents entry", "table-of-contents entries")}. Choose a starting point below.`;
+      epubParts.length > 1
+        ? `Imported ${plural(result.chapters, "chapter")}. This book is too long for one reading, so it is split into ${epubParts.length} parts. Part 1 is ready; choose another part below.`
+        : `Imported ${plural(result.chapters, "chapter")} with ${plural(result.sections.length, "table-of-contents entry", "table-of-contents entries")}. Choose a starting point below.`;
   } catch (error) {
     if (!controller.signal.aborted)
       $("epubStatus").textContent =
@@ -2741,6 +2781,9 @@ $("textFile").onchange = async () => {
     // UTF-8 uses up to 4 bytes per character, so check characters after reading.
     if (file.size > MAX_READING_CHARACTERS * 4)
       throw Error("This text file is too large to read in Still.");
+    // Long books take a few seconds to check; say so before the work starts.
+    $("textFileStatus").textContent = `Opening ${file.name}…`;
+    await new Promise((resolve) => setTimeout(resolve, 30));
     const value = decodeText(await file.arrayBuffer());
     if (!value.trim()) throw Error("This text file is empty.");
     if (value.length > MAX_READING_CHARACTERS)
@@ -2749,6 +2792,7 @@ $("textFile").onchange = async () => {
       );
     pdfDraft = null;
     epubDraft = null;
+    $("epubParts").hidden = true;
     // A Markdown file's symbols are never meant to be read as words.
     const markdown = /\.(?:md|markdown)$/i.test(file.name);
     // A Project Gutenberg file starts at the book and stops before the licence.
@@ -2763,6 +2807,8 @@ $("textFile").onchange = async () => {
     ).slice(0, 240);
     $("pdfOptions").hidden = true;
     $("pdfStatus").hidden = true;
+    $("textFileStatus").textContent = "Finding chapters and paragraphs…";
+    await new Promise((resolve) => setTimeout(resolve, 30));
     updateDraft();
     $("textFileStatus").textContent =
       "Text imported. " +

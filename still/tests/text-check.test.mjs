@@ -66,6 +66,21 @@ test("dated letters are not mistaken for page headers", () => {
   assert.ok(!checkText(text).some((f) => f.id === "headers"));
 });
 
+test("numbered section headings are not mistaken for page headers", () => {
+  const body = (i) => "The argument continues at some length".slice(0, 20 + i * 2) + ".";
+  const sections = Array.from(
+    { length: 8 },
+    (_, i) => `Section ${Math.floor(i / 3) + 1}.${(i % 3) + 1}\n\n${body(i)}`,
+  ).join("\n\n");
+  assert.ok(!checkText(sections).some((f) => f.id === "headers"));
+  // The same heading on every page is still a running header.
+  const running = Array.from(
+    { length: 8 },
+    (_, i) => `Chapter 3\n\n${body(i)}`,
+  ).join("\n\n");
+  assert.ok(checkText(running).some((f) => f.id === "headers"));
+});
+
 test("Markdown symbols are flagged and removed, keeping the words", () => {
   const text = [
     "## Reading notes ##",
@@ -160,4 +175,16 @@ test("text files in Latin-1 / Windows-1252 keep their accents", () => {
   const latin1 = Uint8Array.from([0x49, 0x62, 0xe1, 0xf1, 0x65, 0x7a, 0x2c, 0x20, 0x64, 0xed, 0x61, 0x73]);
   assert.equal(decodeText(latin1), "Ibáñez, días");
   assert.equal(decodeText(new TextEncoder().encode("Ibáñez — días")), "Ibáñez — días");
+});
+
+test("words split by a line-end hyphen are joined", async () => {
+  const words = new Set(["example", "something"]);
+  const lookup = async (w) => (words.has(w) ? { word: w } : null);
+  const text =
+    "An exam- ple of some- thing well- known, independent- and free-minded.";
+  const finding = checkText(text + " " + text).find((f) => f.id === "split");
+  assert.equal(
+    await finding.fix(text, lookup),
+    "An example of something well-known, independent- and free-minded.",
+  );
 });

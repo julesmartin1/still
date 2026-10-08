@@ -277,3 +277,49 @@ test("a chapter printed as one block is split where the speaker changes", () => 
   const short = '"Yes." "No."';
   assert.equal(splitLongDialogue(short), short);
 });
+
+test("letter-spaced headings are read as words", () => {
+  const p = layoutPage([
+    item("V", 100, 700, 9.8),
+    item(" ", 109.9, 700, 5),
+    item("i n c e n t e", 113.5, 700, 56.4),
+    item(" ", 169.9, 700, 14.7),
+    item("B L A S C O", 180.6, 700, 74),
+    item("A normal line of text follows here.", 40, 680, 300),
+  ]);
+  assert.deepEqual(
+    p.lines.map((l) => l.text),
+    ["Vincente BLASCO", "A normal line of text follows here."],
+  );
+});
+
+test("a Project Gutenberg PDF starts at the book and stops before the licence", () => {
+  const lines = [
+    "The Project Gutenberg EBook of Walden",
+    "Title: Walden",
+    "*** START OF THIS PROJECT GUTENBERG EBOOK",
+    "WALDEN ***",
+    "Produced by a kind volunteer and the",
+    "Online Distributed Proofreading Team.",
+    "Walden",
+    "When I wrote the following pages I lived alone.",
+    "End of the Project Gutenberg EBook of Walden",
+    "Section 1. General Terms of Use.",
+  ];
+  const pages = [0, 1].map((n) => ({
+    number: n + 1,
+    ...layoutPage(
+      lines
+        .slice(n * 5, n * 5 + 5)
+        .map((text, i) => item(text, 40, 700 - i * 30, 300)),
+    ),
+  }));
+  const r = composePdf(pages);
+  assert.equal(
+    r.text,
+    "Walden\n\nWhen I wrote the following pages I lived alone.",
+  );
+  assert.equal(r.gutenberg, true);
+  assert.equal(sourceLocation(r.locations, 0).page, 2);
+  assert.equal(composePdf(pages, { from: 2, to: 2 }).text, r.text);
+});

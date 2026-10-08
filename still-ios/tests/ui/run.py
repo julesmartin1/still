@@ -467,6 +467,79 @@ async def markdown_symbols_are_flagged_and_removed(browser):
     await ctx.close()
 
 
+def mini_epub(chapters):
+    """A small EPUB 3 book; chapters is a list of (file name, body XHTML)."""
+    import io, zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("mimetype", "application/epub+zip", compress_type=zipfile.ZIP_STORED)
+        z.writestr(
+            "META-INF/container.xml",
+            '<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">'
+            '<rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
+        )
+        items = "".join(
+            f'<item id="c{i}" href="{name}" media-type="application/xhtml+xml"/>' for i, (name, _) in enumerate(chapters)
+        )
+        spine = "".join(f'<itemref idref="c{i}"/>' for i in range(len(chapters)))
+        z.writestr(
+            "OEBPS/content.opf",
+            '<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0">'
+            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Small Book</dc:title></metadata>'
+            f'<manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>{items}</manifest>'
+            f"<spine>{spine}</spine></package>",
+        )
+        z.writestr(
+            "OEBPS/nav.xhtml",
+            '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>'
+            '<nav epub:type="toc"><ol><li><a href="one.xhtml">Part One</a><ol>'
+            '<li><a href="one.xhtml#s1">I</a></li><li><a href="two.xhtml">II</a></li></ol></li></ol></nav></body></html>',
+        )
+        for name, body in chapters:
+            z.writestr(
+                "OEBPS/" + name,
+                '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">'
+                f"<body>{body}</body></html>",
+            )
+    return buf.getvalue()
+
+
+@check
+async def epub_skips_front_matter_and_note_numbers(browser):
+    ctx, page = await fresh(browser)
+    await page.click("#newText")
+    book = mini_epub(
+        [
+            ("title.xhtml", '<section epub:type="titlepage"><h1>Small Book</h1><p>A Novel by Someone</p></section>'),
+            ("imprint.xhtml", '<section epub:type="imprint"><p>This ebook is released under a licence.</p></section>'),
+            (
+                "one.xhtml",
+                '<h2 id="s1">I</h2><p>The river ran quietly past the mill.<a href="notes.xhtml#n1" '
+                'epub:type="noteref">1</a> Nobody watched it.</p>',
+            ),
+            # Not well-formed XML: an unknown tag with a space inside.
+            ("two.xhtml", "<h2>II</h2><p>Write to <Your Name Here> and the bridge held firm.</p>"),
+            ("notes.xhtml", '<aside epub:type="endnotes"><ol><li id="n1"><p>A note about mills.</p></li></ol></aside>'),
+            ("colophon.xhtml", '<section epub:type="colophon"><p>Set in a nice typeface.</p></section>'),
+        ]
+    )
+    await page.set_input_files(
+        "#epubFile", files=[{"name": "small.epub", "mimeType": "application/epub+zip", "buffer": book}]
+    )
+    await page.wait_for_function(
+        "document.getElementById('epubStatus').textContent.startsWith('Imported')", timeout=10000
+    )
+    text = await page.input_value("#textInput")
+    assert "mill. Nobody" in text, text
+    assert "licence" not in text and "typeface" not in text and "A Novel" not in text, text
+    assert "A note about mills" not in text, text
+    assert "the bridge held firm" in text, text
+    options = await page.eval_on_selector_all("#startSection option", "o => o.map(x => x.textContent)")
+    assert "Part One · I" in options and "Part One · II" in options, options
+    assert await page.is_hidden("#epubParts")
+    await ctx.close()
+
+
 @check
 async def holding_the_word_shows_its_sentence(browser):
     ctx, page = await fresh(browser)
