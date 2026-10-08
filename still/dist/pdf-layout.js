@@ -657,6 +657,11 @@ export function composePdf(
     removed,
     contents,
     gutenberg: boilerplate.size > 0,
+    // The header names the book ("Title: Walden").
+    gutenbergTitle:
+      [...boilerplate]
+        .map((l) => /^Title:\s*(.+)/.exec(l.text)?.[1].trim())
+        .find(Boolean) || "",
   };
 }
 // Right edge of the text column a line belongs to (the widest line that

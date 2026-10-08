@@ -464,6 +464,30 @@ async def markdown_symbols_are_flagged_and_removed(browser):
     )
     assert (await page.input_value("#textInput")).startswith("Notes\n\nRead this")
     assert await page.input_value("#textTitle") == "notes"
+    # Pasted Markdown is cleaned straight away.
+    await page.evaluate(
+        """t => {
+          const e = document.getElementById('textInput');
+          const data = new DataTransfer();
+          data.setData('text/plain', t);
+          e.value = t;
+          e.dispatchEvent(new ClipboardEvent('paste', {clipboardData: data}));
+        }""",
+        text,
+    )
+    await page.wait_for_function(
+        "document.getElementById('textFileStatus').textContent.includes('formatting symbols')", timeout=5000
+    )
+    assert (await page.input_value("#textInput")).startswith("Notes\n\nRead this")
+    # A plain-text book's _italics_ lose their underscores on import.
+    await page.set_input_files(
+        "#textFile",
+        files=[{"name": "book.txt", "mimeType": "text/plain", "buffer": b"It was done _at\r\nonce_, and file_name stays."}],
+    )
+    await page.wait_for_function(
+        "document.getElementById('textFileStatus').textContent.includes('italics')", timeout=5000
+    )
+    assert "_" not in (await page.input_value("#textInput")).replace("file_name", "")
     await ctx.close()
 
 

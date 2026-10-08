@@ -320,6 +320,7 @@ test("a Project Gutenberg PDF starts at the book and stops before the licence", 
     "Walden\n\nWhen I wrote the following pages I lived alone.",
   );
   assert.equal(r.gutenberg, true);
+  assert.equal(r.gutenbergTitle, "Walden");
   assert.equal(sourceLocation(r.locations, 0).page, 2);
   assert.equal(composePdf(pages, { from: 2, to: 2 }).text, r.text);
 });

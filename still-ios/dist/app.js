@@ -43,6 +43,10 @@ import {
   stripMarkdown,
   gutenbergBook,
   decodeText,
+  looksLikeMarkdown,
+  stripItalics,
+  unwrapParagraphs,
+  wrappedLines,
 } from "./text-check.js";
 import { PASSAGES, nextPace, suggestedPace } from "./pace-finder.js";
 import { repairPdfLines, repairText, describeGlyphMap } from "./text-repair.js";
@@ -2762,15 +2766,20 @@ function repairSummary({ map, notes }) {
     parts.push(`Removed ${plural(notes, "note number")} from the text.`);
   return parts.length ? parts.join(" ") + " " : "";
 }
-// Text copied out of a PDF carries the same faults as an imported one.
-$("textInput").addEventListener("paste", () => {
+// Text copied out of a PDF carries the same faults as an imported one, and
+// pasted Markdown (notes, a chat answer) is cleaned like an imported .md file.
+$("textInput").addEventListener("paste", (e) => {
+  const markdown = looksLikeMarkdown(e.clipboardData?.getData("text") || "");
   setTimeout(async () => {
     const before = $("textInput").value;
-    const fixed = await repairText(before, lookupWord);
+    const plain = markdown ? stripMarkdown(before) : before;
+    const fixed = await repairText(plain, lookupWord);
     if (fixed.text === before || $("textInput").value !== before) return;
     $("textInput").value = fixed.text;
     $("textInput").dispatchEvent(new Event("input"));
-    const summary = repairSummary(fixed);
+    const summary =
+      (plain !== before ? "Removed formatting symbols (like # and **). " : "") +
+      repairSummary(fixed);
     if (summary) $("textFileStatus").textContent = summary.trim();
   });
 });
@@ -2793,14 +2802,19 @@ $("textFile").onchange = async () => {
     pdfDraft = null;
     epubDraft = null;
     $("epubParts").hidden = true;
-    // A Markdown file's symbols are never meant to be read as words.
+    // A Markdown file's symbols are never meant to be read as words, nor are
+    // the underscores a plain-text book uses for italics ("_at once_").
     const markdown = /\.(?:md|markdown)$/i.test(file.name);
     // A Project Gutenberg file starts at the book and stops before the licence.
-    const gutenberg = gutenbergBook(value);
-    const fixed = await repairText(
-      markdown ? stripMarkdown(value) : (gutenberg?.text ?? value),
-      lookupWord,
-    );
+    const gutenberg = markdown ? null : gutenbergBook(value);
+    // Its lines are wrapped for print; a paragraph should read as one.
+    const unwrap = !markdown && wrappedLines(gutenberg?.text ?? value);
+    const source = unwrap
+      ? unwrapParagraphs(gutenberg?.text ?? value)
+      : (gutenberg?.text ?? value);
+    const plain = markdown ? stripMarkdown(source) : stripItalics(source);
+    const italics = !markdown && plain !== source;
+    const fixed = await repairText(plain, lookupWord);
     $("textInput").value = fixed.text;
     $("textTitle").value = (
       gutenberg?.title || file.name.replace(/\.[^.]+$/, "")
@@ -2814,6 +2828,8 @@ $("textFile").onchange = async () => {
       "Text imported. " +
       (markdown ? "Removed Markdown symbols. " : "") +
       (gutenberg ? "Skipped the Project Gutenberg header and licence. " : "") +
+      (italics ? "Removed the underscores marking italics. " : "") +
+      (unwrap ? "Joined lines that were wrapped for print. " : "") +
       repairSummary(fixed) +
       "Check it before opening.";
   } catch (e) {
