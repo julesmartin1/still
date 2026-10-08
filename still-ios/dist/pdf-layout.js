@@ -1,4 +1,4 @@
-import { RUN_IN } from "./document.js";
+import { RUN_IN, bookHeading } from "./document.js";
 import { countWords, parseText } from "./engine.js";
 // Geometry-based reading order. Every retained line carries its source rectangle.
 function bounds(items) {
@@ -580,12 +580,14 @@ export function composePdf(
       const gap = previous ? previous.y - line.y : Infinity;
       // A heading line that runs the full width carries on into the text
       // ("Chapter 8 At five o'clock the two ladies…"), so the next line
-      // belongs to the same paragraph.
+      // belongs to the same paragraph. "Chapitre IV", "Libro segundo" and the
+      // other chapter headings detectSections knows count too.
       const heading =
         line.text.length <= 130 &&
-        /^(?:(?:\d+(?:\.\d+)*[.)]?\s+)?(?:abstract|introduction|background|methods?|methodology|results|discussion|conclusions?|references|bibliography|works cited)\b|(?:chapter|part)\s+\S+|prologue\b|epilogue\b|appendix\b)/i.test(
+        (/^(?:(?:\d+(?:\.\d+)*[.)]?\s+)?(?:abstract|introduction|background|methods?|methodology|results|discussion|conclusions?|references|bibliography|works cited)\b|(?:chapter|part)\s+\S+|prologue\b|epilogue\b|appendix\b)/i.test(
           line.text,
-        ) &&
+        ) ||
+          bookHeading(line.text)) &&
         /^[\p{Lu}\d]/u.test(line.text) &&
         !RUN_IN.test(line.text) &&
         line.right < spanRight(page, line) - Math.max(line.height * 3, 20);
