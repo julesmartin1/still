@@ -38,7 +38,12 @@ import {
 import { buildParagraphIndex, findPassages } from "./navigation.js";
 import { extractPdf, pdfErrorMessage } from "./pdf-import.js";
 import { lookupWord } from "./dictionary.js";
-import { checkText, stripMarkdown } from "./text-check.js";
+import {
+  checkText,
+  stripMarkdown,
+  gutenbergBook,
+  decodeText,
+} from "./text-check.js";
 import { PASSAGES, nextPace, suggestedPace } from "./pace-finder.js";
 import { repairPdfLines, repairText, describeGlyphMap } from "./text-repair.js";
 import { splitAtFocus, fadeDuration } from "./word-display.js";
@@ -2736,7 +2741,7 @@ $("textFile").onchange = async () => {
     // UTF-8 uses up to 4 bytes per character, so check characters after reading.
     if (file.size > MAX_READING_CHARACTERS * 4)
       throw Error("This text file is too large to read in Still.");
-    const value = await file.text();
+    const value = decodeText(await file.arrayBuffer());
     if (!value.trim()) throw Error("This text file is empty.");
     if (value.length > MAX_READING_CHARACTERS)
       throw Error(
@@ -2746,18 +2751,23 @@ $("textFile").onchange = async () => {
     epubDraft = null;
     // A Markdown file's symbols are never meant to be read as words.
     const markdown = /\.(?:md|markdown)$/i.test(file.name);
+    // A Project Gutenberg file starts at the book and stops before the licence.
+    const gutenberg = gutenbergBook(value);
     const fixed = await repairText(
-      markdown ? stripMarkdown(value) : value,
+      markdown ? stripMarkdown(value) : (gutenberg?.text ?? value),
       lookupWord,
     );
     $("textInput").value = fixed.text;
-    $("textTitle").value = file.name.replace(/\.[^.]+$/, "").slice(0, 240);
+    $("textTitle").value = (
+      gutenberg?.title || file.name.replace(/\.[^.]+$/, "")
+    ).slice(0, 240);
     $("pdfOptions").hidden = true;
     $("pdfStatus").hidden = true;
     updateDraft();
     $("textFileStatus").textContent =
       "Text imported. " +
       (markdown ? "Removed Markdown symbols. " : "") +
+      (gutenberg ? "Skipped the Project Gutenberg header and licence. " : "") +
       repairSummary(fixed) +
       "Check it before opening.";
   } catch (e) {

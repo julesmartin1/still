@@ -143,6 +143,17 @@ Tested with *Alice in Wonderland* (Word export), *Pride and Prejudice* and *Fran
 | 66 | Some readers need a moment after each sentence. | **Pause after each sentence** (under the pace): playback stops on each sentence's last word, and a tap or Space carries on. |
 | 67 | Low-vision and dyslexic readers asked for more room. | **Text size goes up to 200%**, and Appearance has **wide letter spacing** (0.12 em letters, 0.16 em words, the WCAG text-spacing amounts) for the word, Review and Text view. |
 
+### More books and essays (October 2026)
+
+Tested 13 more works in 23 imports: essays as text, Markdown, pasted text and web pages saved as PDF; four EPUBs; French and Spanish texts. The full ranked findings are in the project's next-steps doc.
+
+| # | Problem | Change |
+|---|---|---|
+| 68 | A web page saved as PDF with narrow margins puts body text in the top and bottom 8% of the page. Those lines were held back as headers and footers, so sentences came out of order and split mid-way (9 to 24 times per essay). The browser's footer also stayed in from page 10, because it shortens the URL more once the page number has two digits. | **A line near the page edge counts as margin only when it stands apart**: smaller type than the body (measured across the document), a wider gap than the page's line spacing, a bare page number, or beyond another margin line. Cut-off pieces are left out of the footer signature. All four test essays now match the page word for word; earlier books and papers keep their text, with a few sentences that used to break now joined. |
+| 69 | Project Gutenberg files were read with their header and licence (24% of *Civil Disobedience*), and titled by file name ("71"). | **Text files with Gutenberg markers start at the book and stop before the licence**, and take their title from the header. |
+| 70 | Latin-1 / Windows-1252 text files lost every accent ("Ibáñez" became "Ib��ez"). | **Text files are decoded as UTF-8 when valid, otherwise as Windows-1252.** |
+| 71 | Words joined by a dash ("government--what", "belt—one") played as one long, shrunken word, and spaced punctuation flashed alone (",", ". . .", "↩"). | **A dash between words stays with the first word and the next word stands alone; spaced punctuation joins its word; ". . ." becomes "…"; endnote "↩" links are dropped.** Applies to text files, pasted text, EPUBs and PDF lines. Number ranges, hyphenated words and Spanish dialogue dashes are left alone. |
+
 What to measure next, with consent: whether readers with a goal come back on more days, which goal size they keep, and whether the fade-back while reading changes how often they pause.
 
 ## Still open

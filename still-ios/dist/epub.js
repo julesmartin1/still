@@ -1,3 +1,4 @@
+import { tidyPunctuation } from "./text-repair.js";
 const decoder = new TextDecoder();
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -311,7 +312,7 @@ export async function extractEpub(
     }))
     .filter((t) => t.title && t.paragraph);
   return {
-    text: paragraphs.join("\n\n"),
+    text: paragraphs.map(tidyPunctuation).join("\n\n"),
     title: (
       pkg.getElementsByTagNameNS("*", "title")[0]?.textContent ||
       file.name.replace(/\.epub$/i, "")

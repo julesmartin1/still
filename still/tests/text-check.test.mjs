@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { checkText, rejoinLines, wrappedLines } from "../dist/text-check.js";
+import {
+  checkText,
+  rejoinLines,
+  wrappedLines,
+  gutenbergBook,
+  decodeText,
+} from "../dist/text-check.js";
 
 const wrapped = [
   "4 May 1771",
@@ -115,4 +121,43 @@ test("plain text with dashes, asterisks and underscores is not taken for Markdow
     "A footnote marker* is fine too.",
   ].join("\n");
   assert.ok(!checkText(text).some((f) => f.id === "markdown"));
+});
+
+test("a Project Gutenberg file keeps the book and drops the header and licence", () => {
+  const file = [
+    "The Project Gutenberg EBook of On the Duty of Civil Disobedience",
+    "",
+    "Title: On the Duty of Civil Disobedience",
+    "       An essay",
+    "",
+    "Author: Henry David Thoreau",
+    "",
+    "*** START OF THE PROJECT GUTENBERG EBOOK, ON THE DUTY OF CIVIL DISOBEDIENCE ***",
+    "",
+    "Produced by a volunteer",
+    "and another",
+    "",
+    "I heartily accept the motto.",
+    "",
+    "That government is best which governs least.",
+    "",
+    "End of the Project Gutenberg EBook of On the Duty of Civil Disobedience",
+    "",
+    "*** END OF THE PROJECT GUTENBERG EBOOK, ON THE DUTY OF CIVIL DISOBEDIENCE ***",
+    "",
+    "1.A. By reading or using any part of this Project Gutenberg-tm electronic work…",
+  ].join("\r\n");
+  assert.deepEqual(gutenbergBook(file), {
+    title: "On the Duty of Civil Disobedience",
+    text: "I heartily accept the motto.\n\nThat government is best which governs least.",
+  });
+  assert.equal(gutenbergBook("Just an essay about Project Gutenberg."), null);
+});
+
+test("text files in Latin-1 / Windows-1252 keep their accents", () => {
+  // Bytes 0x80–0x9F (curly quotes, dashes) differ between Latin-1 and
+  // Windows-1252; browsers decode them as Windows-1252, Node as Latin-1.
+  const latin1 = Uint8Array.from([0x49, 0x62, 0xe1, 0xf1, 0x65, 0x7a, 0x2c, 0x20, 0x64, 0xed, 0x61, 0x73]);
+  assert.equal(decodeText(latin1), "Ibáñez, días");
+  assert.equal(decodeText(new TextEncoder().encode("Ibáñez — días")), "Ibáñez — días");
 });
