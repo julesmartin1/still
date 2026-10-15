@@ -155,36 +155,77 @@ const primary = (lang) =>
     .toLowerCase()
     .split(/[-_]/)[0];
 
-// Chooses an on-device voice: one in the reading's language when it is
-// known, else the device's default voice. Voices that run on a server
+// How natural a voice sounds, from what its name says. Apple's downloadable
+// "Premium" and "Enhanced" voices and the neural or "Natural" voices on
+// Windows and Android are far better than the compact voices most devices
+// default to; Apple's novelty voices (Bubbles, Zarvox…) and eSpeak are worse.
+const NOVELTY =
+  /\b(albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|hysterical|jester|organ|pipe organ|superstar|trinoids|whisper|wobble|zarvox|fred|junior|ralph|kathy|bruce|agnes|vicki|victoria|princess|grandma|grandpa|eddy|flo|reed|rocko|sandy|shelley)\b/i;
+export function voiceScore(voice) {
+  const name = String(voice?.name || "");
+  let score = 0;
+  if (/premium/i.test(name)) score += 40;
+  else if (/enhanced|neural|natural/i.test(name)) score += 30;
+  else if (/siri/i.test(name)) score += 25;
+  if (/espeak/i.test(name)) score -= 30;
+  // Compact names like "Grandma" or "Eddy" only count as novelty when the
+  // voice isn't one of the good ones.
+  if (score <= 0 && NOVELTY.test(name)) score -= 50;
+  if (voice?.default) score += 2;
+  return score;
+}
+
+// Chooses an on-device voice: the reader's own pick when it is still on the
+// device, else the most natural voice in the reading's language when it is
+// known, else in the device's default language. Voices that run on a server
 // (localService false) are never chosen. Returns null when no voice on the
 // list runs on the device.
-export function pickVoice(voices, lang = "", uiLanguage = "") {
+export function pickVoice(voices, lang = "", uiLanguage = "", preferred = "") {
   const local = (voices || []).filter((v) => v && v.localService === true);
   if (!local.length) return null;
-  const inLanguage = (want) => {
-    const matches = local.filter((v) => primary(v.lang) === primary(want));
-    return (
-      matches.find((v) => v.default) ||
-      matches.find(
-        (v) =>
-          String(v.lang).toLowerCase() === String(uiLanguage).toLowerCase(),
-      ) ||
-      matches[0] ||
-      null
-    );
-  };
+  if (preferred) {
+    const mine = local.find((v) => v.voiceURI === preferred);
+    if (mine) return mine;
+  }
+  const ui = String(uiLanguage).toLowerCase();
+  const best = (list) =>
+    list.reduce((a, v) => {
+      if (!a) return v;
+      const d = voiceScore(v) - voiceScore(a);
+      if (d) return d > 0 ? v : a;
+      // Same quality: the reader's own accent (en-GB for a UK reader).
+      return String(v.lang).toLowerCase() === ui &&
+        String(a.lang).toLowerCase() !== ui
+        ? v
+        : a;
+    }, null);
+  const inLanguage = (want) =>
+    best(local.filter((v) => primary(v.lang) === primary(want)));
   if (lang) {
     const match = inLanguage(lang);
     if (match) return match;
   }
-  const fallback = (voices || []).find((v) => v?.default);
+  const fallback =
+    local.find((v) => v.default) || (voices || []).find((v) => v?.default);
   return (
-    local.find((v) => v.default) ||
     (fallback && inLanguage(fallback.lang)) ||
     (uiLanguage && inLanguage(uiLanguage)) ||
-    local[0]
+    best(local)
   );
+}
+
+// The on-device voices worth offering for a language, best first.
+export function voiceChoices(voices, lang = "") {
+  const local = (voices || []).filter((v) => v && v.localService === true);
+  const inLanguage = lang
+    ? local.filter((v) => primary(v.lang) === primary(lang))
+    : [];
+  return (inLanguage.length ? inLanguage : local)
+    .filter((v) => voiceScore(v) > -50)
+    .sort(
+      (a, b) =>
+        voiceScore(b) - voiceScore(a) || String(a.name).localeCompare(b.name),
+    );
 }
 
 // Waits this long for the voice to start before carrying on without it.
@@ -205,6 +246,8 @@ export class SpokenPlayback {
     wpm = () => RATE_ONE_WPM,
     // The reading's language code, or a function returning it (asked once).
     lang = "",
+    // The voiceURI the reader picked, or a function returning it.
+    voice = "",
     // Called with "no-voice" or "failed" when words carry on without a voice.
     onSilent = null,
     synth = globalThis.speechSynthesis,
@@ -223,6 +266,7 @@ export class SpokenPlayback {
       onBreak,
       wpm,
       lang,
+      voice,
       onSilent,
       synth,
       Utterance,
@@ -293,7 +337,9 @@ export class SpokenPlayback {
     if (this.language === undefined)
       this.language =
         (typeof this.lang === "function" ? this.lang() : this.lang) || "";
-    return pickVoice(voices, this.language, this.uiLanguage);
+    const preferred =
+      (typeof this.voice === "function" ? this.voice() : this.voice) || "";
+    return pickVoice(voices, this.language, this.uiLanguage, preferred);
   }
   speakFrom(start) {
     const run = ++this.run;

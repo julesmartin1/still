@@ -9,6 +9,8 @@ import {
   estimateWordTimes,
   guessLanguage,
   pickVoice,
+  voiceChoices,
+  voiceScore,
   speechSupported,
   SpokenPlayback,
   MAX_CHUNK_WORDS,
@@ -335,4 +337,32 @@ test("never falls back to a voice that runs off the device", () => {
   h.player.play();
   assert.equal(h.spoken.length, 0);
   assert.deepEqual(h.events, ["silent no-voice"]);
+});
+
+test("the most natural on-device voice is chosen, and the reader's pick wins", () => {
+  const v = (name, lang, extra = {}) => ({
+    name,
+    lang,
+    voiceURI: name,
+    localService: true,
+    ...extra,
+  });
+  const voices = [
+    v("Samantha", "en-US", { default: true }),
+    v("Bubbles", "en-US"),
+    v("Ava (Premium)", "en-US"),
+    v("Daniel (Enhanced)", "en-GB"),
+    v("Google US English", "en-US", { localService: false }),
+    v("Thomas", "fr-FR"),
+  ];
+  assert.equal(pickVoice(voices, "en").name, "Ava (Premium)");
+  assert.equal(pickVoice(voices, "fr").name, "Thomas");
+  assert.equal(pickVoice(voices, "en", "en-GB", "Samantha").name, "Samantha");
+  // A pick that is no longer on the device falls back to the best.
+  assert.equal(pickVoice(voices, "en", "", "Gone").name, "Ava (Premium)");
+  assert.ok(
+    voiceScore(v("Zarvox", "en-US")) < voiceScore(v("Samantha", "en-US")),
+  );
+  const names = voiceChoices(voices, "en").map((x) => x.name);
+  assert.deepEqual(names, ["Ava (Premium)", "Daniel (Enhanced)", "Samantha"]);
 });
