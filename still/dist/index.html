@@ -83,8 +83,39 @@
             <p id="finishStats"></p>
             <div class="finish-actions">
               <button id="finishNext" class="primary">Add a reading</button
+              ><button id="finishPace" class="secondary" hidden>
+                Find my pace</button
               ><button id="finishShelf" class="secondary">Bookshelf</button>
             </div>
+            <form class="waitlist" data-where="finish" hidden>
+              <label for="waitlistEmailFinish"
+                >Get the iPhone app when it’s ready</label
+              >
+              <span class="waitlist-row"
+                ><input
+                  id="waitlistEmailFinish"
+                  type="email"
+                  name="email"
+                  autocomplete="email"
+                  placeholder="you@example.com"
+                  required
+                /><button type="submit" class="secondary">
+                  Notify me
+                </button></span
+              >
+              <input
+                class="hp"
+                name="company"
+                tabindex="-1"
+                autocomplete="off"
+                aria-hidden="true"
+              />
+              <span class="waitlist-note"
+                >One email when it’s out, nothing else. Your readings never
+                leave your device.</span
+              >
+              <span class="waitlist-status" role="status"></span>
+            </form>
           </div>
         </div>
         <p id="status" class="status" aria-live="polite">
@@ -205,9 +236,19 @@
         ><button id="bookmarks" class="tool">Notes</button
         ><button id="readingSettings" class="tool">Settings</button>
       </div>
+      <section id="starterShelf" class="starter" aria-labelledby="starterTitle">
+        <div class="starter-head">
+          <h2 id="starterTitle">Short reads</h2>
+          <p class="muted">Pick one and finish it today.</p>
+        </div>
+        <ul id="starterList" class="starter-list"></ul>
+        <button id="starterMore" class="text-button" aria-expanded="false">
+          Show more short reads
+        </button>
+      </section>
       <div class="settings">
         <div class="pace">
-          <label for="speed">Your average pace</label>
+          <label for="speedValue">Your pace</label>
           <div class="pace-value">
             <button id="slower" class="pace-step" aria-label="Slow down">
               −</button
@@ -217,22 +258,11 @@
               min="40"
               max="600"
               step="1"
-              value="260"
-              aria-label="Average words per minute"
+              value="180"
+              aria-label="Words a minute"
             /><button id="faster" class="pace-step" aria-label="Speed up">
               +</button
-            ><span>words / min</span>
-          </div>
-          <input
-            id="speed"
-            type="range"
-            min="40"
-            max="600"
-            step="1"
-            value="260"
-          />
-          <div class="range-labels">
-            <span>Take your time</span><span>Pick up the pace</span>
+            ><span>words a minute</span>
           </div>
           <p class="pace-find">
             <button id="findPace" class="text-button">Find my pace</button
@@ -240,27 +270,41 @@
               New here? It takes about a minute.</span
             >
           </p>
-          <label class="check-label sentence-stop"
-            ><input
-              id="sentenceStop"
-              type="checkbox"
-              aria-describedby="sentenceStopHint"
+          <details id="paceMore" class="pace-more">
+            <summary>Pace options</summary>
+            <input
+              id="speed"
+              type="range"
+              min="40"
+              max="600"
+              step="1"
+              value="180"
             />
-            Pause after each sentence</label
-          >
-          <p id="sentenceStopHint" class="muted field-hint">
-            Take each sentence in, then tap for the next one.
-          </p>
-          <div class="adapt-bottom">
-            <span id="learning">Learning as you read</span
-            ><button id="reset" class="text-button">Reset adjustments</button>
-          </div>
-          <p class="muted pace-note">
-            Longer words get a little more time and short ones a little less;
-            your average stays the same.<span class="keys">
-              ↑ and ↓ change the pace.</span
+            <div class="range-labels">
+              <span>Take your time</span><span>Pick up the pace</span>
+            </div>
+            <label class="check-label sentence-stop"
+              ><input
+                id="sentenceStop"
+                type="checkbox"
+                aria-describedby="sentenceStopHint"
+              />
+              Pause after each sentence</label
             >
-          </p>
+            <p id="sentenceStopHint" class="muted field-hint">
+              Take each sentence in, then tap for the next one.
+            </p>
+            <div class="adapt-bottom">
+              <span id="learning">Learning as you read</span
+              ><button id="reset" class="text-button">Reset adjustments</button>
+            </div>
+            <p class="muted pace-note">
+              Longer words get a little more time and short ones a little less;
+              your average stays the same.<span class="keys">
+                ↑ and ↓ change the pace.</span
+              >
+            </p>
+          </details>
         </div>
         <section class="today" aria-labelledby="todayTitle">
           <div class="today-head">
@@ -296,7 +340,12 @@
         </section>
       </div>
       <footer>
-        <button id="aboutStill" class="text-button">About &amp; privacy</button
+        <span class="footer-links"
+          ><button id="aboutStill" class="text-button">
+            About &amp; privacy</button
+          ><button id="sendFeedback" class="text-button" hidden>
+            Send feedback
+          </button></span
         ><span class="shortcuts" aria-label="Keyboard shortcuts"
           ><span><kbd>Space</kbd> play or pause</span
           ><span><kbd>←</kbd><kbd>→</kbd> sentence</span
@@ -455,14 +504,6 @@
             <label for="epubPart" class="inline-label">Part to read</label
             ><select id="epubPart"></select>
           </div>
-          <div class="inline-field">
-            <label for="pdfLayout" class="inline-label">PDF reading order</label
-            ><select id="pdfLayout">
-              <option value="auto">Detect columns automatically</option>
-              <option value="single">Across the page (one column)</option>
-              <option value="two">Left column, then right column</option>
-            </select>
-          </div>
           <p id="pdfHint" class="muted">
             PDFs with selectable text · up to 50 MB · processed on your device
           </p>
@@ -504,39 +545,53 @@
             Import separate copy
           </button>
         </div>
-        <div class="field-grid">
-          <div>
-            <label for="importType">Reading type</label
-            ><select id="importType">
-              <option value="book">Book</option>
-              <option value="academic">Academic paper</option>
-              <option value="other" selected>Other</option>
+        <details id="moreOptions" class="more-options">
+          <summary>More options</summary>
+          <div class="field-grid">
+            <div>
+              <label for="importType">Reading type</label
+              ><select id="importType">
+                <option value="book">Book</option>
+                <option value="academic">Academic paper</option>
+                <option value="other" selected>Other</option>
+              </select>
+            </div>
+            <div>
+              <label for="importCheckins">Check-ins</label
+              ><select
+                id="importCheckins"
+                aria-describedby="importCheckinsHint"
+              >
+                <option value="off">Off</option>
+                <option value="500">About every 500 words (2 min)</option>
+                <option value="1000">About every 1,000 words (4 min)</option>
+                <option value="2000">About every 2,000 words (8 min)</option>
+                <option value="sections">At the end of each chapter</option>
+              </select>
+            </div>
+          </div>
+          <p id="importCheckinsHint" class="muted field-hint">
+            Check-ins are short, optional pauses to sum up what you read, always
+            at the end of a paragraph. You can change both later in Settings.
+          </p>
+          <div id="importAcademic" hidden>
+            <label class="check-label"
+              ><input id="importSkipCitations" type="checkbox" /> Skip inline
+              citations</label
+            ><label class="check-label"
+              ><input id="importSkipReferences" type="checkbox" /> Skip
+              reference list</label
+            >
+          </div>
+          <div class="inline-field">
+            <label for="pdfLayout" class="inline-label">PDF reading order</label
+            ><select id="pdfLayout">
+              <option value="auto">Detect columns automatically</option>
+              <option value="single">Across the page (one column)</option>
+              <option value="two">Left column, then right column</option>
             </select>
           </div>
-          <div>
-            <label for="importCheckins">Check-ins</label
-            ><select id="importCheckins" aria-describedby="importCheckinsHint">
-              <option value="off">Off</option>
-              <option value="500">About every 500 words (2 min)</option>
-              <option value="1000">About every 1,000 words (4 min)</option>
-              <option value="2000">About every 2,000 words (8 min)</option>
-              <option value="sections">At the end of each chapter</option>
-            </select>
-          </div>
-        </div>
-        <p id="importCheckinsHint" class="muted field-hint">
-          Check-ins are short, optional pauses to sum up what you read, always
-          at the end of a paragraph. You can change both later in Settings.
-        </p>
-        <div id="importAcademic" hidden>
-          <label class="check-label"
-            ><input id="importSkipCitations" type="checkbox" /> Skip inline
-            citations</label
-          ><label class="check-label"
-            ><input id="importSkipReferences" type="checkbox" /> Skip reference
-            list</label
-          >
-        </div>
+        </details>
         <details id="startOptions">
           <summary>Choose where to start</summary>
           <label for="startSection">Section or chapter</label
@@ -555,7 +610,7 @@
         </p>
         <div class="dialog-actions">
           <button type="button" id="sample" class="secondary">
-            Use sample text</button
+            Pick a short read</button
           ><button class="primary" type="submit">Open in reader</button>
         </div>
       </form>
@@ -1163,6 +1218,33 @@
           <button id="welcomeSkip" class="text-button">Skip for now</button
           ><button id="welcomeNext" class="primary">Get started</button>
         </div>
+        <form class="waitlist" data-where="welcome" hidden>
+          <label for="waitlistEmailWelcome"
+            >Get the iPhone app when it’s ready</label
+          >
+          <span class="waitlist-row"
+            ><input
+              id="waitlistEmailWelcome"
+              type="email"
+              name="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              required
+            /><button type="submit" class="secondary">Notify me</button></span
+          >
+          <input
+            class="hp"
+            name="company"
+            tabindex="-1"
+            autocomplete="off"
+            aria-hidden="true"
+          />
+          <span class="waitlist-note"
+            >One email when it’s out, nothing else. Your readings never leave
+            your device.</span
+          >
+          <span class="waitlist-status" role="status"></span>
+        </form>
       </div>
       <div data-step="goal" hidden>
         <p class="muted">
@@ -1178,14 +1260,14 @@
         </div>
       </div>
       <div data-step="pace" hidden>
-        <p>
-          Read three short passages at different speeds and say how each felt.
-          It takes about a minute, and Still keeps adjusting as you read.
+        <p id="welcomeFirstRead">A short read is ready for you.</p>
+        <p class="muted">
+          Still starts slowly and speeds up a little as you settle in. When you
+          finish, you can find your own pace.
         </p>
         <div class="dialog-actions">
-          <button id="welcomeSample" class="secondary">
-            Start with the sample</button
-          ><button id="welcomePace" class="primary">Find my pace</button>
+          <button id="welcomePace" class="secondary">Find my pace first</button
+          ><button id="welcomeSample" class="primary">Start reading</button>
         </div>
       </div>
     </dialog>
@@ -1260,5 +1342,75 @@
         password-protected archives. Anyone with a copy can read them.
       </p>
     </dialog>
+    <dialog id="feedbackDialog" aria-labelledby="feedbackTitle">
+      <div class="dialog-heading">
+        <h2 id="feedbackTitle">Send feedback</h2>
+        <button
+          class="close"
+          data-close="feedbackDialog"
+          aria-label="Close feedback"
+        >
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <form id="feedbackForm" class="feedback-form">
+        <label for="feedbackMessage"
+          >What helped, what got in the way, what you wish Still did</label
+        >
+        <textarea
+          id="feedbackMessage"
+          name="message"
+          rows="5"
+          maxlength="4000"
+          required
+        ></textarea>
+        <label for="feedbackEmail"
+          >Your email, if you’d like a reply (optional)</label
+        >
+        <input
+          id="feedbackEmail"
+          type="email"
+          name="email"
+          autocomplete="email"
+        />
+        <input
+          class="hp"
+          name="company"
+          tabindex="-1"
+          autocomplete="off"
+          aria-hidden="true"
+        />
+        <p class="muted">
+          Goes straight to the person who makes Still. Your readings are never
+          included.
+        </p>
+        <p id="feedbackStatus" class="feedback-status" role="status"></p>
+        <div class="dialog-actions">
+          <button type="submit" class="primary">Send</button>
+        </div>
+      </form>
+    </dialog>
+    <!-- Netlify Forms finds these at deploy time; the visible forms above
+         post to them from app.js. -->
+    <form name="waitlist" data-netlify="true" netlify-honeypot="company" hidden>
+      <input type="email" name="email" /><input name="where" /><input
+        name="company"
+      />
+    </form>
+    <form name="feedback" data-netlify="true" netlify-honeypot="company" hidden>
+      <textarea name="message"></textarea
+      ><input type="email" name="email" /><input name="company" />
+    </form>
   </body>
 </html>

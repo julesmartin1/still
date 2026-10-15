@@ -2283,3 +2283,184 @@ html[data-theme="dark"] .point-icon {
     animation: none;
   }
 }
+
+/* ---- Short reads: the starter shelf under the reader ---- */
+.starter {
+  border-top: 1px solid var(--line);
+  padding: 28px 4px 8px;
+  transition: opacity 0.5s ease;
+}
+body.immersive .starter:not(:hover, :focus-within) {
+  opacity: 0.15;
+}
+.starter-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin-bottom: 14px;
+}
+.starter-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.starter-head p {
+  margin: 0;
+  font-size: 14px;
+}
+.starter-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.starter-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
+  padding: 14px 16px;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.starter-item:hover {
+  background: var(--hover);
+}
+.starter-item[aria-current="true"] {
+  border-color: var(--blue);
+}
+.starter-item strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+.starter-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+.starter-item.read .starter-meta::after {
+  content: " · ✓ read";
+}
+.starter-blurb {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* ---- Pace options, tucked away until wanted ---- */
+.pace-more {
+  margin-top: 4px;
+}
+.pace-more > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted);
+}
+.pace-more > summary::-webkit-details-marker {
+  display: none;
+}
+.pace-more > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+  margin: 0 4px 0 2px;
+  opacity: 0.7;
+}
+.pace-more[open] > summary::before {
+  transform: rotate(45deg);
+}
+.more-options {
+  margin-top: 4px;
+}
+
+/* ---- Waitlist and feedback (web only) ---- */
+.hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.waitlist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  text-align: left;
+  font-size: 14px;
+}
+.waitlist[hidden] {
+  display: none;
+}
+.waitlist label {
+  font-weight: 500;
+}
+.waitlist-row {
+  display: flex;
+  gap: 8px;
+}
+.waitlist-row[hidden] {
+  display: none;
+}
+.waitlist-row input {
+  flex: 1;
+  min-width: 0;
+}
+.waitlist-row button {
+  flex: none;
+}
+.waitlist-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+.waitlist-status:empty,
+.feedback-status:empty {
+  display: none;
+}
+/* Inside the dark reader panel, after a finished reading. */
+.finish-card .waitlist {
+  border-top-color: rgb(255 255 255 / 0.12);
+  max-width: 420px;
+  margin-inline: auto;
+}
+.finish-card .waitlist-note,
+.finish-card .waitlist-status {
+  color: #aebbd1;
+}
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+.feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.feedback-form label {
+  font-size: 14px;
+  font-weight: 500;
+  margin-top: 6px;
+}
+.feedback-form textarea {
+  min-height: 120px;
+}

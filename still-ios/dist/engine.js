@@ -322,6 +322,12 @@ export class Playback {
 // `step` counts words shown since playback started (0 = the first).
 const WARM_UP = [1.8, 1.5, 1.3, 1.15];
 export const warmUpFactor = (step) => WARM_UP[step] ?? 1;
+// Easing in over the first half minute: playback starts 15% slower and
+// reaches the chosen pace after 30 seconds, so a start never feels rushed.
+// `elapsed` is milliseconds since this stretch of reading began.
+export const EASE_IN_MS = 30000;
+export const easeInFactor = (elapsed) =>
+  1 + 0.15 * Math.max(0, 1 - Math.max(0, elapsed) / EASE_IN_MS);
 // Running totals of a timing plan, so the time left from any word is one
 // subtraction: sums[to] - sums[from].
 export function planSums(plan) {
