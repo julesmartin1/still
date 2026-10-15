@@ -53,6 +53,11 @@ import { STARTER } from "./starter-shelf.js";
 import { repairPdfLines, repairText, describeGlyphMap } from "./text-repair.js";
 import { splitAtFocus, fadeDuration } from "./word-display.js";
 import {
+  SpokenPlayback,
+  speechSupported,
+  guessLanguage,
+} from "./read-aloud.js";
+import {
   checkInDue,
   endCheckInDue,
   followUp,
@@ -591,7 +596,9 @@ function playbackUI() {
     ? `word ${reader.index + 1} of ${data.tokens.length}`
     : "no visible words";
   const announcement = playing
-    ? "Playing."
+    ? readAloudOn()
+      ? "" // the voice is speaking: don't talk over it
+      : "Playing."
     : reader.finished
       ? "Finished. You’ve reached the end."
       : `Paused at ${position}: ${data.tokens[reader.index]?.text || ""}`;
@@ -608,7 +615,8 @@ function returnToReader() {
 function createReader(index = 0) {
   reader?.pause();
   refreshTiming();
-  reader = new Playback({
+  reader = new (readAloudOn() ? SpokenPlayback : Playback)({
+    ...readAloudOptions(),
     length: data.tokens.length,
     duration: (i) => {
       lastTimedAt = performance.now();
@@ -688,6 +696,63 @@ function play() {
 function toggle() {
   reader.playing ? pause() : play();
 }
+// ---- Read aloud (see read-aloud.js) ----
+// The device's own voice reads each word as it is shown, and the word follows
+// the voice. It swaps in for Playback, so check-ins, "Pause after each
+// sentence" and the end of a reading work as usual. Switch in Reading settings.
+function readAloudOn() {
+  return !!appearance.readAloud && speechSupported();
+}
+function readAloudOptions() {
+  if (!readAloudOn()) return {};
+  const tokens = data.tokens;
+  return {
+    tokens,
+    wpm: (i) =>
+      targetWpm(
+        base,
+        profile,
+        tokens[i]?.paragraph === replayParagraph ||
+          !!replaySet?.has(tokens[i]?.paragraph),
+      ),
+    lang: () => guessLanguage(tokens),
+    onSilent: (reason) =>
+      showToast(
+        reason === "no-voice"
+          ? "This device has no built-in voice to read aloud, so words follow your pace."
+          : "The voice stopped, so words follow your pace. Pause and play to try again.",
+        7000,
+      ),
+  };
+}
+function readAloudUI() {
+  const on = readAloudOn();
+  $("readAloud").checked = on;
+  $("readAloudBadge").hidden = !on;
+  // Some browsers only load their voices once asked for them.
+  if (on)
+    try {
+      speechSynthesis.getVoices();
+    } catch {}
+}
+$("readAloudSetting").hidden = !speechSupported();
+// Offered once more on first run, beside the first read.
+$("welcomeAloudOption").hidden = !speechSupported();
+$("welcomeAloud").onchange = () => {
+  $("readAloud").checked = $("welcomeAloud").checked;
+  $("readAloud").onchange();
+};
+readAloudUI();
+$("readAloud").onchange = () => {
+  if (reader.playing) pause();
+  appearance = { ...appearance, readAloud: $("readAloud").checked };
+  applyAppearance();
+  const { index, finished } = reader;
+  createReader(index);
+  reader.finished = finished;
+  playbackUI();
+  readAloudUI();
+};
 function checkpoint() {
   if (!reader || erasing) return Promise.resolve(false);
   const record = {
@@ -3450,6 +3515,7 @@ function showWelcomeStep(step) {
         : "Your daily goal"
       : eyebrow;
   $("welcomeTitle").textContent = heading;
+  if (step === "pace") $("welcomeAloud").checked = readAloudOn();
   if (step === "pace")
     $("welcomeFirstRead").textContent =
       `“${title}”, about ${Math.max(1, Math.round(data.tokens.length / base))} min. It’s open and waiting.`;

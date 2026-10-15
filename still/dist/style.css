@@ -2464,3 +2464,34 @@ body.immersive .starter:not(:hover, :focus-within) {
 .feedback-form textarea {
   min-height: 120px;
 }
+/* ---- Read aloud: the speaker mark in the reader, the switch in settings ---- */
+.read-aloud-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  color: #c9d3e6;
+}
+.read-aloud-badge .icon {
+  width: 16px;
+  height: 16px;
+}
+#readAloudBadge .read-aloud-label {
+  font-size: 13px;
+}
+.read-aloud-option {
+  min-height: 44px;
+}
+.read-aloud-option + .field-hint {
+  margin: 0 0 4px 30px;
+}
+@media (max-width: 600px) {
+  .read-aloud-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
