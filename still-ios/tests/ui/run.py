@@ -1103,6 +1103,208 @@ async def read_aloud_voice_can_be_chosen_and_tried(browser):
     await ctx.close()
 
 
+# Stand-ins for the natural voice: a worker that "downloads" in four steps and
+# returns `__natural.step` ms of sound per word (without loading the real
+# model), and a Web Audio clock that ends each clip after its length.
+FAKE_NATURAL = """
+(() => {
+  const MODEL = "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_quantized.onnx";
+  const log = (window.__natural = { loads: [], spoken: [], started: [], stopped: 0, step: 150, failLoad: null });
+  const saved = async () => !!(await (await caches.open("still-natural-voice-v1")).match(MODEL));
+  class FakeNaturalWorker {
+    postMessage(m) {
+      const reply = (data) => setTimeout(() => this.onmessage && this.onmessage({ data }), 0);
+      if (m.type === "load") {
+        log.loads.push(m);
+        if (log.failLoad) return reply({ type: "load-error", id: m.id, code: log.failLoad });
+        saved().then((have) => {
+          if (have) return reply({ type: "ready", id: m.id });
+          if (!m.download) return reply({ type: "load-error", id: m.id, code: "missing" });
+          const total = 92361116;
+          let loaded = 0;
+          const step = () => {
+            loaded = Math.min(total, loaded + total / 4);
+            reply({ type: "progress", loaded, total });
+            if (loaded < total) return setTimeout(step, 250);
+            caches.open("still-natural-voice-v1")
+              .then((c) => c.put(MODEL, new Response("fake")))
+              .then(() => reply({ type: "ready", id: m.id }));
+          };
+          setTimeout(step, 100);
+        });
+      } else if (m.type === "speak") {
+        log.spoken.push({ text: m.text, voice: m.voice, speed: m.speed });
+        const samples = new Float32Array(Math.round(24 * m.words.length * log.step)).fill(0.1);
+        reply({ type: "audio", id: m.id, samples, sampleRate: 24000, weights: m.words.map(() => 3) });
+      }
+    }
+    terminate() {}
+  }
+  const RealWorker = window.Worker;
+  window.Worker = function (url, options) {
+    return String(url).includes("natural-voice-worker")
+      ? new FakeNaturalWorker()
+      : new RealWorker(url, options);
+  };
+  const origin = performance.now();
+  class FakeAudioContext {
+    constructor() { this.state = "running"; this.destination = {}; }
+    get currentTime() { return (performance.now() - origin) / 1000; }
+    resume() { return Promise.resolve(); }
+    createBuffer(channels, length, rate) {
+      return { length, duration: length / rate, copyToChannel() {} };
+    }
+    createBufferSource() {
+      const source = {
+        connect() {}, disconnect() {},
+        start() {
+          log.started.push(source.buffer.duration);
+          source.timer = setTimeout(() => source.onended && source.onended(), source.buffer.duration * 1000);
+        },
+        stop() { log.stopped++; clearTimeout(source.timer); setTimeout(() => source.onended && source.onended(), 0); },
+      };
+      return source;
+    }
+  }
+  window.AudioContext = FakeAudioContext;
+})();
+"""
+
+NATURAL_GROUP = "Natural voice (downloads once, about 90 MB)"
+
+
+@check
+async def natural_voice_downloads_once_and_reads_in_step(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH + FAKE_NATURAL)
+    await open_text(page, "One two three four. Five six seven eight.")
+    await page.click("#readingSettings")
+    await page.check("#readAloud")
+    group = await page.evaluate(
+        "[...document.querySelectorAll('#readAloudVoice optgroup')].map(g => [g.label, [...g.children].map(o => o.value)])"
+    )
+    assert [NATURAL_GROUP, ["natural:af_heart", "natural:af_bella", "natural:bf_emma", "natural:am_michael"]] in group, group
+    assert await page.locator("#naturalVoiceStatus").is_hidden()
+    # Choosing one starts the download and shows its progress.
+    await page.select_option("#readAloudVoice", "natural:af_heart")
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).readAloudVoice") == "natural:af_heart"
+    await page.wait_for_function("document.getElementById('naturalVoiceStatus').textContent.includes('Downloading the natural voice')")
+    assert await page.is_visible("#naturalVoiceProgress")
+    await page.wait_for_function("document.getElementById('naturalVoiceProgress').value >= 0.5")
+    assert "% of about 90 MB" in await page.text_content("#naturalVoiceStatus")
+    await page.wait_for_function("document.getElementById('naturalVoiceStatus').textContent.includes('works without the internet')", timeout=5000)
+    assert await page.locator("#naturalVoiceProgress").is_hidden()
+    assert await page.locator("#naturalVoiceDownload").is_hidden()
+    # Try it plays a sample with the natural voice, not the device's.
+    device_spoken = await page.evaluate("window.__speech.spoken.length")
+    await page.click("#readAloudTry")
+    await page.wait_for_function("window.__natural.spoken.length === 1")
+    sample = await page.evaluate("window.__natural.spoken[0]")
+    assert "how Still will read" in sample["text"] and sample["voice"] == "af_heart", sample
+    await page.wait_for_function("window.__natural.started.length === 1")
+    assert await page.evaluate("window.__speech.spoken.length") == device_spoken
+    await page.keyboard.press("Escape")
+    # Reading: one chunk at a time, the next made ahead, words follow the clip.
+    word = "document.getElementById('word').textContent"
+    spoken = "window.__natural.spoken"
+    await page.click("#play")
+    await page.wait_for_function(f"{spoken}.length >= 3")
+    texts = await page.evaluate(f"{spoken}.map(s => s.text)")
+    assert texts[1:3] == ["One two three four.", "Five six seven eight."], texts
+    await page.wait_for_function(f"{word} === 'three'", timeout=1500)
+    assert await page.text_content("#srStatus") == ""
+    # Pause stops the sound and keeps the word.
+    await page.click("#play")
+    stopped = await page.evaluate("window.__natural.stopped")
+    assert stopped >= 1
+    held = await page.evaluate(word)
+    await page.wait_for_timeout(500)
+    assert await page.evaluate(word) == held
+    # Play speaks again from that word, then on to the end.
+    await page.click("#play")
+    await page.wait_for_function(f"{spoken}.at(-1).text.startsWith({json.dumps(held)})")
+    again = await page.evaluate(f"{spoken}.at(-1).text")
+    assert again.endswith("four."), again
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=6000)
+    assert await page.evaluate(word) == "eight."
+    # The device voice was never used for the reading.
+    assert await page.evaluate("window.__speech.spoken.length") == device_spoken
+    # Saved: after a reload it reads without downloading again.
+    await page.reload()
+    await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    await page.click("#play")
+    await page.wait_for_function("window.__natural.spoken.length >= 1")
+    loads = await page.evaluate("window.__natural.loads")
+    assert loads and not any(l["download"] for l in loads), loads
+    await page.click("#play")
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def natural_voice_keeps_device_voice_for_other_languages(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH + FAKE_NATURAL)
+    await open_text(page, "Le chat est dans la maison et il dort. Elle est avec nous pour le dîner, mais je ne sais pas.")
+    await page.click("#readingSettings")
+    await page.check("#readAloud")
+    await page.select_option("#readAloudVoice", "natural:bf_emma")
+    await page.wait_for_function("document.getElementById('naturalVoiceStatus').textContent.includes('English only')", timeout=5000)
+    await page.keyboard.press("Escape")
+    await page.click("#play")
+    await page.wait_for_function("window.__speech.spoken.length >= 1")
+    assert await page.evaluate("window.__natural.spoken.length") == 0
+    await page.click("#play")
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def natural_voice_download_failure_falls_back_to_device_voice(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH + FAKE_NATURAL)
+    await open_text(page, "One two three four. Five six seven eight.")
+    await page.evaluate("window.__natural.failLoad = 'download'")
+    await page.click("#readingSettings")
+    await page.check("#readAloud")
+    await page.select_option("#readAloudVoice", "natural:af_heart")
+    await page.wait_for_function("document.getElementById('toast').textContent.includes('couldn’t download')")
+    assert await page.input_value("#readAloudVoice") == ""
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).readAloudVoice") == ""
+    assert await page.locator("#naturalVoiceStatus").is_hidden()
+    # Try it still speaks, with the device's voice.
+    await page.click("#readAloudTry")
+    assert "how Still will read" in await page.evaluate("window.__speech.spoken.at(-1).text")
+    await page.keyboard.press("Escape")
+    await page.click("#play")
+    await page.wait_for_function("window.__speech.spoken.length >= 2")
+    await page.click("#play")
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def natural_voice_failing_mid_reading_carries_on_with_device_voice(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH + FAKE_NATURAL)
+    await open_text(page, "One two three four. Five six seven eight.")
+    await page.click("#readingSettings")
+    await page.check("#readAloud")
+    await page.select_option("#readAloudVoice", "natural:af_heart")
+    await page.wait_for_function("document.getElementById('naturalVoiceStatus').textContent.includes('works without the internet')", timeout=5000)
+    await page.keyboard.press("Escape")
+    # After a reload the saved voice is used, but here it can't make sound.
+    await page.reload()
+    await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    await page.evaluate("""() => {
+      const C = window.AudioContext;
+      window.AudioContext = function () { const c = new C(); c.createBufferSource = () => { throw Error('no sound'); }; return c; };
+    }""")
+    await page.click("#play")
+    await page.wait_for_function("document.getElementById('toast').textContent.includes('switched to')", timeout=5000)
+    await page.wait_for_function("window.__speech.spoken.length >= 1")
+    assert "Pause" in await page.inner_text("#play")
+    await page.click("#play")
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],

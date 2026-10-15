@@ -8,7 +8,7 @@
     />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co; worker-src 'self' blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta
       name="description"
@@ -863,6 +863,29 @@
               Try it
             </button></span
           >
+          <progress
+            id="naturalVoiceProgress"
+            class="natural-voice-progress"
+            max="1"
+            value="0"
+            aria-label="Natural voice download"
+            hidden
+          ></progress>
+          <p
+            id="naturalVoiceStatus"
+            class="muted field-hint"
+            role="status"
+            aria-live="polite"
+            hidden
+          ></p>
+          <button
+            type="button"
+            id="naturalVoiceDownload"
+            class="secondary"
+            hidden
+          >
+            Download the natural voice (about 90 MB)
+          </button>
           <p id="readAloudVoiceHint" class="muted field-hint" hidden>
             For a more natural voice, open Settings › Accessibility › Spoken
             Content › Voices on this device, download a voice marked Enhanced or

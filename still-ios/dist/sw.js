@@ -1,5 +1,11 @@
 importScripts("./offline-assets.js");
 const CACHE = "still-offline-" + self.STILL_VERSION;
+// The natural voice's runtime (vendor/kokoro/, about 15 MB) is only fetched
+// when a reader chooses a natural voice, and is kept beside the voice's
+// downloaded files, in a cache that outlives updates, so the voice still
+// works offline after the app updates (see natural-voice.js).
+const NATURAL = "still-natural-voice-v1";
+const natural = (path) => path.includes("/vendor/kokoro/");
 self.addEventListener("install", (event) =>
   event.waitUntil(
     (async () => {
@@ -33,7 +39,9 @@ self.addEventListener("fetch", (event) => {
     return;
   event.respondWith(
     (async () => {
-      const cache = await caches.open(CACHE);
+      const cache = await caches.open(
+        natural(new URL(event.request.url).pathname) ? NATURAL : CACHE,
+      );
       try {
         const response = await fetch(event.request);
         if (response.ok && !response.redirected)
@@ -60,10 +68,12 @@ self.addEventListener("message", (event) => {
       const port = event.ports[0];
       try {
         const cache = await caches.open(CACHE);
+        // The natural voice's runtime only comes with the natural voice.
+        const assets = self.STILL_ASSETS.filter((p) => !natural(p));
         let count = 0;
-        for (let i = 0; i < self.STILL_ASSETS.length; i += 6) {
+        for (let i = 0; i < assets.length; i += 6) {
           await Promise.all(
-            self.STILL_ASSETS.slice(i, i + 6).map(async (path) => {
+            assets.slice(i, i + 6).map(async (path) => {
               const response = await fetch(path, { cache: "reload" });
               if (!response.ok || response.redirected)
                 throw Error("Unavailable");
@@ -71,7 +81,7 @@ self.addEventListener("message", (event) => {
               count++;
             }),
           );
-          port.postMessage({ count, total: self.STILL_ASSETS.length });
+          port.postMessage({ count, total: assets.length });
         }
         port.postMessage({ done: true });
       } catch {

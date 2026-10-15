@@ -2515,3 +2515,13 @@ body.immersive .starter:not(:hover, :focus-within) {
 .voice-row button {
   flex: none;
 }
+.natural-voice-progress {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin: 10px 0 0;
+  accent-color: var(--blue);
+}
+#naturalVoiceDownload {
+  margin-top: 6px;
+}
