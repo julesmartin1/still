@@ -49,6 +49,7 @@ import {
   wrappedLines,
 } from "./text-check.js";
 import { PASSAGES, nextPace, suggestedPace } from "./pace-finder.js";
+import { STARTER } from "./starter-shelf.js";
 import { repairPdfLines, repairText, describeGlyphMap } from "./text-repair.js";
 import { splitAtFocus, fadeDuration } from "./word-display.js";
 import {
@@ -73,6 +74,7 @@ import {
   MIN_WPM,
   MAX_WPM,
   warmUpFactor,
+  easeInFactor,
   planSums,
 } from "./engine.js";
 import {
@@ -90,15 +92,6 @@ const $ = (id) => document.getElementById(id);
 // "1 reading", "3 readings"; pass the plural form when it isn't just "+s".
 const plural = (n, one, many = one + "s") =>
   `${n.toLocaleString()} ${n === 1 ? one : many}`;
-const SAMPLE = `There is a kind of quiet that only arrives in the early morning. Before the messages, before the traffic, before the day begins asking things of you. The room is still. Light moves slowly across the floor.
-
-On the windowsill, a small bird lands and tilts its head. You have walked past this window a thousand times. Today, for no particular reason, you stop. The bird stays for a moment, then disappears into the blue.
-
-Noticing is an unassuming habit. It asks for nothing elaborate: a little attention, a willingness to linger, an occasional departure from the familiar. The ordinary world becomes less ordinary when we give it a second look.
-
-There are words for these small discoveries. Ephemeral describes something that lasts only briefly. Serendipity is the happy accident of finding something you were not looking for. Neither requires a grand adventure. Sometimes, all it takes is an open window.
-
-Later, when the day grows busy, you may remember the bird. You may forget it entirely. Either way, for a few seconds, you were there. The light, the quiet, the world just outside. And that was enough.`;
 let erasing = false;
 const KEY = "still-reader-v1";
 // Local storage holds about 5 MB per site. Readings longer than this keep
@@ -125,13 +118,21 @@ if (saved && typeof saved.documentId === "string" && !hasText(saved)) {
     startupNote = "Your last reading is on the Bookshelf.";
   }
 }
+// A first-time reader opens on a short read from the starter shelf: long
+// enough to settle in, short enough to finish.
+const FIRST_READ = STARTER.find((s) => s.minutes >= 2) || STARTER[0];
+const starterRecordId = (piece) => "starter-" + piece.id;
+const STARTER_SHOWN = 4;
+let starterExpanded = false;
 let text =
-  typeof saved?.text === "string" && saved.text.trim() ? saved.text : SAMPLE;
-let title =
-  typeof saved?.title === "string" ? saved.title : "The art of noticing";
+  typeof saved?.text === "string" && saved.text.trim()
+    ? saved.text
+    : FIRST_READ.text;
+let title = typeof saved?.title === "string" ? saved.title : FIRST_READ.title;
 let base = Number.isFinite(saved?.base)
   ? clamp(saved.base, MIN_WPM, MAX_WPM)
-  : 260;
+  : // New readers start gently; Find my pace or ↑ speeds it up.
+    180;
 let profile = freshProfile();
 if (
   saved?.profile &&
@@ -147,7 +148,9 @@ if (
 let documentId =
   typeof saved?.documentId === "string"
     ? saved.documentId
-    : crypto.randomUUID();
+    : saved
+      ? crypto.randomUUID()
+      : starterRecordId(FIRST_READ);
 let readingOptions = saved?.readingOptions || {},
   filterAnchor = Number.isInteger(saved?.sourceIndex)
     ? saved.sourceIndex
@@ -259,6 +262,10 @@ try {
 let session = null,
   lastSession = null,
   warmFrom = 0,
+  // When this stretch of reading began, for easing in (engine.easeInFactor),
+  // and when the last word was timed: a short pause keeps the pace reached.
+  easeFrom = 0,
+  lastTimedAt = -Infinity,
   sentenceBreakAt = -1, // stopped after this word ("Pause after each sentence")
   checkinBreak = false,
   celebratedDay = today(habits).met ? dayKey() : "",
@@ -272,7 +279,7 @@ const sentenceCase = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 const WELCOME_COPY = {
   intro: ["Welcome to Still", "Read more, with less effort"],
   goal: ["", "Pick a daily goal"],
-  pace: ["Step 2 of 2", "Find a comfortable pace?"],
+  pace: ["Step 2 of 2", "Your first read is ready"],
 };
 // Running totals of the plan, for "N min left" (see engine.planSums).
 let timingSums = new Float64Array(1);
@@ -463,7 +470,7 @@ function render() {
   const replaying =
     t?.paragraph === replayParagraph || !!replaySet?.has(t?.paragraph);
   $("learning").textContent =
-    `Current target: ${Math.round(targetWpm(base, profile, replaying))} WPM${replaying ? " · slower replay" : profile.slowdown ? " · adjusted for you" : ""}`;
+    `Right now: ${Math.round(targetWpm(base, profile, replaying))} words a minute${replaying ? " · slower replay" : profile.slowdown ? " · adjusted for you" : ""}`;
   $("play").disabled = !data.tokens.length;
   $("review").disabled = !data.tokens.length;
   $("quickRewind").disabled = !data.tokens.length;
@@ -603,7 +610,14 @@ function createReader(index = 0) {
   refreshTiming();
   reader = new Playback({
     length: data.tokens.length,
-    duration: (i) => timingPlan[i] * warmUpFactor(i - warmFrom),
+    duration: (i) => {
+      lastTimedAt = performance.now();
+      return (
+        timingPlan[i] *
+        warmUpFactor(i - warmFrom) *
+        easeInFactor(lastTimedAt - easeFrom)
+      );
+    },
     onWord: () => {
       if (reader?.playing) {
         if (!wordsRead) segmentStart = reader.index;
@@ -665,6 +679,7 @@ function play() {
     reader.index = Math.min(reader.index + 1, data.tokens.length - 1);
   sentenceBreakAt = -1;
   warmFrom = reader.finished ? 0 : reader.index;
+  if (performance.now() - lastTimedAt > 10000) easeFrom = performance.now();
   startSession();
   reader.play();
   playbackUI();
@@ -750,6 +765,7 @@ function load(nextText, nextTitle, existing = null, importedSource = null) {
   checkpoint();
   refreshSource(importedSource);
   setReadingMode(readingOptions.readingMode === "text", false);
+  renderStarter();
 }
 function setPace(value) {
   const number = Number(value);
@@ -888,6 +904,7 @@ $("newText").onclick = () => {
   $("textInput").value = "";
   $("textTitle").value = "";
   $("importType").value = "other";
+  $("moreOptions").open = false;
   // Check-ins start from the reader's last choice (off until they pick one).
   try {
     $("importCheckins").value = String(
@@ -968,10 +985,82 @@ $("textInput").oninput = () => {
         ? "Original page view will be available."
         : "Edited text can be read, but will not link to the original PDF. Apply the page range to restore the imported text.";
 };
-$("sample").onclick = () => {
-  load(SAMPLE, "The art of noticing");
-  $("inputDialog").close();
+// The starter shelf: short public-domain reads, shortest first, so a
+// new reader always has something they can finish today.
+function renderStarter() {
+  const list =
+    STARTER_SHOWN < STARTER.length && !starterExpanded
+      ? STARTER.slice(0, STARTER_SHOWN)
+      : STARTER;
+  $("starterList").replaceChildren(
+    ...list.map((piece) => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.className = "starter-item";
+      button.dataset.starter = piece.id;
+      if (documentId === starterRecordId(piece))
+        button.setAttribute("aria-current", "true");
+      const name = document.createElement("strong");
+      name.textContent = piece.title;
+      const meta = document.createElement("span");
+      meta.className = "starter-meta";
+      meta.textContent = [piece.kind, piece.author, `${piece.minutes} min`]
+        .filter(Boolean)
+        .join(" · ");
+      const blurb = document.createElement("span");
+      blurb.className = "starter-blurb";
+      blurb.textContent = piece.blurb;
+      button.append(name, meta, blurb);
+      item.append(button);
+      return item;
+    }),
+  );
+  $("starterMore").hidden = STARTER.length <= STARTER_SHOWN;
+  $("starterMore").textContent = starterExpanded
+    ? "Show fewer"
+    : "Show more short reads";
+  $("starterMore").setAttribute("aria-expanded", String(starterExpanded));
+  // Tick off the ones already finished.
+  listReadings()
+    .then((all) => {
+      const done = new Set(all.filter((r) => r.finished).map((r) => r.id));
+      if (reader?.finished) done.add(documentId);
+      for (const button of $("starterList").querySelectorAll("[data-starter]"))
+        button.classList.toggle(
+          "read",
+          done.has("starter-" + button.dataset.starter),
+        );
+    })
+    .catch(() => {});
+}
+// Opens a starter piece, picking up where the reader left off if it is
+// already on the Bookshelf (one copy each, never duplicated).
+async function openStarter(piece) {
+  let record = null;
+  try {
+    record = await getReading(starterRecordId(piece));
+  } catch {}
+  if (record?.text)
+    load(record.text, record.title, { ...record, shelfState: "active" });
+  else load(piece.text, piece.title, { id: starterRecordId(piece) });
+}
+$("starterList").addEventListener("click", async (e) => {
+  const id = e.target.closest("[data-starter]")?.dataset.starter;
+  const piece = STARTER.find((p) => p.id === id);
+  if (!piece) return;
+  await openStarter(piece);
+  window.scrollTo({ top: 0, behavior: "smooth" });
   returnToReader();
+});
+$("starterMore").onclick = () => {
+  starterExpanded = !starterExpanded;
+  renderStarter();
+};
+renderStarter();
+$("sample").onclick = () => {
+  $("inputDialog").close();
+  $("starterShelf").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("starterList").querySelector("button")?.focus({ preventScroll: true });
 };
 document
   .querySelectorAll("[data-close]")
@@ -1815,6 +1904,8 @@ function updateDraft() {
   const value = $("textInput").value;
   if (!importTypeManual) $("importType").value = inferType(value);
   $("importAcademic").hidden = $("importType").value !== "academic";
+  // Papers have choices worth seeing (citations, references).
+  if ($("importType").value === "academic") $("moreOptions").open = true;
   const paragraphs = value.trim() ? parseText(value).paragraphs : [];
   const headings =
     draftSections(value) || detectSections(value, $("importType").value);
@@ -2491,7 +2582,23 @@ async function openNextReading(excludeId) {
     if (summary) next = await getReading(summary.id);
   } catch {}
   if (next?.text) load(next.text, next.title, next);
-  else load(SAMPLE, "The art of noticing");
+  else {
+    // Nothing left on the shelf: a short read that isn't in the Trash.
+    let piece = null;
+    for (const p of STARTER) {
+      if (starterRecordId(p) === excludeId) continue;
+      let record = null;
+      try {
+        record = await getReading(starterRecordId(p));
+      } catch {}
+      if (!record) {
+        piece = p;
+        break;
+      }
+    }
+    if (piece) await openStarter(piece);
+    else load(FIRST_READ.text, FIRST_READ.title);
+  }
   await archiveQueue;
 }
 async function moveReading(record, state) {
@@ -2840,6 +2947,74 @@ $("textFile").onchange = async () => {
 };
 // The privacy/help pages are generated for the iOS app only; the web build
 // links straight to the bundled third-party licenses instead.
+// Waitlist and feedback (web only) go to Netlify Forms: a plain post to
+// this same site, with no third-party scripts and no cookies.
+const WAITLISTED = "still-waitlisted";
+async function postForm(name, data) {
+  const body = new URLSearchParams(data);
+  if (body.get("company")) return; // a bot filled the hidden field
+  body.set("form-name", name);
+  const res = await fetch("/", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!res.ok) throw Error(`Form post failed: ${res.status}`);
+}
+{
+  let joined = false;
+  try {
+    joined = !!storage.getItem(WAITLISTED);
+  } catch {}
+  for (const form of document.querySelectorAll(".waitlist")) {
+    form.hidden = native || joined;
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const status = form.querySelector(".waitlist-status");
+      const button = form.querySelector("button");
+      button.disabled = true;
+      status.textContent = "Sending…";
+      const data = new FormData(form);
+      data.set("where", form.dataset.where);
+      try {
+        await postForm("waitlist", data);
+        try {
+          storage.setItem(WAITLISTED, "1");
+        } catch {}
+        form.querySelector(".waitlist-row").hidden = true;
+        status.textContent = "Thanks. You’ll get one email when it’s ready.";
+      } catch {
+        status.textContent = navigator.onLine
+          ? "That didn’t send. Please try again later."
+          : "You’re offline. Try again when you’re connected.";
+      }
+      button.disabled = false;
+    });
+  }
+}
+$("sendFeedback").hidden = native;
+$("sendFeedback").onclick = () => {
+  pause();
+  $("feedbackStatus").textContent = "";
+  $("feedbackDialog").showModal();
+  $("feedbackMessage").focus();
+};
+$("feedbackForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const button = $("feedbackForm").querySelector("[type=submit]");
+  button.disabled = true;
+  $("feedbackStatus").textContent = "Sending…";
+  try {
+    await postForm("feedback", new FormData($("feedbackForm")));
+    $("feedbackForm").reset();
+    $("feedbackStatus").textContent = "Thank you. It’s been sent.";
+  } catch {
+    $("feedbackStatus").textContent = navigator.onLine
+      ? "That didn’t send. Please try again later."
+      : "You’re offline. Try again when you’re connected.";
+  }
+  button.disabled = false;
+});
 $("appNotices").hidden = !native;
 $("webNotices").hidden = native;
 $("aboutStill").onclick = () => {
@@ -2943,10 +3118,10 @@ function rateCheckIn(rating) {
     showFollowUp(
       eased
         ? "Your last three check-ins were clear. Go back to your usual pace?"
-        : `Your last three check-ins were clear. Try ${Math.min(MAX_WPM, base + 10)} WPM?`,
+        : `Your last three check-ins were clear. Try ${Math.min(MAX_WPM, base + 10)} words a minute?`,
       ["Keep this pace", () => finishCheckIn()],
       [
-        eased ? "Use my usual pace" : `Try ${Math.min(MAX_WPM, base + 10)} WPM`,
+        eased ? "Use my usual pace" : `Try ${Math.min(MAX_WPM, base + 10)}`,
         () => {
           if (eased) profile = { ...profile, slowdown: 0 };
           else setPace(base + 10);
@@ -3202,13 +3377,37 @@ function showFinish(show) {
           (r.shelfState || "active") === "active" &&
           !r.finished,
       );
+      if (!finishNext) {
+        // Nothing waiting on the shelf: suggest the next short read.
+        const opened = new Set(all.map((r) => r.id));
+        const piece = STARTER.find(
+          (p) =>
+            starterRecordId(p) !== documentId &&
+            !opened.has(starterRecordId(p)),
+        );
+        if (piece) finishNext = { starter: piece, title: piece.title };
+      }
       if (finishNext)
-        $("finishNext").textContent = `Up next: ${finishNext.title}`;
+        $("finishNext").textContent = finishNext.starter
+          ? `Up next: ${finishNext.title} · ${finishNext.starter.minutes} min`
+          : `Up next: ${finishNext.title}`;
     })
     .catch(() => {});
+  // After a first finished read, offer to tune the pace.
+  let found = true;
+  try {
+    found = !!storage.getItem(PACE_FOUND);
+  } catch {}
+  $("finishPace").hidden = found;
+  renderStarter();
 }
+$("finishPace").onclick = openPaceFinder;
 $("finishNext").onclick = async () => {
   if (!finishNext) return $("newText").click();
+  if (finishNext.starter) {
+    await openStarter(finishNext.starter);
+    return returnToReader();
+  }
   try {
     const reading = await getReading(finishNext.id);
     if (!reading) throw Error();
@@ -3251,6 +3450,9 @@ function showWelcomeStep(step) {
         : "Your daily goal"
       : eyebrow;
   $("welcomeTitle").textContent = heading;
+  if (step === "pace")
+    $("welcomeFirstRead").textContent =
+      `“${title}”, about ${Math.max(1, Math.round(data.tokens.length / base))} min. It’s open and waiting.`;
   if (step === "goal") {
     renderGoalOptions();
     $("goalSave").textContent = welcomeFlow ? "Continue" : "Save goal";
@@ -3291,7 +3493,7 @@ $("goalSave").onclick = () => {
   updateToday();
   if (welcomeFlow) {
     showWelcomeStep("pace");
-    $("welcomePace").focus();
+    $("welcomeSample").focus();
   } else {
     $("welcomeDialog").close();
     returnToReader();

@@ -71,6 +71,8 @@ async def open_text(page, text, title="Test reading", kind=None, checkins=None):
         "t => { const el = document.getElementById('textInput'); el.value = t; el.dispatchEvent(new Event('input')); }",
         text,
     )
+    if kind or checkins:
+        await page.evaluate("document.getElementById('moreOptions').open = true")
     if kind:
         await page.select_option("#importType", kind)
     if checkins:
@@ -112,6 +114,7 @@ async def review_shortcut_is_safe_when_all_words_are_hidden(browser):
     ctx, page = await fresh(browser)
     await page.click("#newText")
     await page.fill("#textInput", "(Smith, 2020) [12] (Jones & Lee, 2019)")
+    await page.evaluate("document.getElementById('moreOptions').open = true")
     await page.select_option("#importType", "academic")
     await page.check("#importSkipCitations")
     await page.click("#inputForm [type=submit]")
@@ -199,7 +202,7 @@ async def trash_can_be_emptied_and_open_reading_moves_on(browser):
     await open_text(page, "Second reading text.", title="Second")
     await page.click("#library")
     await page.wait_for_timeout(300)
-    await page.locator(".shelf-row", has_text="Second").locator("button", has_text="Remove").click()
+    await page.get_by_role("button", name="Remove Second", exact=True).click()
     await page.wait_for_timeout(400)
     assert await page.inner_text("#title") != "Second", "trashed reading stayed open"
     await page.select_option("#shelfView", "trash")
@@ -358,7 +361,7 @@ async def lost_the_thread_offers_a_slower_replay(browser):
     await page.click("#checkinPrimary")
     await page.wait_for_timeout(300)
     assert "Pause" in await page.inner_text("#play")
-    assert "slower replay" in await page.inner_text("#learning")
+    assert "slower replay" in await page.text_content("#learning")
     await ctx.close()
 
 
@@ -686,10 +689,10 @@ async def arrow_keys_change_pace_and_skip_sentences(browser):
     ctx, page = await fresh(browser)
     await open_text(page, "One two three. Four five six. Seven eight.")
     await page.keyboard.press("ArrowUp")
-    assert await page.input_value("#speedValue") == "270"
+    assert await page.input_value("#speedValue") == "190"
     await page.keyboard.press("ArrowDown")
     await page.keyboard.press("ArrowDown")
-    assert await page.input_value("#speedValue") == "250"
+    assert await page.input_value("#speedValue") == "170"
     await page.keyboard.press("ArrowRight")
     assert await page.text_content("#word") == "Four"
     await page.keyboard.press("ArrowRight")
@@ -803,6 +806,7 @@ async def slow_paces_and_pausing_after_each_sentence(browser):
     await page.fill("#speedValue", "600")
     await page.press("#speedValue", "Enter")
     # With the pause on, playback stops on each sentence's last word.
+    await page.click("#paceMore summary")
     await page.check("#sentenceStop")
     for last in ("three.", "six.", "eight"):
         await page.click("#play")
@@ -830,6 +834,95 @@ async def finishing_offers_the_next_reading(browser):
     await page.wait_for_timeout(200)
     assert await page.inner_text("#title") == "Waiting book"
     assert await page.locator("#finishCard").is_hidden()
+    await ctx.close()
+
+
+@check
+async def new_readers_start_on_a_short_read_at_a_gentle_pace(browser):
+    ctx, page = await fresh(browser, onboarded=False)
+    await page.click("#welcomeNext")
+    await page.click("#goalSave")
+    first = (await page.inner_text("#welcomeFirstRead")).split("”")[0].strip("“")
+    await page.click("#welcomeSample")
+    assert await page.inner_text("#title") == first
+    assert await page.input_value("#speedValue") == "180"
+    # The shelf marks the open piece and opens another one, once.
+    assert await page.locator(".starter-item[aria-current=true]").count() == 1
+    items = page.locator(".starter-item")
+    assert await items.count() >= 3
+    other = items.nth(0)
+    name = await other.locator("strong").inner_text()
+    if name == first:
+        other = items.nth(1)
+        name = await other.locator("strong").inner_text()
+    await other.click()
+    await page.wait_for_timeout(300)
+    assert await page.inner_text("#title") == name
+    assert await page.locator(".starter-item[aria-current=true] strong").inner_text() == name
+    # Add reading > Pick a short read goes back to the shelf.
+    await page.click("#newText")
+    await page.click("#sample")
+    assert not await dialog_open(page, "inputDialog")
+    assert await page.evaluate("document.activeElement.classList.contains('starter-item')")
+    # Pace options and keyboard keys stay out of the way until wanted.
+    assert not await page.is_visible("#speed")
+    await page.click("#paceMore summary")
+    assert await page.is_visible("#speed")
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def finishing_a_short_read_suggests_the_next_and_find_my_pace(browser):
+    ctx, page = await fresh(browser)
+    await page.locator(".starter-item").nth(0).click()
+    await page.fill("#speedValue", "600")
+    await page.press("#speedValue", "Enter")
+    await page.evaluate("() => { const b = document.querySelector('#play'); b.click(); }")
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=60000)
+    assert await page.is_visible("#finishPace")
+    finished = await page.inner_text("#title")
+    await page.wait_for_function("document.getElementById('finishNext').textContent.startsWith('Up next')")
+    label = await page.inner_text("#finishNext")
+    await page.wait_for_selector(".starter-item.read")
+    await page.click("#finishNext")
+    await page.wait_for_timeout(300)
+    title = await page.inner_text("#title")
+    assert title != finished and title in label, (title, label)
+    await ctx.close()
+
+
+@check
+async def waitlist_and_feedback_post_to_netlify_forms(browser):
+    ctx, page = await fresh(browser, onboarded=False)
+    posts = []
+
+    async def capture(route):
+        if route.request.method == "POST":
+            posts.append(route.request.post_data)
+            await route.fulfill(status=200, body="ok")
+        else:
+            await route.continue_()
+
+    await page.route("**/", capture)
+    assert await page.is_visible("#waitlistEmailWelcome")
+    assert "never leave your device" in await page.inner_text("#welcomeDialog .waitlist-note")
+    await page.fill("#waitlistEmailWelcome", "reader@example.com")
+    await page.click("#welcomeDialog .waitlist button")
+    await page.wait_for_function("document.querySelector('#welcomeDialog .waitlist-status').textContent.includes('Thanks')")
+    assert "form-name=waitlist" in posts[0] and "where=welcome" in posts[0], posts
+    assert "reader%40example.com" in posts[0], posts
+    await page.click("#welcomeSkip")
+    await page.click("#sendFeedback")
+    await page.fill("#feedbackMessage", "The short reads helped.")
+    await page.click("#feedbackForm [type=submit]")
+    await page.wait_for_function("document.getElementById('feedbackStatus').textContent.includes('sent')")
+    assert "form-name=feedback" in posts[1] and "short+reads" in posts[1], posts
+    # Joined once: the box doesn't ask again.
+    await page.reload()
+    await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    assert await page.locator(".waitlist").first.is_hidden()
+    assert not page.errors, page.errors
     await ctx.close()
 
 
