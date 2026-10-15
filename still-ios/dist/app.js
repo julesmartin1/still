@@ -56,6 +56,10 @@ import {
   SpokenPlayback,
   speechSupported,
   guessLanguage,
+  pickVoice,
+  voiceChoices,
+  voiceScore,
+  wpmToRate,
 } from "./read-aloud.js";
 import {
   checkInDue,
@@ -716,6 +720,7 @@ function readAloudOptions() {
           !!replaySet?.has(tokens[i]?.paragraph),
       ),
     lang: () => guessLanguage(tokens),
+    voice: () => appearance.readAloudVoice || "",
     onSilent: (reason) =>
       showToast(
         reason === "no-voice"
@@ -729,12 +734,83 @@ function readAloudUI() {
   const on = readAloudOn();
   $("readAloud").checked = on;
   $("readAloudBadge").hidden = !on;
+  renderVoices();
   // Some browsers only load their voices once asked for them.
   if (on)
     try {
       speechSynthesis.getVoices();
     } catch {}
 }
+// The voice chooser: the device's on-device voices for this reading's
+// language, most natural first.
+function deviceVoices() {
+  try {
+    return speechSynthesis.getVoices() || [];
+  } catch {
+    return [];
+  }
+}
+function renderVoices() {
+  const voices = deviceVoices();
+  const field = $("readAloudVoiceField");
+  field.hidden = !readAloudOn() || !voices.some((v) => v.localService);
+  if (field.hidden) return;
+  const lang = guessLanguage(data.tokens);
+  const choices = voiceChoices(voices, lang);
+  const auto = pickVoice(voices, lang, navigator.language);
+  const option = (value, label) => {
+    const o = document.createElement("option");
+    o.value = value;
+    o.textContent = label;
+    return o;
+  };
+  $("readAloudVoice").replaceChildren(
+    option("", `Most natural here${auto ? ` (${auto.name})` : ""}`),
+    ...choices.map((v) => option(v.voiceURI, `${v.name} · ${v.lang}`)),
+  );
+  $("readAloudVoice").value = choices.some(
+    (v) => v.voiceURI === appearance.readAloudVoice,
+  )
+    ? appearance.readAloudVoice
+    : "";
+  // Apple devices keep their natural voices as optional downloads.
+  $("readAloudVoiceHint").hidden =
+    !/Macintosh|iPhone|iPad/.test(navigator.userAgent) ||
+    choices.some((v) => voiceScore(v) >= 30);
+}
+if (speechSupported())
+  try {
+    speechSynthesis.addEventListener("voiceschanged", renderVoices);
+  } catch {}
+$("readAloudVoice").onchange = () => {
+  appearance = { ...appearance, readAloudVoice: $("readAloudVoice").value };
+  applyAppearance();
+  const { index, finished } = reader;
+  createReader(index);
+  reader.finished = finished;
+  playbackUI();
+};
+$("readAloudTry").onclick = () => {
+  const voices = deviceVoices();
+  const voice = pickVoice(
+    voices,
+    guessLanguage(data.tokens),
+    navigator.language,
+    $("readAloudVoice").value,
+  );
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(
+      "This is how Still will read to you, one word at a time.",
+    );
+    if (voice) {
+      u.voice = voice;
+      u.lang = voice.lang;
+    }
+    u.rate = wpmToRate(base);
+    speechSynthesis.speak(u);
+  } catch {}
+};
 $("readAloudSetting").hidden = !speechSupported();
 // Offered once more on first run, beside the first read.
 $("welcomeAloudOption").hidden = !speechSupported();
@@ -2021,6 +2097,7 @@ $("readingSettings").onclick = () => {
   $("readingType").value = readingOptions.documentType;
   $("checkinMode").value = String(checkinMode());
   updateFilterUI();
+  renderVoices();
   $("settingsDialog").showModal();
 };
 $("readingType").onchange = () => {

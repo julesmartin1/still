@@ -942,8 +942,8 @@ FAKE_SPEECH = """
     paused: false,
     current: null,
     getVoices: () => [
-      { name: "Test voice", lang: "en-US", localService: true, default: true },
-      { name: "Cloud voice", lang: "en-US", localService: false, default: false },
+      { name: "Test voice", voiceURI: "Test voice", lang: "en-US", localService: true, default: true },
+      { name: "Cloud voice", voiceURI: "Cloud voice", lang: "en-US", localService: false, default: false },
     ],
     speak(u) {
       log.spoken.push({ text: u.text, rate: u.rate, voice: u.voice && u.voice.name });
@@ -1080,6 +1080,25 @@ async def read_aloud_is_offered_on_first_run(browser):
     await page.click("#welcomeSample")
     assert await page.is_visible("#readAloudBadge")
     assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).readAloud") is True
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def read_aloud_voice_can_be_chosen_and_tried(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH)
+    await page.click("#readingSettings")
+    assert await page.locator("#readAloudVoiceField").is_hidden()
+    await page.check("#readAloud")
+    assert await page.is_visible("#readAloudVoice")
+    labels = await page.locator("#readAloudVoice option").all_inner_texts()
+    assert labels[0].startswith("Most natural here (Test voice)"), labels
+    assert not any("Cloud" in l for l in labels), labels
+    await page.select_option("#readAloudVoice", "Test voice")
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).readAloudVoice") == "Test voice"
+    await page.click("#readAloudTry")
+    spoken = await page.evaluate("window.__speech.spoken.at(-1)")
+    assert "how Still will read" in spoken["text"] and spoken["voice"] == "Test voice", spoken
     assert not page.errors, page.errors
     await ctx.close()
 
