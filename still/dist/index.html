@@ -67,6 +67,21 @@
         <div class="reader-top">
           <span id="mode">Ready when you are</span
           ><span class="reader-meta"
+            ><span id="readAloudBadge" class="read-aloud-badge" hidden
+              ><svg
+                class="icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M11 5 6 9H2v6h4l5 4V5z" />
+                <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                <path d="M19 5a10 10 0 0 1 0 14" /></svg
+              ><span class="read-aloud-label">Read aloud</span></span
             ><button id="timeLeft" type="button" class="meta-toggle"></button
             ><span id="count">1 / 200 words</span></span
           >
@@ -826,6 +841,21 @@
         A short, ungraded pause at the end of a paragraph to sum up what you
         read. Losing the thread offers a slower replay.
       </p>
+      <div id="readAloudSetting" hidden>
+        <label class="check-label read-aloud-option"
+          ><input
+            id="readAloud"
+            type="checkbox"
+            aria-describedby="readAloudHint"
+          />
+          Read aloud</label
+        >
+        <p id="readAloudHint" class="muted field-hint">
+          Hear each word as it appears. The words follow the voice, close to
+          your pace. The voice is built into this device, so nothing you read
+          leaves it.
+        </p>
+      </div>
       <details id="citationSettings">
         <summary>Citation options</summary>
         <section class="reading-filters" aria-label="Reading content">
@@ -1265,6 +1295,13 @@
           Still starts slowly and speeds up a little as you settle in. When you
           finish, you can find your own pace.
         </p>
+        <label
+          id="welcomeAloudOption"
+          class="check-label read-aloud-option"
+          hidden
+          ><input id="welcomeAloud" type="checkbox" /> Read it aloud to me as
+          well</label
+        >
         <div class="dialog-actions">
           <button id="welcomePace" class="secondary">Find my pace first</button
           ><button id="welcomeSample" class="primary">Start reading</button>

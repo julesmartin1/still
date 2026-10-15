@@ -9,8 +9,9 @@ Setup, once:
 Run from the still/ folder:
     python3 tests/ui/run.py
 
-It starts its own copy of the server on port 4199 and prints one line per
-check. Exit code is non-zero if anything fails.
+It starts its own copy of the server on port 4199 (set STILL_UI_PORT to use
+another) and prints one line per check. Exit code is non-zero if anything
+fails.
 """
 import asyncio
 import datetime
@@ -25,7 +26,7 @@ from playwright.async_api import async_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # still/
-PORT = 4199
+PORT = int(os.environ.get("STILL_UI_PORT", "4199"))  # set it to run beside another copy
 URL = f"http://127.0.0.1:{PORT}/"
 RESULTS = []
 TESTS = []
@@ -36,7 +37,7 @@ def check(fn):
     return fn
 
 
-async def fresh(browser, onboarded=True, storage=None, **options):
+async def fresh(browser, onboarded=True, storage=None, init=None, **options):
     # bypass_csp lets Playwright's own helpers run; the app's CSP is
     # unchanged for real users.
     ctx = await browser.new_context(
@@ -56,6 +57,8 @@ async def fresh(browser, onboarded=True, storage=None, **options):
             " for (const [k, v] of Object.entries(s)) localStorage.setItem(k, v); } })("
             + json.dumps(seed) + ")"
         )
+    if init:  # a script to run before the app, e.g. a fake speech engine
+        await ctx.add_init_script(init)
     page = await ctx.new_page()
     page.errors = []
     page.on("pageerror", lambda e: page.errors.append(str(e)))
@@ -922,6 +925,161 @@ async def waitlist_and_feedback_post_to_netlify_forms(browser):
     await page.reload()
     await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
     assert await page.locator(".waitlist").first.is_hidden()
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+# A stand-in for the browser's speech engine: records each utterance, then
+# fires a word boundary every `__speechStep` ms and `end` after the last word.
+FAKE_SPEECH = """
+(() => {
+  const log = (window.__speech = { spoken: [], cancels: 0 });
+  window.__speechStep = 150;
+  class FakeUtterance {
+    constructor(text) { this.text = text; this.rate = 1; }
+  }
+  const synth = {
+    paused: false,
+    current: null,
+    getVoices: () => [
+      { name: "Test voice", lang: "en-US", localService: true, default: true },
+      { name: "Cloud voice", lang: "en-US", localService: false, default: false },
+    ],
+    speak(u) {
+      log.spoken.push({ text: u.text, rate: u.rate, voice: u.voice && u.voice.name });
+      this.current = u;
+      const words = [...u.text.matchAll(/\\S+/g)];
+      let i = 0;
+      const step = () => {
+        if (this.current !== u) return;
+        if (i < words.length) {
+          u.onboundary && u.onboundary({ name: "word", charIndex: words[i++].index });
+          setTimeout(step, window.__speechStep);
+        } else {
+          this.current = null;
+          u.onend && u.onend({});
+        }
+      };
+      setTimeout(() => {
+        if (this.current !== u) return;
+        u.onstart && u.onstart({});
+        step();
+      }, 10);
+    },
+    cancel() {
+      log.cancels++;
+      const u = this.current;
+      this.current = null;
+      if (u) setTimeout(() => u.onerror && u.onerror({ error: "interrupted" }), 0);
+    },
+    resume() {},
+    pause() {},
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  Object.defineProperty(window, "speechSynthesis", { value: synth, configurable: true });
+  window.SpeechSynthesisUtterance = FakeUtterance;
+})();
+"""
+
+NO_SPEECH = """
+Object.defineProperty(window, "speechSynthesis", { value: undefined, configurable: true });
+window.SpeechSynthesisUtterance = undefined;
+"""
+
+
+@check
+async def read_aloud_moves_words_with_the_voice(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH)
+    await open_text(page, "One two three four. Five six seven eight.")
+    # The slowest pace: the timer alone would hold "One" for over 2 seconds.
+    await page.fill("#speedValue", "40")
+    await page.press("#speedValue", "Enter")
+    await page.click("#readingSettings")
+    assert await page.is_visible("#readAloud")
+    assert await page.locator("#readAloudBadge").is_hidden()
+    await page.check("#readAloud")
+    await page.keyboard.press("Escape")
+    assert await page.is_visible("#readAloudBadge")
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).readAloud") is True
+    spoken = "window.__speech.spoken"
+    word = "document.getElementById('word').textContent"
+    await page.click("#play")
+    await page.wait_for_function(f"{spoken}.length === 1")
+    first = await page.evaluate(f"{spoken}[0]")
+    assert first["text"] == "One two three four.", first
+    assert first["rate"] == 0.5, first  # 40 words a minute, as slow as voices go
+    assert first["voice"] == "Test voice", first  # never the cloud voice
+    # The word follows the voice's boundaries, well ahead of the timer.
+    await page.wait_for_function(f"{word} === 'three'", timeout=1500)
+    # Screen readers aren't told "Playing." over the voice.
+    assert await page.text_content("#srStatus") == ""
+    # Pause cancels the speech and keeps the word.
+    await page.click("#play")
+    assert await page.evaluate("window.__speech.cancels") >= 1
+    held = await page.evaluate(word)
+    await page.wait_for_timeout(500)
+    assert await page.evaluate(word) == held
+    assert await page.evaluate(f"{spoken}.length") == 1
+    # Play speaks again from the current word.
+    await page.click("#play")
+    await page.wait_for_function(f"{spoken}.length === 2")
+    again = await page.evaluate(f"{spoken}[1].text")
+    assert again.startswith(held) and again.endswith("four."), (held, again)
+    # Then the next sentence, to the end of the reading.
+    await page.wait_for_function(f"{spoken}.length === 3")
+    assert await page.evaluate(f"{spoken}[2].text") == "Five six seven eight."
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=5000)
+    assert await page.evaluate(word) == "eight."
+    # Pause after each sentence stops at the sentence end, as without the voice.
+    await page.evaluate("document.getElementById('paceMore').open = true")
+    await page.check("#sentenceStop")
+    await page.click("#play")
+    await page.wait_for_function("!document.getElementById('play').textContent.includes('Pause')", timeout=5000)
+    assert await page.evaluate(word) == "four."
+    assert "End of the sentence" in await page.inner_text("#status")
+    await page.click("#play")
+    await page.wait_for_function(f"{spoken}.at(-1).text === 'Five six seven eight.'")
+    # Skipping back a sentence starts the voice again from there.
+    await page.click("#quickRewind")
+    await page.wait_for_function(f"{spoken}.at(-1).text === 'One two three four.'")
+    assert "Pause" in await page.inner_text("#play")
+    # Turning it off goes back to the timer and hides the speaker mark.
+    await page.click("#play")
+    await page.click("#readingSettings")
+    await page.uncheck("#readAloud")
+    await page.keyboard.press("Escape")
+    assert await page.locator("#readAloudBadge").is_hidden()
+    count = await page.evaluate(f"{spoken}.length")
+    await page.click("#play")
+    await page.wait_for_timeout(300)
+    assert await page.evaluate(f"{spoken}.length") == count
+    assert await page.text_content("#srStatus") == "Playing."
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def read_aloud_is_hidden_without_speech(browser):
+    ctx, page = await fresh(browser, init=NO_SPEECH)
+    await page.click("#readingSettings")
+    assert await page.locator("#readAloudSetting").count() == 1
+    assert await page.locator("#readAloudSetting").is_hidden()
+    assert await page.locator("#readAloudBadge").is_hidden()
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def read_aloud_is_offered_on_first_run(browser):
+    ctx, page = await fresh(browser, onboarded=False, init=FAKE_SPEECH)
+    await page.click("#welcomeNext")
+    await page.click("#goalSave")
+    assert await page.is_visible("#welcomeAloud")
+    await page.check("#welcomeAloud")
+    await page.click("#welcomeSample")
+    assert await page.is_visible("#readAloudBadge")
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).readAloud") is True
     assert not page.errors, page.errors
     await ctx.close()
 
