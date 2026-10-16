@@ -131,8 +131,6 @@ if (saved && typeof saved.documentId === "string" && !hasText(saved)) {
 // enough to settle in, short enough to finish.
 const FIRST_READ = STARTER.find((s) => s.minutes >= 2) || STARTER[0];
 const starterRecordId = (piece) => "starter-" + piece.id;
-const STARTER_SHOWN = 4;
-let starterExpanded = false;
 let text =
   typeof saved?.text === "string" && saved.text.trim()
     ? saved.text
@@ -154,6 +152,8 @@ if (
     slowdown: clamp(Number(saved.profile.slowdown) || 0, 0, 0.2),
   };
 }
+// Two places: Home (the library) and the reader. See showView.
+let view = "home";
 let documentId =
   typeof saved?.documentId === "string"
     ? saved.documentId
@@ -613,8 +613,233 @@ function playbackUI() {
 // settings, jumping to a bookmark), put focus on the play button so Space
 // plays instead of re-activating the button that opened the dialog.
 function returnToReader() {
-  const target = normalMode ? $("readingMode") : $("play");
+  showView("reader");
+  const target = normalMode ? $("wordView") : $("play");
   target.focus({ preventScroll: true });
+}
+// Home is the library; the reader is just the words. Moving between them
+// is a history step, so a phone's back gesture returns to the library.
+const VIEW_KEY = "still-view";
+function showView(next, { push = true } = {}) {
+  if (next === view) return;
+  view = next;
+  document.body.dataset.view = next;
+  try {
+    sessionStorage.setItem(VIEW_KEY, next);
+  } catch {}
+  if (next === "reader") {
+    if (push && history.state?.still !== "reader")
+      history.pushState({ still: "reader" }, "");
+    fitWord();
+  } else {
+    if (reader?.playing) pause();
+    renderHome();
+  }
+  window.scrollTo(0, 0);
+}
+function goHome() {
+  if (history.state?.still === "reader") history.back();
+  else {
+    showView("home");
+    $("continueCard").focus({ preventScroll: true });
+  }
+}
+window.addEventListener("popstate", () => {
+  if (view !== "reader" || history.state?.still === "reader") return;
+  for (const dialog of document.querySelectorAll("dialog[open]"))
+    dialog.close();
+  showView("home", { push: false });
+  $("continueCard").focus({ preventScroll: true });
+});
+$("backHome").onclick = goHome;
+$("continueCard").onclick = () => returnToReader();
+// A cover for a reading that has none: its title on a calm colour picked
+// from its id, so the same reading always looks the same.
+const COVERS = [
+  ["#33507f", "#6286c4"],
+  ["#7b4150", "#c47887"],
+  ["#2f6a5d", "#62ab95"],
+  ["#6d5634", "#bf9c62"],
+  ["#4d3f7a", "#8d78c9"],
+  ["#355f70", "#6ea6bb"],
+];
+function paintCover(el, id, name) {
+  let h = 0;
+  for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const [dark, light] = COVERS[h % COVERS.length];
+  el.style.background = `linear-gradient(155deg, ${light}, ${dark})`;
+  el.textContent = name;
+}
+function progressLine(percent, msLeft, finished) {
+  if (finished) return "Finished";
+  if (!percent) return `About ${formatDuration(msLeft)}`;
+  return `${percent}% · ${formatDuration(msLeft)} left`;
+}
+let homeRequest = 0;
+async function renderHome() {
+  const n = data.tokens.length,
+    i = reader?.index || 0,
+    finished = !!reader?.finished;
+  const percent = finished ? 100 : n ? Math.floor((i / n) * 100) : 0;
+  const left = (timingSums[n] || 0) - (timingSums[i] || 0);
+  paintCover($("continueCover"), documentId, title);
+  $("continueLabel").textContent = finished
+    ? "Read it again"
+    : i > 0
+      ? "Continue reading"
+      : "Ready to read";
+  $("continueTitle").textContent = title;
+  $("continueMeta").textContent = progressLine(percent, left, finished);
+  $("continueBar").style.width = percent + "%";
+  const request = ++homeRequest;
+  let all = [];
+  try {
+    all = await listReadings();
+  } catch {}
+  if (request !== homeRequest) return;
+  // Short reads have their own row, so the grid is the reader's own books.
+  const books = all.filter(
+    (r) =>
+      (r.shelfState || "active") === "active" &&
+      r.id !== documentId &&
+      !r.id.startsWith("starter-"),
+  );
+  $("library").hidden = !all.length;
+  $("bookGrid").replaceChildren(
+    ...books.slice(0, 11).map((record) => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.className = "book";
+      const cover = document.createElement("span");
+      cover.className = "cover";
+      cover.setAttribute("aria-hidden", "true");
+      paintCover(cover, record.id, record.title);
+      const name = document.createElement("strong");
+      name.dir = "auto";
+      name.textContent = record.title;
+      const percent = record.finished
+        ? 100
+        : Math.min(
+            99,
+            Math.floor((record.index / Math.max(1, record.wordCount)) * 100),
+          );
+      const meta = document.createElement("span");
+      meta.className = "book-meta";
+      meta.textContent = progressLine(
+        percent,
+        (Math.max(0, record.wordCount - record.index) / base) * 60000,
+        record.finished,
+      );
+      const track = document.createElement("span");
+      track.className = "shelf-progress";
+      const fill = document.createElement("i");
+      fill.style.width = percent + "%";
+      track.append(fill);
+      button.append(cover, name, meta, track);
+      button.onclick = async () => {
+        try {
+          const reading = await getReading(record.id);
+          if (!reading) throw Error();
+          load(reading.text, reading.title, reading);
+          returnToReader();
+        } catch {
+          showLibrary();
+        }
+      };
+      item.append(button);
+      return item;
+    }),
+    (() => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.className = "book add-book";
+      button.innerHTML =
+        '<span class="cover" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span><strong>Add a book or article</strong><span class="book-meta">Paste text, or open a PDF or EPUB</span>';
+      button.onclick = () => $("newText").click();
+      item.append(button);
+      return item;
+    })(),
+  );
+}
+// Reading options: one small sheet for everything that isn't the words.
+$("readerTools").onclick = () => {
+  pause();
+  $("panelAloud").checked = readAloudOn();
+  $("readerPanel").showModal();
+};
+// A tool closes the sheet before it opens its own, so the two never stack.
+$("readerPanel").addEventListener(
+  "click",
+  (e) => {
+    if (e.target.closest("[data-tool]")) $("readerPanel").close();
+  },
+  true,
+);
+$("panelAloudOption").hidden = !speechSupported();
+$("panelAloud").onchange = () => {
+  $("readAloud").checked = $("panelAloud").checked;
+  $("readAloud").onchange();
+};
+// Every sheet closes with a tap outside it and, on a phone, a swipe down
+// from its top edge, as well as with Escape or its close button.
+for (const dialog of document.querySelectorAll("dialog")) {
+  const outside = (e) => {
+    const r = dialog.getBoundingClientRect();
+    return (
+      e.clientX < r.left ||
+      e.clientX > r.right ||
+      e.clientY < r.top ||
+      e.clientY > r.bottom
+    );
+  };
+  let downOutside = false;
+  dialog.addEventListener("pointerdown", (e) => {
+    downOutside = e.target === dialog && outside(e);
+  });
+  dialog.addEventListener("click", (e) => {
+    if (downOutside && e.target === dialog && outside(e)) dialog.close();
+    downOutside = false;
+  });
+  let startY = null,
+    pulled = 0;
+  dialog.addEventListener(
+    "touchstart",
+    (e) => {
+      const r = dialog.getBoundingClientRect(),
+        y = e.touches[0].clientY;
+      startY =
+        e.touches.length === 1 &&
+        dialog.scrollTop <= 0 &&
+        y - r.top < 76 &&
+        !e.target.closest("input,select,textarea")
+          ? y
+          : null;
+      pulled = 0;
+    },
+    { passive: true },
+  );
+  dialog.addEventListener(
+    "touchmove",
+    (e) => {
+      if (startY === null) return;
+      pulled = Math.max(0, e.touches[0].clientY - startY);
+      dialog.style.transition = "none";
+      dialog.style.transform = pulled ? `translateY(${pulled}px)` : "";
+    },
+    { passive: true },
+  );
+  const release = () => {
+    if (startY === null) return;
+    startY = null;
+    dialog.style.transition = "";
+    dialog.style.transform = "";
+    if (pulled > 70) dialog.close();
+  };
+  dialog.addEventListener("touchend", release);
+  dialog.addEventListener("touchcancel", () => {
+    pulled = 0;
+    release();
+  });
 }
 function createReader(index = 0) {
   reader?.pause();
@@ -1129,12 +1354,8 @@ $("textInput").oninput = () => {
 // The starter shelf: short public-domain reads, shortest first, so a
 // new reader always has something they can finish today.
 function renderStarter() {
-  const list =
-    STARTER_SHOWN < STARTER.length && !starterExpanded
-      ? STARTER.slice(0, STARTER_SHOWN)
-      : STARTER;
   $("starterList").replaceChildren(
-    ...list.map((piece) => {
+    ...STARTER.map((piece) => {
       const item = document.createElement("li");
       const button = document.createElement("button");
       button.className = "starter-item";
@@ -1156,11 +1377,6 @@ function renderStarter() {
       return item;
     }),
   );
-  $("starterMore").hidden = STARTER.length <= STARTER_SHOWN;
-  $("starterMore").textContent = starterExpanded
-    ? "Show fewer"
-    : "Show more short reads";
-  $("starterMore").setAttribute("aria-expanded", String(starterExpanded));
   // Tick off the ones already finished.
   listReadings()
     .then((all) => {
@@ -1190,16 +1406,12 @@ $("starterList").addEventListener("click", async (e) => {
   const piece = STARTER.find((p) => p.id === id);
   if (!piece) return;
   await openStarter(piece);
-  window.scrollTo({ top: 0, behavior: "smooth" });
   returnToReader();
 });
-$("starterMore").onclick = () => {
-  starterExpanded = !starterExpanded;
-  renderStarter();
-};
 renderStarter();
 $("sample").onclick = () => {
   $("inputDialog").close();
+  showView("home");
   $("starterShelf").scrollIntoView({ behavior: "smooth", block: "start" });
   $("starterList").querySelector("button")?.focus({ preventScroll: true });
 };
@@ -1514,7 +1726,7 @@ $("define").onclick = async () => {
 };
 $("reviewDialog").addEventListener("close", () => lookupRequest++);
 document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || view !== "reader") return;
   if (
     e.target.closest("input,textarea,select,[contenteditable=true]") ||
     document.querySelector("dialog[open]")
@@ -1873,7 +2085,10 @@ async function showLibrary() {
   }
 }
 $("library").onclick = showLibrary;
-$("libraryDialog").addEventListener("close", () => shelfRequest++);
+$("libraryDialog").addEventListener("close", () => {
+  shelfRequest++;
+  if (view === "home") renderHome();
+});
 $("libraryAdd").onclick = () => {
   $("libraryDialog").close();
   $("newText").click();
@@ -1919,7 +2134,7 @@ $("pdfLayout").onchange = () => {
 };
 
 function updateFilterUI() {
-  $("contents").textContent =
+  $("contents").querySelector("span").textContent =
     readingOptions.documentType === "academic" ? "Sections" : "Chapters";
   $("citationSettings").hidden = readingOptions.documentType === "book";
   $("citationSettings").open = readingOptions.documentType === "academic";
@@ -2098,6 +2313,7 @@ $("readingSettings").onclick = () => {
   $("checkinMode").value = String(checkinMode());
   updateFilterUI();
   renderVoices();
+  $("moreSettings").open = false;
   $("settingsDialog").showModal();
 };
 $("readingType").onchange = () => {
@@ -2109,22 +2325,22 @@ $("readingType").onchange = () => {
     sections: readingOptions.sections || detectSections(text, type),
   });
 };
-$("saveReadingDetails").onclick = () => {
-  const type = $("readingType").value;
-  title = $("readingTitle").value.trim() || "Untitled reading";
-  applyReadingOptions({
-    ...readingOptions,
-    documentType: type,
-    checkinEvery: checkinSpacing($("checkinMode").value),
-    ...(type === "book" ? { skipCitations: false, skipReferences: false } : {}),
-    sections:
-      type !== readingOptions.documentType
-        ? detectSections(text, type)
-        : readingOptions.sections,
-  });
-  $("settingsDialog").close();
-  returnToReader();
-};
+// Settings apply as they change; closing the sheet (Done, Escape or a tap
+// outside) keeps the title and check-in choices too.
+$("saveReadingDetails").onclick = () => $("settingsDialog").close();
+$("settingsDialog").addEventListener("close", () => {
+  const every = checkinSpacing($("checkinMode").value);
+  if (every !== checkinMode())
+    applyReadingOptions({ ...readingOptions, checkinEvery: every });
+  const nextTitle = $("readingTitle").value.trim() || "Untitled reading";
+  if (nextTitle !== title) {
+    title = nextTitle;
+    render();
+    save();
+    checkpoint();
+  }
+  if (!erasing) returnToReader();
+});
 function readingSections() {
   return readingOptions.sections
     ? normalizeSections(readingOptions.sections, text)
@@ -2410,7 +2626,9 @@ function setReadingMode(value, persist = true) {
   normalMode = value;
   $("wordReader").hidden = value;
   $("normalReader").hidden = !value;
-  $("readingMode").textContent = value ? "Word view" : "Text view";
+  $("readingMode").querySelector("span").textContent = value
+    ? "Word view"
+    : "Text view";
   if (persist) {
     readingOptions = {
       ...readingOptions,
@@ -2425,6 +2643,10 @@ function setReadingMode(value, persist = true) {
   } else fitWord();
 }
 $("readingMode").onclick = () => setReadingMode(!normalMode);
+$("wordView").onclick = () => {
+  setReadingMode(false);
+  returnToReader();
+};
 $("normalEarlier").onclick = () => {
   const pane = $("normalPane"),
     height = pane.scrollHeight;
@@ -3450,12 +3672,6 @@ function updateToday() {
       ? `${s.count}-day streak. See you tomorrow.`
       : `${s.count}-day streak. ${plural(toGo, "more minute")} keeps it going.`;
   $("goalButton").textContent = `Daily goal: ${habits.goal} min`;
-  $("streakCount").textContent = s.count;
-  $("streakChip").classList.toggle("lit", s.metToday);
-  $("streakChip").setAttribute(
-    "aria-label",
-    `${plural(s.count, "day")} in a row. Today: ${minutes} of ${habits.goal} minutes. Change daily goal.`,
-  );
   $("weekStrip").replaceChildren(
     ...week(habits, { extraMs }).map((day) => {
       const li = document.createElement("li");
@@ -3559,7 +3775,7 @@ $("finishNext").onclick = async () => {
     showLibrary();
   }
 };
-$("finishShelf").onclick = showLibrary;
+$("finishShelf").onclick = goHome;
 function skipSentence() {
   if (!data.tokens.length) return;
   const playing = reader.playing;
@@ -3639,7 +3855,8 @@ $("goalSave").onclick = () => {
     $("welcomeSample").focus();
   } else {
     $("welcomeDialog").close();
-    returnToReader();
+    if (view === "reader") returnToReader();
+    else $("goalButton").focus();
   }
 };
 $("welcomeSample").onclick = () => {
@@ -3656,7 +3873,6 @@ $("welcomeDialog").addEventListener("close", () => {
   } catch {}
 });
 $("goalButton").onclick = () => openWelcome("goal");
-$("streakChip").onclick = () => openWelcome("goal");
 updateToday();
 {
   let onboarded = true;
@@ -3664,6 +3880,14 @@ updateToday();
     onboarded = !!storage.getItem(ONBOARDED);
   } catch {}
   if (!onboarded && !saved) openWelcome("intro");
+}
+{
+  let start = "home";
+  try {
+    start = sessionStorage.getItem(VIEW_KEY) || "home";
+  } catch {}
+  if (start === "reader") showView("reader", { push: false });
+  else renderHome();
 }
 // Signals that startup finished (used by the browser tests).
 document.documentElement.dataset.ready = "true";
