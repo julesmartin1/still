@@ -78,12 +78,12 @@ async def go_home(page):
 
 async def add(page):
     await go_home(page)
-    await add(page)
+    await page.click("#newText")
 
 
 async def shelf(page):
     await go_home(page)
-    await shelf(page)
+    await page.click("#library")
 
 
 async def tool(page, selector):
@@ -633,6 +633,7 @@ async def holding_the_word_shows_its_sentence(browser):
 @check
 async def find_my_pace_sets_a_starting_pace(browser):
     ctx, page = await fresh(browser)
+    await page.click("#readerTools")
     assert not await page.locator("#paceInvite").is_hidden(), "first-run invite missing"
     await page.clock.install()
     await tool(page, "#findPace")
