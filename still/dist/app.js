@@ -62,18 +62,6 @@ import {
   wpmToRate,
 } from "./read-aloud.js";
 import {
-  NATURAL_VOICES,
-  NaturalPlayback,
-  NaturalVoiceEngine,
-  WebAudioOutput,
-  naturalDownloaded,
-  naturalReadsLanguage,
-  naturalSupported,
-  naturalVoiceId,
-  naturalVoiceValue,
-  speedForWpm,
-} from "./natural-voice.js";
-import {
   checkInDue,
   endCheckInDue,
   followUp,
@@ -196,16 +184,6 @@ let shelfState = saved?.shelfState || "active",
   markDraft = null,
   normalScrollTimer,
   normalScrollLocked = false;
-// The natural voice (see "Natural voice" below): its worker and audio
-// output, made when first needed; whether it is saved on this device
-// (unknown until checked, missing, downloading, saved, ready); and whether it
-// failed here, so the device's voice is used until it is chosen again.
-let naturalEngine = null,
-  naturalOutput = null,
-  naturalState = "unknown",
-  naturalProgress = 0,
-  naturalBroken = false,
-  naturalSample = null;
 let appearance;
 try {
   appearance = JSON.parse(storage.getItem("still-appearance")) || {};
@@ -641,13 +619,7 @@ function returnToReader() {
 function createReader(index = 0) {
   reader?.pause();
   refreshTiming();
-  reader = new (
-    !readAloudOn()
-      ? Playback
-      : naturalForReading()
-        ? NaturalPlayback
-        : SpokenPlayback
-  )({
+  reader = new (readAloudOn() ? SpokenPlayback : Playback)({
     ...readAloudOptions(),
     length: data.tokens.length,
     duration: (i) => {
@@ -721,9 +693,6 @@ function play() {
   warmFrom = reader.finished ? 0 : reader.index;
   if (performance.now() - lastTimedAt > 10000) easeFrom = performance.now();
   startSession();
-  stopNaturalSample();
-  if (reader instanceof NaturalPlayback && !voiceEngine().ready)
-    showToast("Getting the natural voice ready…", 4000);
   reader.play();
   playbackUI();
   $("play").focus({ preventScroll: true });
@@ -741,25 +710,15 @@ function readAloudOn() {
 function readAloudOptions() {
   if (!readAloudOn()) return {};
   const tokens = data.tokens;
-  const wpm = (i) =>
-    targetWpm(
-      base,
-      profile,
-      tokens[i]?.paragraph === replayParagraph ||
-        !!replaySet?.has(tokens[i]?.paragraph),
-    );
-  if (naturalForReading())
-    return {
-      tokens,
-      wpm,
-      voice: () => naturalChoice() || NATURAL_VOICES[0].id,
-      synth: voiceEngine(),
-      audio: naturalAudio(),
-      onFail: naturalFailed,
-    };
   return {
     tokens,
-    wpm,
+    wpm: (i) =>
+      targetWpm(
+        base,
+        profile,
+        tokens[i]?.paragraph === replayParagraph ||
+          !!replaySet?.has(tokens[i]?.paragraph),
+      ),
     lang: () => guessLanguage(tokens),
     voice: () => appearance.readAloudVoice || "",
     onSilent: (reason) =>
@@ -793,11 +752,8 @@ function deviceVoices() {
 }
 function renderVoices() {
   const voices = deviceVoices();
-  const natural = naturalSupported();
   const field = $("readAloudVoiceField");
-  field.hidden =
-    !readAloudOn() || (!voices.some((v) => v.localService) && !natural);
-  naturalStatusUI();
+  field.hidden = !readAloudOn() || !voices.some((v) => v.localService);
   if (field.hidden) return;
   const lang = guessLanguage(data.tokens);
   const choices = voiceChoices(voices, lang);
@@ -808,40 +764,19 @@ function renderVoices() {
     o.textContent = label;
     return o;
   };
-  const group = (label, options) => {
-    const g = document.createElement("optgroup");
-    g.label = label;
-    g.append(...options);
-    return g;
-  };
-  const device = choices.map((v) =>
-    option(v.voiceURI, `${v.name} · ${v.lang}`),
-  );
   $("readAloudVoice").replaceChildren(
     option("", `Most natural here${auto ? ` (${auto.name})` : ""}`),
-    ...(natural
-      ? [
-          ...(device.length ? [group("Built into this device", device)] : []),
-          group(
-            "Natural voice (downloads once, about 90 MB)",
-            NATURAL_VOICES.map((v) =>
-              option(naturalVoiceValue(v.id), `${v.name} · ${v.accent}`),
-            ),
-          ),
-        ]
-      : device),
+    ...choices.map((v) => option(v.voiceURI, `${v.name} · ${v.lang}`)),
   );
-  const chosen = appearance.readAloudVoice;
-  $("readAloudVoice").value =
-    choices.some((v) => v.voiceURI === chosen) ||
-    (natural && naturalVoiceId(chosen))
-      ? chosen
-      : "";
+  $("readAloudVoice").value = choices.some(
+    (v) => v.voiceURI === appearance.readAloudVoice,
+  )
+    ? appearance.readAloudVoice
+    : "";
   // Apple devices keep their natural voices as optional downloads.
   $("readAloudVoiceHint").hidden =
     !/Macintosh|iPhone|iPad/.test(navigator.userAgent) ||
-    choices.some((v) => voiceScore(v) >= 30) ||
-    !!naturalChoice();
+    choices.some((v) => voiceScore(v) >= 30);
 }
 if (speechSupported())
   try {
@@ -850,24 +785,12 @@ if (speechSupported())
 $("readAloudVoice").onchange = () => {
   appearance = { ...appearance, readAloudVoice: $("readAloudVoice").value };
   applyAppearance();
-  stopNaturalSample();
-  // Choosing a natural voice is asking for it: download it now if needed.
-  if (naturalVoiceId(appearance.readAloudVoice)) {
-    naturalBroken = false;
-    if (naturalState === "missing" || naturalState === "unknown")
-      downloadNaturalVoice();
-  }
-  refreshReader();
-  renderVoices();
+  const { index, finished } = reader;
+  createReader(index);
+  reader.finished = finished;
+  playbackUI();
 };
 $("readAloudTry").onclick = () => {
-  const natural = naturalVoiceId($("readAloudVoice").value);
-  if (natural && naturalSupported() && !naturalBroken)
-    return tryNatural(natural);
-  trySpoken();
-};
-function trySpoken() {
-  stopNaturalSample();
   const voices = deviceVoices();
   const voice = pickVoice(
     voices,
@@ -887,7 +810,7 @@ function trySpoken() {
     u.rate = wpmToRate(base);
     speechSynthesis.speak(u);
   } catch {}
-}
+};
 $("readAloudSetting").hidden = !speechSupported();
 // Offered once more on first run, beside the first read.
 $("welcomeAloudOption").hidden = !speechSupported();
@@ -906,169 +829,6 @@ $("readAloud").onchange = () => {
   playbackUI();
   readAloudUI();
 };
-// ---- Natural voice (see natural-voice.js) ----
-// A more human voice that runs on this device. Choosing one downloads it once
-// (about 90 MB, the voice's own files only); after that it works offline.
-// Whenever it can't be used (not English, not downloaded, or it fails), read
-// aloud carries on with the device's own voice. (Its state is declared with
-// the rest of the app's state, near the top.)
-function voiceEngine() {
-  return (naturalEngine ||= new NaturalVoiceEngine());
-}
-function naturalAudio() {
-  return (naturalOutput ||= new WebAudioOutput());
-}
-// The natural voice chosen in settings ("" for none or not usable here).
-function naturalChoice() {
-  return naturalSupported() && !naturalBroken
-    ? naturalVoiceId(appearance.readAloudVoice)
-    : "";
-}
-// Whether this reading is read with the natural voice.
-function naturalForReading() {
-  return (
-    !!naturalChoice() &&
-    (naturalState === "saved" || naturalState === "ready") &&
-    naturalReadsLanguage(guessLanguage(data.tokens))
-  );
-}
-// Rebuilds the reader (keeping its place) after the voice changes.
-function refreshReader() {
-  const { index, finished, playing } = reader;
-  createReader(index);
-  reader.finished = finished;
-  if (playing) reader.play();
-  playbackUI();
-}
-function naturalStatusUI() {
-  const status = $("naturalVoiceStatus");
-  const show = readAloudOn() && !!naturalChoice();
-  status.hidden = !show || naturalState === "unknown";
-  $("naturalVoiceProgress").hidden = !show || naturalState !== "downloading";
-  $("naturalVoiceProgress").value = naturalProgress;
-  $("naturalVoiceDownload").hidden = !show || naturalState !== "missing";
-  if (!show) return;
-  status.textContent =
-    naturalState === "downloading"
-      ? `Downloading the natural voice: ${Math.floor(naturalProgress * 100)}% of about 90 MB. You can keep reading while it downloads.`
-      : naturalState === "missing"
-        ? "The natural voice isn’t on this device yet."
-        : !naturalReadsLanguage(guessLanguage(data.tokens))
-          ? "The natural voice reads English only, so this reading uses a voice built into this device."
-          : "The natural voice is on this device, so it works without the internet. What you read never leaves this device.";
-}
-async function downloadNaturalVoice() {
-  if (naturalState === "downloading") return;
-  naturalState = "downloading";
-  naturalProgress = 0;
-  naturalStatusUI();
-  // Ask the browser to keep the download rather than clear it for space.
-  try {
-    navigator.storage?.persist?.().catch(() => {});
-  } catch {}
-  try {
-    await voiceEngine().load({
-      download: true,
-      onProgress: (p) => {
-        if (!p.total) return;
-        naturalProgress = Math.min(1, p.loaded / p.total);
-        naturalStatusUI();
-      },
-    });
-    naturalState = "ready";
-    if (!$("settingsDialog").open)
-      showToast("The natural voice is ready.", 3000);
-  } catch (error) {
-    naturalState = "missing";
-    const code = error?.code;
-    if (code === "unsupported" || code === "failed") naturalBroken = true;
-    showToast(
-      code === "download" || code === "missing"
-        ? "The natural voice couldn’t download, so Still is using this device’s voice. Check the internet connection, then choose the natural voice again."
-        : code === "storage"
-          ? "This device is short of space for the natural voice, so Still is using its own voice."
-          : "The natural voice can’t run on this device, so Still is using its own voice.",
-      8000,
-    );
-    appearance = { ...appearance, readAloudVoice: "" };
-    applyAppearance();
-  }
-  renderVoices();
-  // Reading on while it downloaded: the natural voice takes over from here.
-  refreshReader();
-}
-// While reading: the natural voice stopped working, so carry on with the
-// device's voice from the same word.
-function naturalFailed(reason) {
-  if (reason === "missing") naturalState = "missing";
-  else naturalBroken = true;
-  showToast(
-    reason === "missing"
-      ? "The natural voice isn’t on this device any more, so Still is using its own voice. Choose the natural voice in Reading settings to download it again."
-      : reason === "slow"
-        ? "The natural voice is too slow on this device, so Still switched to its own voice."
-        : "The natural voice stopped, so Still switched to this device’s voice.",
-    8000,
-  );
-  createReader(reader.index);
-  reader.play();
-  playbackUI();
-}
-function stopNaturalSample() {
-  try {
-    naturalSample?.stop();
-  } catch {}
-  naturalSample = null;
-}
-function tryNatural(id) {
-  stopNaturalSample();
-  if (naturalState === "downloading") {
-    $("naturalVoiceStatus").textContent =
-      "The natural voice is still downloading. Try it again when it’s ready.";
-    return;
-  }
-  if (naturalState === "missing") return downloadNaturalVoice();
-  try {
-    naturalAudio().unlock(); // sound can only start from the tap itself
-  } catch {}
-  if (!voiceEngine().ready)
-    $("naturalVoiceStatus").textContent = "Getting the natural voice ready…";
-  const text = "This is how Still will read to you, one word at a time.";
-  voiceEngine()
-    .synthesize(
-      { text, words: text.split(" "), voice: id, speed: speedForWpm(base) },
-      { urgent: true },
-    )
-    .then(
-      (clip) => {
-        naturalState = "ready";
-        naturalStatusUI();
-        stopNaturalSample();
-        naturalSample = naturalAudio().play(clip, () => (naturalSample = null));
-      },
-      (error) => {
-        if (error?.code === "dropped") return;
-        if (error?.code === "missing") naturalState = "missing";
-        else naturalBroken = true;
-        showToast(
-          "The natural voice can’t play here, so this is the device’s voice.",
-          6000,
-        );
-        renderVoices();
-        trySpoken();
-        if (!reader.playing) refreshReader();
-      },
-    );
-}
-$("naturalVoiceDownload").onclick = () => downloadNaturalVoice();
-// Whether a natural voice chosen earlier is still saved on this device.
-if (naturalSupported() && naturalVoiceId(appearance.readAloudVoice))
-  naturalDownloaded().then((saved) => {
-    if (naturalState !== "unknown") return;
-    naturalState = saved ? "saved" : "missing";
-    renderVoices();
-    if (saved && reader && !reader.playing) refreshReader();
-  });
 function checkpoint() {
   if (!reader || erasing) return Promise.resolve(false);
   const record = {
