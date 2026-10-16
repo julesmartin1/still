@@ -37,7 +37,7 @@ def check(fn):
     return fn
 
 
-async def fresh(browser, onboarded=True, storage=None, init=None, **options):
+async def fresh(browser, onboarded=True, storage=None, init=None, reader=True, **options):
     # bypass_csp lets Playwright's own helpers run; the app's CSP is
     # unchanged for real users.
     ctx = await browser.new_context(
@@ -64,11 +64,43 @@ async def fresh(browser, onboarded=True, storage=None, init=None, **options):
     page.on("pageerror", lambda e: page.errors.append(str(e)))
     await page.goto(URL)
     await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    # The app opens on Home (the library); most checks start in the reader.
+    if reader and onboarded and await page.is_visible("#continueCard"):
+        await page.click("#continueCard")
     return ctx, page
 
 
+async def go_home(page):
+    if not await page.is_visible("#home"):
+        await page.click("#backHome")
+        await page.wait_for_selector("#home", state="visible")
+
+
+async def add(page):
+    await go_home(page)
+    await add(page)
+
+
+async def shelf(page):
+    await go_home(page)
+    await shelf(page)
+
+
+async def tool(page, selector):
+    """Reading tools live in the reading options sheet (Aa)."""
+    if not await page.is_visible(selector):
+        await page.click("#readerTools")
+    await page.click(selector)
+
+
+async def settings(page):
+    """Opens Settings with everything under More settings showing."""
+    await tool(page, "#readingSettings")
+    await page.evaluate("document.getElementById('moreSettings').open = true")
+
+
 async def open_text(page, text, title="Test reading", kind=None, checkins=None):
-    await page.click("#newText")
+    await add(page)
     await page.fill("#textTitle", title)
     await page.evaluate(
         "t => { const el = document.getElementById('textInput'); el.value = t; el.dispatchEvent(new Event('input')); }",
@@ -103,7 +135,7 @@ async def space_plays_after_opening_a_reading(browser):
 @check
 async def space_plays_after_saving_settings(browser):
     ctx, page = await fresh(browser)
-    await page.click("#readingSettings")
+    await settings(page)
     await page.click("#saveReadingDetails")
     await page.keyboard.press("Space")
     await page.wait_for_timeout(300)
@@ -115,7 +147,7 @@ async def space_plays_after_saving_settings(browser):
 @check
 async def review_shortcut_is_safe_when_all_words_are_hidden(browser):
     ctx, page = await fresh(browser)
-    await page.click("#newText")
+    await add(page)
     await page.fill("#textInput", "(Smith, 2020) [12] (Jones & Lee, 2019)")
     await page.evaluate("document.getElementById('moreOptions').open = true")
     await page.select_option("#importType", "academic")
@@ -145,7 +177,7 @@ async def hebrew_is_laid_out_right_to_left(browser):
     await open_text(page, "שלום עולם. זה טקסט בעברית.")
     direction = await page.evaluate("getComputedStyle(document.getElementById('word')).direction")
     assert direction == "rtl", direction
-    await page.click("#readingMode")
+    await tool(page, "#readingMode")
     para_dir = await page.evaluate(
         "getComputedStyle(document.querySelector('#normalText p')).direction"
     )
@@ -156,7 +188,7 @@ async def hebrew_is_laid_out_right_to_left(browser):
 @check
 async def oversized_paste_is_refused_with_a_reason(browser):
     ctx, page = await fresh(browser)
-    await page.click("#newText")
+    await add(page)
     await page.evaluate("document.getElementById('textInput').value = 'word '.repeat(420000)")
     await page.click("#inputForm [type=submit]")
     assert await dialog_open(page, "inputDialog")
@@ -184,11 +216,11 @@ async def long_reading_survives_reload_without_stalling(browser):
 async def bookmarks_can_be_deleted_and_are_not_duplicated(browser):
     ctx, page = await fresh(browser)
     for _ in range(2):
-        await page.click("#bookmarks")
+        await tool(page, "#bookmarks")
         await page.click("#markCurrent")
         await page.click("#saveMark")
         await page.click("#marksDialog .close")
-    await page.click("#bookmarks")
+    await tool(page, "#bookmarks")
     assert await page.locator("#marksList .saved-mark").count() == 1, "duplicate bookmark"
     delete = page.locator("#marksList .saved-mark button", has_text="Delete")
     await delete.click()
@@ -203,7 +235,7 @@ async def trash_can_be_emptied_and_open_reading_moves_on(browser):
     ctx, page = await fresh(browser)
     await open_text(page, "First reading text.", title="First")
     await open_text(page, "Second reading text.", title="Second")
-    await page.click("#library")
+    await shelf(page)
     await page.wait_for_timeout(300)
     await page.get_by_role("button", name="Remove Second", exact=True).click()
     await page.wait_for_timeout(400)
@@ -228,7 +260,7 @@ async def backup_with_oversized_reading_still_restores_the_rest(browser):
       await lib.saveReading({id: 'old-long', title: 'Old long paste', text: 'x '.repeat(1000001),
                              index: 0, wordCount: 1000001, updatedAt: 1});
     }""")
-    await page.click("#library")
+    await shelf(page)
     await page.wait_for_timeout(300)
     async with page.expect_download() as download:
         await page.evaluate("document.getElementById('exportLibrary').click()")
@@ -244,7 +276,7 @@ async def backup_with_oversized_reading_still_restores_the_rest(browser):
 async def bookshelf_search_finds_text_not_just_titles(browser):
     ctx, page = await fresh(browser)
     await open_text(page, "Alpha particles and the aurora.", title="Doc A")
-    await page.click("#library")
+    await shelf(page)
     await page.fill("#shelfSearch", "aurora")
     await page.wait_for_timeout(400)
     assert await page.locator("#libraryList .shelf-row", has_text="Doc A").count() == 1
@@ -285,8 +317,7 @@ async def words_are_centred_by_default_and_can_be_anchored(browser):
     ctx, page = await fresh(browser)
     await open_text(page, "comprehension reading a")
     assert await page.locator("#word .focus").count() == 0, "centred should be the default"
-    await page.click("#readingSettings")
-    await page.locator("summary", has_text="Appearance").click()
+    await settings(page)
     await page.select_option("#appearancePlacement", "anchored")
     offset = await page.evaluate("""() => {
       const f = document.querySelector('#word .focus').getBoundingClientRect();
@@ -328,7 +359,7 @@ async def check_in_pauses_at_a_section_end_and_resumes(browser):
     ctx, page = await fresh(browser)
     text = "Chapter One\n\n" + prose(70, "a") + "\n\nChapter Two\n\n" + prose(40, "b")
     await open_text(page, text, kind="book")
-    await page.click("#readingSettings")
+    await settings(page)
     await page.select_option("#checkinMode", "sections")
     await page.click("#saveReadingDetails")
     await page.fill("#speedValue", "600")
@@ -343,7 +374,7 @@ async def check_in_pauses_at_a_section_end_and_resumes(browser):
     assert not await dialog_open(page, "checkinDialog")
     assert "Pause" in await page.inner_text("#play"), "reading did not resume"
     await page.click("#play")
-    await page.click("#bookmarks")
+    await tool(page, "#bookmarks")
     assert "1 check-in" in await page.inner_text("#checkinSummary")
     assert "letters and numbers" in await page.inner_text("#checkinList")
     await ctx.close()
@@ -372,7 +403,7 @@ async def lost_the_thread_offers_a_slower_replay(browser):
 async def check_ins_are_offered_on_import_and_spaced_by_words(browser):
     ctx, page = await fresh(browser)
     # Off by default: a reading with no choice never pauses.
-    await page.click("#newText")
+    await add(page)
     assert await page.input_value("#importCheckins") == "off"
     await page.click("#inputDialog [data-close]")
     text = "\n\n".join(prose(100, f"p{n}x") for n in range(6))
@@ -388,7 +419,7 @@ async def check_ins_are_offered_on_import_and_spaced_by_words(browser):
     await page.click("#checkinSkip")
     await page.click("#play")
     # The next reading remembers the choice.
-    await page.click("#newText")
+    await add(page)
     assert await page.input_value("#importCheckins") == "500"
     await ctx.close()
 
@@ -397,7 +428,7 @@ async def check_ins_are_offered_on_import_and_spaced_by_words(browser):
 async def check_ins_can_be_turned_off(browser):
     ctx, page = await fresh(browser)
     await open_text(page, prose(90, "d"))
-    await page.click("#readingSettings")
+    await settings(page)
     await page.select_option("#checkinMode", "off")
     await page.click("#saveReadingDetails")
     await page.fill("#speedValue", "600")
@@ -411,7 +442,7 @@ async def check_ins_can_be_turned_off(browser):
 @check
 async def pdf_table_of_contents_becomes_chapters(browser):
     ctx, page = await fresh(browser)
-    await page.click("#newText")
+    await add(page)
     await page.set_input_files("#pdfFile", os.path.join(HERE, "..", "fixtures", "chapters.pdf"))
     await page.wait_for_function(
         "document.getElementById('pdfStatus').textContent.startsWith('Imported')", timeout=30000
@@ -422,7 +453,7 @@ async def pdf_table_of_contents_becomes_chapters(browser):
     await page.click("#inputForm [type=submit]")
     await page.wait_for_timeout(200)
     assert await page.text_content("#mode") == "1 of 3 · Chapter One: The River"
-    await page.click("#contents")
+    await tool(page, "#contents")
     await page.locator("#sectionList button", has_text="Chapter Two").click()
     assert await page.text_content("#mode") == "2 of 3 · Chapter Two: The Bridge"
     assert await page.text_content("#word") == "Chapter"
@@ -432,7 +463,7 @@ async def pdf_table_of_contents_becomes_chapters(browser):
 @check
 async def import_flags_printed_line_breaks_and_rejoins_them(browser):
     ctx, page = await fresh(browser)
-    await page.click("#newText")
+    await add(page)
     lines = ["The morning was quiet and the road ran down to the river where"] * 6
     lines += ["the light lay flat on the water and nothing moved at all there."] * 6
     text = "\n".join(lines)
@@ -450,7 +481,7 @@ async def import_flags_printed_line_breaks_and_rejoins_them(browser):
 @check
 async def markdown_symbols_are_flagged_and_removed(browser):
     ctx, page = await fresh(browser)
-    await page.click("#newText")
+    await add(page)
     text = "# Notes\n\nRead **this** and [the paper](https://example.com).\n\n- first\n- second"
     await page.evaluate(
         "t => { const e = document.getElementById('textInput'); e.value = t; e.dispatchEvent(new Event('input')); }",
@@ -537,7 +568,7 @@ def mini_epub(chapters):
 @check
 async def epub_skips_front_matter_and_note_numbers(browser):
     ctx, page = await fresh(browser)
-    await page.click("#newText")
+    await add(page)
     book = mini_epub(
         [
             ("title.xhtml", '<section epub:type="titlepage"><h1>Small Book</h1><p>A Novel by Someone</p></section>'),
@@ -604,7 +635,7 @@ async def find_my_pace_sets_a_starting_pace(browser):
     ctx, page = await fresh(browser)
     assert not await page.locator("#paceInvite").is_hidden(), "first-run invite missing"
     await page.clock.install()
-    await page.click("#findPace")
+    await tool(page, "#findPace")
     assert await dialog_open(page, "paceDialog")
     for feel in ("comfortable", "comfortable", "fast"):
         await page.click("#pacePrimary")
@@ -667,7 +698,6 @@ async def streak_counts_days_in_a_row(browser):
     }
     days[(today - datetime.timedelta(days=5)).isoformat()] = {"ms": 400000, "words": 1}
     ctx, page = await fresh(browser, storage={"still-habits": json.dumps({"goal": 5, "days": days})})
-    assert await page.inner_text("#streakCount") == "3"
     line = await page.inner_text("#streakLine")
     assert "3-day streak" in line and "keeps it going" in line, line
     assert await page.locator("#weekStrip li.met").count() == 4
@@ -809,7 +839,7 @@ async def slow_paces_and_pausing_after_each_sentence(browser):
     await page.fill("#speedValue", "600")
     await page.press("#speedValue", "Enter")
     # With the pause on, playback stops on each sentence's last word.
-    await page.click("#paceMore summary")
+    await tool(page, "#paceMore summary")
     await page.check("#sentenceStop")
     for last in ("three.", "six.", "eight"):
         await page.click("#play")
@@ -849,7 +879,8 @@ async def new_readers_start_on_a_short_read_at_a_gentle_pace(browser):
     await page.click("#welcomeSample")
     assert await page.inner_text("#title") == first
     assert await page.input_value("#speedValue") == "180"
-    # The shelf marks the open piece and opens another one, once.
+    # The shelf on Home marks the open piece and opens another one, once.
+    await go_home(page)
     assert await page.locator(".starter-item[aria-current=true]").count() == 1
     items = page.locator(".starter-item")
     assert await items.count() >= 3
@@ -863,13 +894,14 @@ async def new_readers_start_on_a_short_read_at_a_gentle_pace(browser):
     assert await page.inner_text("#title") == name
     assert await page.locator(".starter-item[aria-current=true] strong").inner_text() == name
     # Add reading > Pick a short read goes back to the shelf.
-    await page.click("#newText")
+    await add(page)
     await page.click("#sample")
     assert not await dialog_open(page, "inputDialog")
     assert await page.evaluate("document.activeElement.classList.contains('starter-item')")
     # Pace options and keyboard keys stay out of the way until wanted.
+    await page.click("#continueCard")
     assert not await page.is_visible("#speed")
-    await page.click("#paceMore summary")
+    await tool(page, "#paceMore summary")
     assert await page.is_visible("#speed")
     assert not page.errors, page.errors
     await ctx.close()
@@ -877,7 +909,7 @@ async def new_readers_start_on_a_short_read_at_a_gentle_pace(browser):
 
 @check
 async def finishing_a_short_read_suggests_the_next_and_find_my_pace(browser):
-    ctx, page = await fresh(browser)
+    ctx, page = await fresh(browser, reader=False)
     await page.locator(".starter-item").nth(0).click()
     await page.fill("#speedValue", "600")
     await page.press("#speedValue", "Enter")
@@ -887,7 +919,7 @@ async def finishing_a_short_read_suggests_the_next_and_find_my_pace(browser):
     finished = await page.inner_text("#title")
     await page.wait_for_function("document.getElementById('finishNext').textContent.startsWith('Up next')")
     label = await page.inner_text("#finishNext")
-    await page.wait_for_selector(".starter-item.read")
+    await page.wait_for_selector(".starter-item.read", state="attached")
     await page.click("#finishNext")
     await page.wait_for_timeout(300)
     title = await page.inner_text("#title")
@@ -995,7 +1027,7 @@ async def read_aloud_moves_words_with_the_voice(browser):
     # The slowest pace: the timer alone would hold "One" for over 2 seconds.
     await page.fill("#speedValue", "40")
     await page.press("#speedValue", "Enter")
-    await page.click("#readingSettings")
+    await settings(page)
     assert await page.is_visible("#readAloud")
     assert await page.locator("#readAloudBadge").is_hidden()
     await page.check("#readAloud")
@@ -1046,7 +1078,7 @@ async def read_aloud_moves_words_with_the_voice(browser):
     assert "Pause" in await page.inner_text("#play")
     # Turning it off goes back to the timer and hides the speaker mark.
     await page.click("#play")
-    await page.click("#readingSettings")
+    await settings(page)
     await page.uncheck("#readAloud")
     await page.keyboard.press("Escape")
     assert await page.locator("#readAloudBadge").is_hidden()
@@ -1062,7 +1094,7 @@ async def read_aloud_moves_words_with_the_voice(browser):
 @check
 async def read_aloud_is_hidden_without_speech(browser):
     ctx, page = await fresh(browser, init=NO_SPEECH)
-    await page.click("#readingSettings")
+    await settings(page)
     assert await page.locator("#readAloudSetting").count() == 1
     assert await page.locator("#readAloudSetting").is_hidden()
     assert await page.locator("#readAloudBadge").is_hidden()
@@ -1087,7 +1119,7 @@ async def read_aloud_is_offered_on_first_run(browser):
 @check
 async def read_aloud_voice_can_be_chosen_and_tried(browser):
     ctx, page = await fresh(browser, init=FAKE_SPEECH)
-    await page.click("#readingSettings")
+    await settings(page)
     assert await page.locator("#readAloudVoiceField").is_hidden()
     await page.check("#readAloud")
     assert await page.is_visible("#readAloudVoice")

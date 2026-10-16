@@ -2515,3 +2515,528 @@ body.immersive .starter:not(:hover, :focus-within) {
 .voice-row button {
   flex: none;
 }
+
+/* ---- Two places: Home (the library) and the reader ---- */
+:root {
+  --card: #ffffff;
+  --handle: #cfd6e2;
+}
+html[data-theme="dark"] {
+  --card: #192337;
+  --handle: #3a4862;
+}
+body[data-view="reader"] :is(header, #home),
+body[data-view="home"] #readerView {
+  display: none;
+}
+body[data-view="reader"] main {
+  padding-top: max(14px, env(safe-area-inset-top));
+}
+.home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 40px;
+  animation: view-in 0.25s ease-out;
+}
+.reader-view {
+  animation: view-in 0.25s ease-out;
+}
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.home h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.section-head .text-button {
+  min-height: 44px;
+}
+
+/* A generated cover: the title on a soft colour, like a book's spine edge */
+.cover {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 7;
+  overflow: hidden;
+  aspect-ratio: 3 / 4;
+  padding: 14px 12px;
+  border-radius: 5px 10px 10px 5px;
+  color: #fff;
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  text-align: left;
+  box-shadow:
+    inset 5px 0 0 #00000024,
+    0 8px 18px #1a25402e;
+}
+
+.continue-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  padding: 18px 20px 18px 18px;
+  text-align: left;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  box-shadow: 0 12px 34px #1a254012;
+}
+.continue-card:hover {
+  filter: none;
+  background: var(--hover);
+}
+.continue-card .cover {
+  width: 74px;
+  flex-shrink: 0;
+  padding: 9px 8px;
+  font-size: 10px;
+  -webkit-line-clamp: 6;
+}
+.continue-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.continue-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.continue-card strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-family: var(--serif);
+  font-size: 23px;
+  font-weight: 400;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.continue-meta,
+.book-meta {
+  font-size: 14px;
+  color: var(--muted);
+}
+.home .shelf-progress {
+  display: block;
+  height: 4px;
+  margin-top: 6px;
+  background: var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.continue-go {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.continue-go .icon {
+  margin-left: 3px;
+}
+
+.home .today {
+  border: 0;
+  padding: 0;
+}
+.home .today-body {
+  margin: 6px 0 14px;
+}
+.home .goal-ring {
+  width: 60px;
+  height: 60px;
+}
+
+.book-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: 26px 18px;
+}
+.book {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+}
+.book:hover {
+  filter: none;
+}
+.book:hover .cover {
+  transform: translateY(-2px);
+}
+.book .cover {
+  transition: transform 0.2s ease;
+}
+.book strong {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.book .book-meta {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.book .shelf-progress {
+  margin-top: 0;
+}
+.add-book .cover {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--muted);
+  border: 1.5px dashed var(--field);
+  box-shadow: none;
+}
+.add-book .cover .icon {
+  width: 30px;
+  height: 30px;
+}
+.add-book strong {
+  position: static;
+  width: auto;
+  height: auto;
+  clip: auto;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Short reads: one row to swipe through */
+.home .starter {
+  border: 0;
+  padding: 0;
+}
+.home .starter-list {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  margin: 0 -32px;
+  padding: 2px 32px 8px;
+  scroll-padding-inline: 32px;
+}
+.home .starter-list::-webkit-scrollbar {
+  display: none;
+}
+.home .starter-list li {
+  flex: 0 0 min(76%, 270px);
+  scroll-snap-align: start;
+}
+.home .starter-item {
+  background: var(--card);
+  border-radius: 16px;
+  padding: 16px 18px;
+}
+.home footer {
+  margin-top: -8px;
+}
+
+/* The reader: back, title, options, and the words */
+.reader-view .topline {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.reader-view h1 {
+  font-size: 19px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.back-home {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 0 14px 0 6px;
+  border-radius: 22px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+}
+.reader-tools-button {
+  justify-self: end;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 19px;
+}
+:is(.back-home, .reader-tools-button):hover {
+  filter: none;
+  background: var(--hover);
+}
+.saved-note:not(.storage-error),
+.source-note:empty {
+  display: none;
+}
+.saved-note {
+  display: block;
+  margin: -6px 0 12px;
+  text-align: center;
+}
+.pace-quick {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+.pace-quick .pace-unit {
+  font-size: 14px;
+  color: var(--muted);
+}
+.normal-toolbar #wordView {
+  margin-right: auto;
+}
+body.immersive :is(.reader-view .topline, .pace-quick) {
+  opacity: 0.15;
+  transition: opacity 0.5s ease;
+}
+body.immersive
+  :is(.reader-view .topline, .pace-quick):is(:hover, :focus-within) {
+  opacity: 1;
+}
+
+/* Reading options sheet */
+.panel-tools {
+  display: grid;
+  margin: 0 0 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.panel-tool {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 54px;
+  padding: 0 16px;
+  text-align: left;
+  font-size: 16px;
+  color: var(--ink);
+  background: transparent;
+  border-top: 1px solid var(--line);
+}
+.panel-tools > .panel-tool:first-child {
+  border-top: 0;
+}
+.panel-tool:hover {
+  filter: none;
+  background: var(--hover);
+}
+.panel-tool span {
+  flex: 1;
+}
+.panel-tool .icon:last-child {
+  opacity: 0.4;
+}
+.switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-direction: row-reverse;
+  gap: 12px;
+  min-height: 54px;
+  margin: 0 0 12px;
+  padding: 0 16px;
+  font-size: 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  cursor: pointer;
+}
+.switch input {
+  appearance: none;
+  flex-shrink: 0;
+  position: relative;
+  width: 46px;
+  height: 28px;
+  margin: 0;
+  border-radius: 14px;
+  background: var(--field);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.switch input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px #0003;
+  transition: transform 0.2s;
+}
+.switch input:checked {
+  background: var(--blue);
+}
+.switch input:checked::after {
+  transform: translateX(18px);
+}
+.switch input:focus-visible {
+  outline: 3px solid #83a5ff;
+  outline-offset: 3px;
+}
+.panel-pace {
+  padding: 0 4px;
+}
+.panel-pace .pace-find {
+  margin: 0;
+}
+.panel-pace .text-button {
+  min-height: 44px;
+}
+#moreSettings {
+  margin-top: 18px;
+}
+
+/* Sheets: fade in on a computer, rise from the bottom on a phone */
+dialog[open] {
+  animation: sheet-in 0.2s ease-out;
+}
+dialog[open]::backdrop {
+  animation: backdrop-in 0.25s ease-out;
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (max-width: 600px) {
+  dialog:not(#sourceDialog) {
+    margin: auto 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 92dvh;
+    border-width: 1px 0 0;
+    border-radius: 22px 22px 0 0;
+    padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  dialog:not(#sourceDialog)::before {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 5px;
+    margin: -10px auto 14px;
+    border-radius: 3px;
+    background: var(--handle);
+  }
+  dialog[open]:not(#sourceDialog) {
+    animation: sheet-up 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes sheet-up {
+    from {
+      transform: translateY(60px);
+      opacity: 0.5;
+    }
+  }
+  header {
+    padding: max(14px, env(safe-area-inset-top)) 18px 14px;
+    border-bottom: 0;
+  }
+  body[data-view="home"] main {
+    padding-top: 8px;
+  }
+  .home {
+    gap: 34px;
+  }
+  .home .starter-list {
+    margin: 0 -18px;
+    padding: 2px 18px 8px;
+    scroll-padding-inline: 18px;
+  }
+  .continue-card {
+    padding: 14px 16px 14px 14px;
+    gap: 14px;
+  }
+  .continue-card .cover {
+    width: 62px;
+  }
+  .continue-card strong {
+    font-size: 20px;
+  }
+  .continue-go {
+    width: 46px;
+    height: 46px;
+  }
+  .book-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px 12px;
+  }
+  .book .cover {
+    padding: 10px 9px;
+    font-size: 13px;
+  }
+  .book .book-meta,
+  .add-book strong {
+    font-size: 12px;
+  }
+  .add-book .book-meta {
+    display: none;
+  }
+  body[data-view="reader"] main {
+    padding: max(8px, env(safe-area-inset-top)) 14px 20px;
+  }
+  .reader-view h1 {
+    font-size: 17px;
+  }
+  body[data-view="reader"] .stage {
+    min-height: 44dvh;
+  }
+  .home footer .shortcuts {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  dialog[open],
+  dialog[open]::backdrop,
+  dialog[open]:not(#sourceDialog),
+  .home,
+  .reader-view {
+    animation: none;
+  }
+}

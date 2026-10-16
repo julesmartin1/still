@@ -21,26 +21,15 @@
     />
     <link rel="stylesheet" href="style.css" />
   </head>
-  <body>
+  <body data-view="home">
     <header>
       <a class="brand" href="./" aria-label="Still home"
         ><span class="mark">ıı</span> still<span class="brand-note"
           >a little room to read</span
         ></a
       >
-      <nav class="header-actions" aria-label="Readings">
-        <button
-          id="streakChip"
-          class="streak-chip"
-          aria-label="Daily goal and streak"
-        >
-          <svg class="flame" viewBox="0 0 24 24" aria-hidden="true">
-            <path
-              d="M12.6 2.2c.4 3-1.9 4.6-3.4 6.6C7.6 10.9 6.5 12.6 6.5 15a5.5 5.5 0 0 0 11 0c0-2.3-1-4.1-2.2-5.6.1 1.4-.4 2.6-1.5 3.1.3-3.9-.9-7.6-1.2-10.3z"
-            /></svg
-          ><span id="streakCount">0</span></button
-        ><button id="library" class="ghost">Bookshelf</button
-        ><button id="newText" class="primary" aria-label="Add reading">
+      <nav class="header-actions" aria-label="Add">
+        <button id="newText" class="primary" aria-label="Add reading">
           <svg
             class="icon"
             viewBox="0 0 24 24"
@@ -57,107 +46,17 @@
       </nav>
     </header>
     <main>
-      <div class="topline">
-        <div>
-          <h1 id="title" dir="auto">The art of noticing</h1>
-        </div>
-        <span id="saved" class="muted">Saved on this device</span>
-      </div>
-      <section id="wordReader" class="reader" aria-label="Word reader">
-        <div class="reader-top">
-          <span id="mode">Ready when you are</span
-          ><span class="reader-meta"
-            ><span id="readAloudBadge" class="read-aloud-badge" hidden
-              ><svg
-                class="icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M11 5 6 9H2v6h4l5 4V5z" />
-                <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                <path d="M19 5a10 10 0 0 1 0 14" /></svg
-              ><span class="read-aloud-label">Read aloud</span></span
-            ><button id="timeLeft" type="button" class="meta-toggle"></button
-            ><span id="count">1 / 200 words</span></span
-          >
-        </div>
-        <p id="toast" class="toast" role="status" aria-live="polite" hidden></p>
-        <div class="stage">
-          <div class="focal-line"></div>
-          <div id="word" dir="auto">There</div>
-          <div class="focal-line"></div>
-          <p id="peek" class="peek" dir="auto" aria-live="polite" hidden></p>
-          <div id="finishCard" class="finish-card" hidden>
-            <p class="finish-badge" aria-hidden="true">✓</p>
-            <h2 id="finishTitle">Finished</h2>
-            <p id="finishStats"></p>
-            <div class="finish-actions">
-              <button id="finishNext" class="primary">Add a reading</button
-              ><button id="finishPace" class="secondary" hidden>
-                Find my pace</button
-              ><button id="finishShelf" class="secondary">Bookshelf</button>
-            </div>
-            <form class="waitlist" data-where="finish" hidden>
-              <label for="waitlistEmailFinish"
-                >Get the iPhone app when it’s ready</label
-              >
-              <span class="waitlist-row"
-                ><input
-                  id="waitlistEmailFinish"
-                  type="email"
-                  name="email"
-                  autocomplete="email"
-                  placeholder="you@example.com"
-                  required
-                /><button type="submit" class="secondary">
-                  Notify me
-                </button></span
-              >
-              <input
-                class="hp"
-                name="company"
-                tabindex="-1"
-                autocomplete="off"
-                aria-hidden="true"
-              />
-              <span class="waitlist-note"
-                >One email when it’s out, nothing else. Your readings never
-                leave your device.</span
-              >
-              <span class="waitlist-status" role="status"></span>
-            </form>
-          </div>
-        </div>
-        <p id="status" class="status" aria-live="polite">
-          Settle in. Start when you’re ready.
-        </p>
-        <div class="controls">
-          <button
-            id="quickRewind"
-            class="secondary round"
-            aria-label="Back one sentence"
-            title="Back one sentence (←)"
-          >
-            <svg
-              class="icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M9 14 4 9l5-5" />
-              <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
-            </svg></button
-          ><button id="play" class="primary">
-            <svg
+      <section id="home" class="home" aria-label="Your library">
+        <button id="continueCard" class="continue-card" type="button">
+          <span id="continueCover" class="cover" aria-hidden="true"></span
+          ><span class="continue-text"
+            ><span id="continueLabel" class="continue-label"
+              >Continue reading</span
+            ><strong id="continueTitle" dir="auto"></strong
+            ><span id="continueMeta" class="continue-meta"></span
+            ><span class="shelf-progress"><i id="continueBar"></i></span></span
+          ><span class="continue-go" aria-hidden="true"
+            ><svg
               class="icon"
               viewBox="0 0 24 24"
               fill="currentColor"
@@ -166,161 +65,9 @@
             >
               <path
                 d="M8 5.1v13.8a1 1 0 0 0 1.5.86l11-6.9a1 1 0 0 0 0-1.72l-11-6.9A1 1 0 0 0 8 5.1z"
-              />
-            </svg>
-            <span>Start reading</span></button
-          ><button
-            id="quickForward"
-            class="secondary round"
-            aria-label="Forward one sentence"
-            title="Forward one sentence (→)"
-          >
-            <svg
-              class="icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="m15 14 5-5-5-5" />
-              <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
-            </svg></button
-          ><button id="review" class="secondary" title="Review paragraph (R)">
-            <svg
-              class="icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M4 6h16M4 12h16M4 18h10" />
-            </svg>
-            <span>Review</span>
-          </button>
-        </div>
-        <div
-          id="progressTrack"
-          class="progress-track"
-          role="progressbar"
-          aria-label="Reading progress"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          aria-valuenow="0"
-        >
-          <div id="progress"></div>
-        </div>
-        <p id="srStatus" class="sr-only" role="status" aria-live="polite"></p>
-      </section>
-      <section
-        id="normalReader"
-        class="normal-reader"
-        hidden
-        aria-label="Normal text reader"
-      >
-        <div class="normal-toolbar">
-          <p class="muted">
-            Tap a word to set your place. Select passage lets you choose a start
-            and end word.
-          </p>
-          <button id="selectPassage" class="outline" aria-pressed="false">
-            Select passage</button
-          ><button id="markPassage" class="outline">Save passage</button>
-        </div>
-        <div id="normalPane" class="normal-pane" tabindex="0">
-          <button id="normalEarlier" class="text-button">
-            Load earlier text
-          </button>
-          <div id="normalText" class="normal-text"></div>
-          <button id="normalLater" class="text-button">Load more text</button>
-        </div>
-        <p id="normalPosition" class="muted" role="status"></p>
-      </section>
-      <div class="source-link">
-        <button id="viewSource" class="outline" hidden>View original PDF</button
-        ><span id="sourceNote" class="muted" role="status"></span>
-      </div>
-      <div class="reading-tools">
-        <button id="contents" class="tool">Chapters</button
-        ><button id="readingMode" class="tool">Text view</button
-        ><button id="bookmarks" class="tool">Notes</button
-        ><button id="readingSettings" class="tool">Settings</button>
-      </div>
-      <section id="starterShelf" class="starter" aria-labelledby="starterTitle">
-        <div class="starter-head">
-          <h2 id="starterTitle">Short reads</h2>
-          <p class="muted">Pick one and finish it today.</p>
-        </div>
-        <ul id="starterList" class="starter-list"></ul>
-        <button id="starterMore" class="text-button" aria-expanded="false">
-          Show more short reads
+              /></svg
+          ></span>
         </button>
-      </section>
-      <div class="settings">
-        <div class="pace">
-          <label for="speedValue">Your pace</label>
-          <div class="pace-value">
-            <button id="slower" class="pace-step" aria-label="Slow down">
-              −</button
-            ><input
-              id="speedValue"
-              type="number"
-              min="40"
-              max="600"
-              step="1"
-              value="180"
-              aria-label="Words a minute"
-            /><button id="faster" class="pace-step" aria-label="Speed up">
-              +</button
-            ><span>words a minute</span>
-          </div>
-          <p class="pace-find">
-            <button id="findPace" class="text-button">Find my pace</button
-            ><span id="paceInvite" class="muted" hidden>
-              New here? It takes about a minute.</span
-            >
-          </p>
-          <details id="paceMore" class="pace-more">
-            <summary>Pace options</summary>
-            <input
-              id="speed"
-              type="range"
-              min="40"
-              max="600"
-              step="1"
-              value="180"
-            />
-            <div class="range-labels">
-              <span>Take your time</span><span>Pick up the pace</span>
-            </div>
-            <label class="check-label sentence-stop"
-              ><input
-                id="sentenceStop"
-                type="checkbox"
-                aria-describedby="sentenceStopHint"
-              />
-              Pause after each sentence</label
-            >
-            <p id="sentenceStopHint" class="muted field-hint">
-              Take each sentence in, then tap for the next one.
-            </p>
-            <div class="adapt-bottom">
-              <span id="learning">Learning as you read</span
-              ><button id="reset" class="text-button">Reset adjustments</button>
-            </div>
-            <p class="muted pace-note">
-              Longer words get a little more time and short ones a little less;
-              your average stays the same.<span class="keys">
-                ↑ and ↓ change the pace.</span
-              >
-            </p>
-          </details>
-        </div>
         <section class="today" aria-labelledby="todayTitle">
           <div class="today-head">
             <h2 id="todayTitle">Today</h2>
@@ -353,27 +100,485 @@
           </div>
           <ol id="weekStrip" class="week" aria-label="The last seven days"></ol>
         </section>
-      </div>
-      <footer>
-        <span class="footer-links"
-          ><button id="aboutStill" class="text-button">
-            About &amp; privacy</button
-          ><button id="sendFeedback" class="text-button" hidden>
-            Send feedback
-          </button></span
-        ><span class="shortcuts" aria-label="Keyboard shortcuts"
-          ><span><kbd>Space</kbd> play or pause</span
-          ><span><kbd>←</kbd><kbd>→</kbd> sentence</span
-          ><span><kbd>↑</kbd><kbd>↓</kbd> pace</span
-          ><span><kbd>R</kbd> review</span
-          ><span>hold <kbd>S</kbd> sentence</span></span
+        <section id="books" class="books" aria-labelledby="booksTitle">
+          <div class="section-head">
+            <h2 id="booksTitle">Your books</h2>
+            <button id="library" class="text-button">See all</button>
+          </div>
+          <ul id="bookGrid" class="book-grid"></ul>
+        </section>
+        <section
+          id="starterShelf"
+          class="starter"
+          aria-labelledby="starterTitle"
         >
-      </footer>
+          <div class="starter-head">
+            <h2 id="starterTitle">Short reads</h2>
+            <p class="muted">Each one takes a few minutes.</p>
+          </div>
+          <ul id="starterList" class="starter-list"></ul>
+        </section>
+        <footer>
+          <span class="footer-links"
+            ><button id="aboutStill" class="text-button">
+              About &amp; privacy</button
+            ><button id="sendFeedback" class="text-button" hidden>
+              Send feedback
+            </button></span
+          ><span class="shortcuts" aria-label="Keyboard shortcuts"
+            ><span><kbd>Space</kbd> play or pause</span
+            ><span><kbd>←</kbd><kbd>→</kbd> sentence</span
+            ><span><kbd>↑</kbd><kbd>↓</kbd> pace</span
+            ><span><kbd>R</kbd> review</span
+            ><span>hold <kbd>S</kbd> sentence</span></span
+          >
+        </footer>
+      </section>
+      <section id="readerView" class="reader-view" aria-label="Reader">
+        <div class="topline">
+          <button id="backHome" class="back-home" type="button">
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="m15 18-6-6 6-6" /></svg
+            ><span>Library</span>
+          </button>
+          <h1 id="title" dir="auto">The art of noticing</h1>
+          <button
+            id="readerTools"
+            class="reader-tools-button"
+            type="button"
+            aria-haspopup="dialog"
+            aria-label="Reading options"
+          >
+            Aa
+          </button>
+        </div>
+        <span id="saved" class="muted saved-note">Saved on this device</span>
+        <section id="wordReader" class="reader" aria-label="Word reader">
+          <div class="reader-top">
+            <span id="mode">Ready when you are</span
+            ><span class="reader-meta"
+              ><span id="readAloudBadge" class="read-aloud-badge" hidden
+                ><svg
+                  class="icon"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M11 5 6 9H2v6h4l5 4V5z" />
+                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                  <path d="M19 5a10 10 0 0 1 0 14" /></svg
+                ><span class="read-aloud-label">Read aloud</span></span
+              ><button id="timeLeft" type="button" class="meta-toggle"></button
+              ><span id="count">1 / 200 words</span></span
+            >
+          </div>
+          <p
+            id="toast"
+            class="toast"
+            role="status"
+            aria-live="polite"
+            hidden
+          ></p>
+          <div class="stage">
+            <div class="focal-line"></div>
+            <div id="word" dir="auto">There</div>
+            <div class="focal-line"></div>
+            <p id="peek" class="peek" dir="auto" aria-live="polite" hidden></p>
+            <div id="finishCard" class="finish-card" hidden>
+              <p class="finish-badge" aria-hidden="true">✓</p>
+              <h2 id="finishTitle">Finished</h2>
+              <p id="finishStats"></p>
+              <div class="finish-actions">
+                <button id="finishNext" class="primary">Add a reading</button
+                ><button id="finishPace" class="secondary" hidden>
+                  Find my pace</button
+                ><button id="finishShelf" class="secondary">Library</button>
+              </div>
+              <form class="waitlist" data-where="finish" hidden>
+                <label for="waitlistEmailFinish"
+                  >Get the iPhone app when it’s ready</label
+                >
+                <span class="waitlist-row"
+                  ><input
+                    id="waitlistEmailFinish"
+                    type="email"
+                    name="email"
+                    autocomplete="email"
+                    placeholder="you@example.com"
+                    required
+                  /><button type="submit" class="secondary">
+                    Notify me
+                  </button></span
+                >
+                <input
+                  class="hp"
+                  name="company"
+                  tabindex="-1"
+                  autocomplete="off"
+                  aria-hidden="true"
+                />
+                <span class="waitlist-note"
+                  >One email when it’s out, nothing else. Your readings never
+                  leave your device.</span
+                >
+                <span class="waitlist-status" role="status"></span>
+              </form>
+            </div>
+          </div>
+          <p id="status" class="status" aria-live="polite">
+            Settle in. Start when you’re ready.
+          </p>
+          <div class="controls">
+            <button
+              id="quickRewind"
+              class="secondary round"
+              aria-label="Back one sentence"
+              title="Back one sentence (←)"
+            >
+              <svg
+                class="icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+              </svg></button
+            ><button id="play" class="primary">
+              <svg
+                class="icon"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                stroke="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 5.1v13.8a1 1 0 0 0 1.5.86l11-6.9a1 1 0 0 0 0-1.72l-11-6.9A1 1 0 0 0 8 5.1z"
+                />
+              </svg>
+              <span>Start reading</span></button
+            ><button
+              id="quickForward"
+              class="secondary round"
+              aria-label="Forward one sentence"
+              title="Forward one sentence (→)"
+            >
+              <svg
+                class="icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+              </svg></button
+            ><button id="review" class="secondary" title="Review paragraph (R)">
+              <svg
+                class="icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 6h16M4 12h16M4 18h10" />
+              </svg>
+              <span>Review</span>
+            </button>
+          </div>
+          <div
+            id="progressTrack"
+            class="progress-track"
+            role="progressbar"
+            aria-label="Reading progress"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <div id="progress"></div>
+          </div>
+          <p id="srStatus" class="sr-only" role="status" aria-live="polite"></p>
+        </section>
+        <div class="pace-quick">
+          <div class="pace-value">
+            <button id="slower" class="pace-step" aria-label="Slow down">
+              −</button
+            ><input
+              id="speedValue"
+              type="number"
+              min="40"
+              max="600"
+              step="1"
+              value="180"
+              aria-label="Words a minute"
+            /><button id="faster" class="pace-step" aria-label="Speed up">
+              +</button
+            ><span class="pace-unit">words a minute</span>
+          </div>
+        </div>
+        <section
+          id="normalReader"
+          class="normal-reader"
+          hidden
+          aria-label="Normal text reader"
+        >
+          <div class="normal-toolbar">
+            <p class="muted">
+              Tap a word to set your place. Select passage lets you choose a
+              start and end word.
+            </p>
+            <button id="wordView" class="secondary">Word view</button
+            ><button id="selectPassage" class="outline" aria-pressed="false">
+              Select passage</button
+            ><button id="markPassage" class="outline">Save passage</button>
+          </div>
+          <div id="normalPane" class="normal-pane" tabindex="0">
+            <button id="normalEarlier" class="text-button">
+              Load earlier text
+            </button>
+            <div id="normalText" class="normal-text"></div>
+            <button id="normalLater" class="text-button">Load more text</button>
+          </div>
+          <p id="normalPosition" class="muted" role="status"></p>
+        </section>
+        <p id="sourceNote" class="muted source-note" role="status"></p>
+      </section>
     </main>
+    <dialog id="readerPanel" class="panel" aria-labelledby="readerPanelTitle">
+      <div class="dialog-heading">
+        <h2 id="readerPanelTitle">Reading options</h2>
+        <button
+          data-close="readerPanel"
+          class="close"
+          aria-label="Close reading options"
+        >
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <label id="panelAloudOption" class="switch" hidden
+        ><input id="panelAloud" type="checkbox" role="switch" />
+        <span>Read aloud</span></label
+      >
+      <nav class="panel-tools" aria-label="Reading tools">
+        <button id="contents" class="panel-tool" data-tool>
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg
+          ><span>Chapters</span
+          ><svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+        <button id="readingMode" class="panel-tool" data-tool>
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 6h16M4 10h16M4 14h16M4 18h10" /></svg
+          ><span>Text view</span
+          ><svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+        <button id="bookmarks" class="panel-tool" data-tool>
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg
+          ><span>Notes</span
+          ><svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+        <button id="viewSource" class="panel-tool" data-tool hidden>
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path
+              d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"
+            />
+            <path d="M14 3v6h6" /></svg
+          ><span>Original PDF</span
+          ><svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+        <button id="readingSettings" class="panel-tool" data-tool>
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path
+              d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"
+            /></svg
+          ><span>Settings</span
+          ><svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+      </nav>
+      <div class="pace panel-pace">
+        <p class="pace-find">
+          <button id="findPace" class="text-button" data-tool>
+            Find my pace</button
+          ><span id="paceInvite" class="muted" hidden>
+            New here? It takes about a minute.</span
+          >
+        </p>
+        <details id="paceMore" class="pace-more">
+          <summary>Pace options</summary>
+          <input
+            id="speed"
+            type="range"
+            min="40"
+            max="600"
+            step="1"
+            value="180"
+          />
+          <div class="range-labels">
+            <span>Take your time</span><span>Pick up the pace</span>
+          </div>
+          <label class="check-label sentence-stop"
+            ><input
+              id="sentenceStop"
+              type="checkbox"
+              aria-describedby="sentenceStopHint"
+            />
+            Pause after each sentence</label
+          >
+          <p id="sentenceStopHint" class="muted field-hint">
+            Take each sentence in, then tap for the next one.
+          </p>
+          <div class="adapt-bottom">
+            <span id="learning">Learning as you read</span
+            ><button id="reset" class="text-button">Reset adjustments</button>
+          </div>
+          <p class="muted pace-note">
+            Longer words get a little more time and short ones a little less;
+            your average stays the same.<span class="keys">
+              ↑ and ↓ change the pace.</span
+            >
+          </p>
+        </details>
+      </div>
+    </dialog>
     <dialog id="libraryDialog" aria-labelledby="libraryTitle">
       <div class="dialog-heading">
         <div>
-          <h2 id="libraryTitle">Your bookshelf</h2>
+          <h2 id="libraryTitle">All your readings</h2>
         </div>
         <button
           data-close="libraryDialog"
@@ -801,7 +1006,7 @@
     </dialog>
     <dialog id="settingsDialog" aria-labelledby="settingsTitle">
       <div class="dialog-heading">
-        <h2 id="settingsTitle">Reading settings</h2>
+        <h2 id="settingsTitle">Settings</h2>
         <button
           data-close="settingsDialog"
           class="close"
@@ -821,26 +1026,6 @@
           </svg>
         </button>
       </div>
-      <label for="readingTitle">Title</label
-      ><input id="readingTitle" maxlength="240" /><label for="readingType"
-        >Reading type</label
-      ><select id="readingType">
-        <option value="book">Book</option>
-        <option value="academic">Academic paper</option>
-        <option value="other">Other</option>
-      </select>
-      <label for="checkinMode">Check-ins</label
-      ><select id="checkinMode">
-        <option value="off">Off</option>
-        <option value="500">About every 500 words (2 min)</option>
-        <option value="1000">About every 1,000 words (4 min)</option>
-        <option value="2000">About every 2,000 words (8 min)</option>
-        <option value="sections">At the end of each chapter</option>
-      </select>
-      <p class="muted field-hint">
-        A short, ungraded pause at the end of a paragraph to sum up what you
-        read. Losing the thread offers a slower replay.
-      </p>
       <div id="readAloudSetting" hidden>
         <label class="check-label read-aloud-option"
           ><input
@@ -870,45 +1055,74 @@
           </p>
         </div>
       </div>
-      <details id="citationSettings">
-        <summary>Citation options</summary>
-        <section class="reading-filters" aria-label="Reading content">
-          <label class="check-label"
-            ><input id="skipCitations" type="checkbox" /> Skip inline
-            citations</label
-          ><label class="check-label"
-            ><input id="skipReferences" type="checkbox" /> Skip reference
-            list</label
-          >
-          <p id="filterStatus" class="muted" role="status"></p>
-          <details>
-            <summary>Reference section and original text</summary>
-            <p class="muted">
-              Original text stays intact. Skipping pauses playback and keeps
-              your place. Mixed explanatory parentheses stay visible.
-            </p>
-            <p id="referencePreview" class="muted"></p>
-            <div class="pdf-range">
-              <label
-                >First original paragraph
-                <input id="referenceStart" type="number" min="1" /></label
-              ><label
-                >Last original paragraph
-                <input id="referenceEnd" type="number" min="1" /></label
-              ><button id="referenceApply" class="outline">Set range</button>
-            </div>
-          </details>
-        </section>
-      </details>
-      <p class="muted">Your pace is saved separately for this reading.</p>
-      <details>
-        <summary>Appearance &amp; offline reading</summary>
-        <label for="appearanceTheme">Theme</label
-        ><select id="appearanceTheme">
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-          <option value="system">Follow device</option></select
-        ><label for="appearanceFont">Reading font</label
+      <label for="appearanceTheme">Theme</label
+      ><select id="appearanceTheme">
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+        <option value="system">Follow device</option>
+      </select>
+      <label for="appearanceSize">Text size</label
+      ><input
+        id="appearanceSize"
+        type="range"
+        min="80"
+        max="200"
+        step="5"
+        value="100"
+      /><span id="appearanceSizeLabel">100%</span>
+      <details id="moreSettings">
+        <summary>More settings</summary>
+        <label for="readingTitle">Title</label
+        ><input id="readingTitle" maxlength="240" /><label for="readingType"
+          >Reading type</label
+        ><select id="readingType">
+          <option value="book">Book</option>
+          <option value="academic">Academic paper</option>
+          <option value="other">Other</option>
+        </select>
+        <label for="checkinMode">Check-ins</label
+        ><select id="checkinMode">
+          <option value="off">Off</option>
+          <option value="500">About every 500 words (2 min)</option>
+          <option value="1000">About every 1,000 words (4 min)</option>
+          <option value="2000">About every 2,000 words (8 min)</option>
+          <option value="sections">At the end of each chapter</option>
+        </select>
+        <p class="muted field-hint">
+          A short, ungraded pause at the end of a paragraph to sum up what you
+          read. Losing the thread offers a slower replay.
+        </p>
+        <details id="citationSettings">
+          <summary>Citation options</summary>
+          <section class="reading-filters" aria-label="Reading content">
+            <label class="check-label"
+              ><input id="skipCitations" type="checkbox" /> Skip inline
+              citations</label
+            ><label class="check-label"
+              ><input id="skipReferences" type="checkbox" /> Skip reference
+              list</label
+            >
+            <p id="filterStatus" class="muted" role="status"></p>
+            <details>
+              <summary>Reference section and original text</summary>
+              <p class="muted">
+                Original text stays intact. Skipping pauses playback and keeps
+                your place. Mixed explanatory parentheses stay visible.
+              </p>
+              <p id="referencePreview" class="muted"></p>
+              <div class="pdf-range">
+                <label
+                  >First original paragraph
+                  <input id="referenceStart" type="number" min="1" /></label
+                ><label
+                  >Last original paragraph
+                  <input id="referenceEnd" type="number" min="1" /></label
+                ><button id="referenceApply" class="outline">Set range</button>
+              </div>
+            </details>
+          </section>
+        </details>
+        <label for="appearanceFont">Reading font</label
         ><select id="appearanceFont">
           <option value="serif">Serif</option>
           <option value="sans">Sans serif</option>
@@ -938,15 +1152,7 @@
           words sit to the right. The soft change lasts at most 40 ms so it
           never cuts into the time you need to recognise the word.
         </p>
-        <label for="appearanceSize">Text size</label
-        ><input
-          id="appearanceSize"
-          type="range"
-          min="80"
-          max="200"
-          step="5"
-          value="100"
-        /><span id="appearanceSizeLabel">100%</span>
+
         <p class="muted">Appearance applies to all readings on this device.</p>
         <button id="eraseDevice" class="outline">
           Erase all saved readings</button
@@ -958,8 +1164,9 @@
           are already stored on this device.
         </p>
       </details>
+
       <div class="dialog-actions">
-        <button id="saveReadingDetails" class="primary">Save settings</button>
+        <button id="saveReadingDetails" class="primary">Done</button>
       </div>
     </dialog>
     <dialog id="contentsDialog" aria-labelledby="contentsTitle">
