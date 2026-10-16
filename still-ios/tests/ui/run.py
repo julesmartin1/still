@@ -842,6 +842,7 @@ async def slow_paces_and_pausing_after_each_sentence(browser):
     # With the pause on, playback stops on each sentence's last word.
     await tool(page, "#paceMore summary")
     await page.check("#sentenceStop")
+    await page.keyboard.press("Escape")
     for last in ("three.", "six.", "eight"):
         await page.click("#play")
         await page.wait_for_function("!document.getElementById('play').textContent.includes('Pause')", timeout=5000)
@@ -1065,8 +1066,10 @@ async def read_aloud_moves_words_with_the_voice(browser):
     await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=5000)
     assert await page.evaluate(word) == "eight."
     # Pause after each sentence stops at the sentence end, as without the voice.
+    await page.click("#readerTools")
     await page.evaluate("document.getElementById('paceMore').open = true")
     await page.check("#sentenceStop")
+    await page.keyboard.press("Escape")
     await page.click("#play")
     await page.wait_for_function("!document.getElementById('play').textContent.includes('Pause')", timeout=5000)
     assert await page.evaluate(word) == "four."
@@ -1132,6 +1135,46 @@ async def read_aloud_voice_can_be_chosen_and_tried(browser):
     await page.click("#readAloudTry")
     spoken = await page.evaluate("window.__speech.spoken.at(-1)")
     assert "how Still will read" in spoken["text"] and spoken["voice"] == "Test voice", spoken
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def home_is_a_library_and_the_reader_returns_to_it(browser):
+    ctx, page = await fresh(browser, reader=False)
+    assert await page.is_visible("#home") and not await page.is_visible("#play")
+    await open_text(page, "Seven eight nine.", title="Earlier book")
+    assert await page.is_visible("#play") and not await page.is_visible("#home")
+    await open_text(page, "One two three. Four five six.", title="My book")
+    await page.click("#backHome")
+    await page.wait_for_selector("#home", state="visible")
+    assert "My book" in await page.inner_text("#continueTitle")
+    # The previous reading is now a book on the shelf; opening it reads it.
+    await page.wait_for_selector("#bookGrid .book:not(.add-book)")
+    await page.locator("#bookGrid .book:not(.add-book)").first.click()
+    await page.wait_for_selector("#play", state="visible")
+    assert await page.inner_text("#title") == "Earlier book"
+    # Space does nothing on Home.
+    await go_home(page)
+    await page.keyboard.press("Space")
+    assert not await page.evaluate("document.body.classList.contains('immersive')")
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def sheets_close_with_a_tap_outside_and_keep_changes(browser):
+    ctx, page = await fresh(browser, viewport={"width": 390, "height": 844}, has_touch=True)
+    await page.click("#readerTools")
+    assert await dialog_open(page, "readerPanel")
+    await page.mouse.click(195, 20)
+    assert not await dialog_open(page, "readerPanel"), "tap outside did not close"
+    await settings(page)
+    assert not await dialog_open(page, "readerPanel"), "options sheet stayed under settings"
+    await page.fill("#readingTitle", "Renamed")
+    await page.mouse.click(195, 20)
+    assert not await dialog_open(page, "settingsDialog"), "settings stayed open"
+    await page.wait_for_function("document.getElementById('title').textContent === 'Renamed'", timeout=3000)
     assert not page.errors, page.errors
     await ctx.close()
 
