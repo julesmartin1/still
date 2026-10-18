@@ -1261,6 +1261,25 @@ async def screen_stays_awake_while_words_play(browser):
     await ctx.close()
 
 
+@check
+async def play_is_centred_and_buttons_stay_put(browser):
+    centre = """s => { const b = document.querySelector(s).getBoundingClientRect(); return b.left + b.width / 2; }"""
+    for width in (320, 375, 390, 1100):
+        ctx, page = await fresh(browser, viewport={"width": width, "height": 800})
+        await page.wait_for_timeout(400)  # the reader's slide-in has finished
+        word, play = await page.evaluate(centre, "#word"), await page.evaluate(centre, "#play")
+        assert abs(word - play) < 1, (width, word, play)
+        # The label stays on one line (icon only on the narrowest phones).
+        assert await page.evaluate("document.getElementById('play').getBoundingClientRect().height") < 60, width
+        top = "document.getElementById('play').getBoundingClientRect().top"
+        paused = await page.evaluate(top)
+        await page.click("#play")
+        playing = await page.evaluate(top)
+        await page.click("#play")
+        assert abs(await page.evaluate(top) - paused) < 1 and abs(playing - paused) < 1, (width, paused, playing)
+        await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],
