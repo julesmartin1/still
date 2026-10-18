@@ -6,3 +6,4 @@ still-ios/ios/App/build/
 still-ios/ios/DerivedData/
 *.xcuserstate
 xcuserdata/
+__pycache__/
