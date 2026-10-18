@@ -137,6 +137,9 @@ async def space_plays_after_saving_settings(browser):
     ctx, page = await fresh(browser)
     await settings(page)
     await page.click("#saveReadingDetails")
+    # The sheet's close event hands focus back to Play a moment after the
+    # click; a key pressed before then goes to whichever button had it.
+    await page.wait_for_function("document.activeElement === document.getElementById('play')")
     await page.keyboard.press("Space")
     await page.wait_for_timeout(300)
     assert not await dialog_open(page, "settingsDialog"), "settings reopened"
