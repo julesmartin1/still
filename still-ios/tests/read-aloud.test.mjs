@@ -15,6 +15,7 @@ import {
   SpokenPlayback,
   MAX_CHUNK_WORDS,
   START_TIMEOUT_MS,
+  calibrateVoicePace,
 } from "../dist/read-aloud.js";
 
 test("words per minute map to a voice rate, clamped to 0.5–2", () => {
@@ -317,6 +318,28 @@ test("voices without word boundaries move words on a timer", () => {
   assert.deepEqual(h.events, ["end"]);
   // Remembered: the next utterance uses the timer straight away.
   assert.equal(h.player.boundaries, false);
+});
+
+test("the timer learns how fast a voice without boundaries speaks", () => {
+  assert.equal(calibrateVoicePace(1, 3000, 2000), 1.25); // halfway to 1.5
+  assert.equal(calibrateVoicePace(1, 9000, 1000), 1.5); // one odd sentence: at most 2
+  assert.equal(calibrateVoicePace(2, 9000, 1000), 2);
+  assert.equal(calibrateVoicePace(1, 0, 1000), 1);
+  const h = harness("One two three four. Five six seven eight.");
+  h.player.play();
+  // Four words at 180 a minute are estimated at 1333 ms; this voice takes 2 s.
+  h.advance(2000);
+  assert.equal(h.player.index, 3);
+  h.spoken[0].onend();
+  assert.equal(h.player.voicePace, 1.25);
+  assert.equal(h.player.index, 4);
+  // The next sentence's words move at the voice's measured speed: the second
+  // word is not due until 25% later than the plain estimate.
+  const plain = estimateWordTimes(["Five", "six", "seven", "eight."], 180)[0];
+  h.advance(plain + 10);
+  assert.equal(h.player.index, 4);
+  h.advance(plain * 0.25);
+  assert.equal(h.player.index, 5);
 });
 
 test("words carry on at the pace when the voice never starts", () => {

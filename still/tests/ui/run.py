@@ -1179,6 +1179,85 @@ async def sheets_close_with_a_tap_outside_and_keep_changes(browser):
     await ctx.close()
 
 
+@check
+async def tapping_a_side_of_the_word_jumps_fifteen_words(browser):
+    ctx, page = await fresh(browser, viewport={"width": 390, "height": 844}, has_touch=True)
+    words = " ".join(f"w{n}" for n in range(1, 61)) + "."
+    await open_text(page, words)
+    stage = page.locator("#wordReader .stage")
+    box = await stage.bounding_box()
+    y = box["y"] + box["height"] / 2
+    word = "document.getElementById('word').textContent"
+    await page.mouse.click(box["x"] + box["width"] - 20, y)
+    assert await page.evaluate(word) == "w16", await page.evaluate(word)
+    assert "Pause" not in await page.inner_text("#play"), "a side tap started playing"
+    assert await page.is_visible("#skipHint")
+    await page.mouse.click(box["x"] + box["width"] - 20, y)
+    await page.mouse.click(box["x"] + 20, y)
+    assert await page.evaluate(word) == "w16", await page.evaluate(word)
+    # Going back past the start stops at the first word.
+    await page.mouse.click(box["x"] + 20, y)
+    await page.mouse.click(box["x"] + 20, y)
+    assert await page.evaluate(word) == "w1"
+    # The middle still plays, and a side tap while playing keeps playing.
+    await page.mouse.click(box["x"] + box["width"] / 2, y)
+    assert "Pause" in await page.inner_text("#play"), "middle tap did not play"
+    await page.mouse.click(box["x"] + box["width"] - 20, y)
+    assert "Pause" in await page.inner_text("#play"), "side tap stopped playback"
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def repeated_words_flash_blank_between_them(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, "We know that that is true.")
+    # Record each word shown and whether it started hidden.
+    await page.evaluate("""() => {
+      window.__shown = [];
+      const el = document.getElementById('word');
+      new MutationObserver(() => window.__shown.push(
+        [el.textContent, el.classList.contains('blank')])).observe(el, { childList: true, characterData: true, subtree: true });
+    }""")
+    await page.click("#play")
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=8000)
+    shown = await page.evaluate("window.__shown")
+    words = [w for w, _ in shown]
+    i = words.index("that")
+    assert words[i + 1] == "that", words
+    assert shown[i + 1][1] is True, shown
+    assert shown[i][1] is False and not any(b for w, b in shown if w != "that"), shown
+    assert not await page.evaluate("document.getElementById('word').classList.contains('blank')")
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+WAKE_LOCK = """
+window.__locks = { held: 0, asked: 0 };
+Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: {
+  async request(type) {
+    __locks.asked++; __locks.held++;
+    const listeners = [];
+    return { addEventListener: (n, f) => listeners.push(f),
+      async release() { __locks.held--; listeners.forEach(f => f()); } };
+  } } });
+"""
+
+
+@check
+async def screen_stays_awake_while_words_play(browser):
+    ctx, page = await fresh(browser, init=WAKE_LOCK)
+    held = "window.__locks.held"
+    assert await page.evaluate(held) == 0
+    await page.click("#play")
+    await page.wait_for_function(f"{held} === 1")
+    await page.click("#play")
+    await page.wait_for_function(f"{held} === 0")
+    assert await page.evaluate("window.__locks.asked") == 1
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],
