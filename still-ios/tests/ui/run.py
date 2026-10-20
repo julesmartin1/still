@@ -37,7 +37,7 @@ def check(fn):
     return fn
 
 
-async def fresh(browser, onboarded=True, storage=None, init=None, reader=True, **options):
+async def fresh(browser, onboarded=True, storage=None, init=None, reader=True, setup=None, **options):
     # bypass_csp lets Playwright's own helpers run; the app's CSP is
     # unchanged for real users.
     ctx = await browser.new_context(
@@ -59,6 +59,8 @@ async def fresh(browser, onboarded=True, storage=None, init=None, reader=True, *
         )
     if init:  # a script to run before the app, e.g. a fake speech engine
         await ctx.add_init_script(init)
+    if setup:  # e.g. routes that must be in place before the app starts
+        await setup(ctx)
     page = await ctx.new_page()
     page.errors = []
     page.on("pageerror", lambda e: page.errors.append(str(e)))
@@ -943,7 +945,7 @@ async def waitlist_and_feedback_post_to_netlify_forms(browser):
 
     await page.route("**/", capture)
     assert await page.is_visible("#waitlistEmailWelcome")
-    assert "never leave your device" in await page.inner_text("#welcomeDialog .waitlist-note")
+    assert "stays on your device" in await page.inner_text("#welcomeDialog .waitlist-note")
     await page.fill("#waitlistEmailWelcome", "reader@example.com")
     await page.click("#welcomeDialog .waitlist button")
     await page.wait_for_function("document.querySelector('#welcomeDialog .waitlist-status').textContent.includes('Thanks')")
@@ -1175,6 +1177,95 @@ async def sheets_close_with_a_tap_outside_and_keep_changes(browser):
     await page.mouse.click(195, 20)
     assert not await dialog_open(page, "settingsDialog"), "settings stayed open"
     await page.wait_for_function("document.getElementById('title').textContent === 'Renamed'", timeout=3000)
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+def tone_wav(ms, rate=8000):
+    """A WAV clip of a quiet tone, standing in for the natural voice's MP3."""
+    import math
+    import struct
+    n = int(rate * ms / 1000)
+    data = b"".join(struct.pack("<h", int(6000 * math.sin(i / 3))) for i in range(n))
+    return (b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt "
+            + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+            + b"data" + struct.pack("<I", len(data)) + data)
+
+
+def natural_voice_server(posts, status=200):
+    """Stands in for netlify/functions/speak.mjs: set up, 300 ms a word."""
+    async def handle(route):
+        request = route.request
+        if request.method == "GET":
+            await route.fulfill(status=204)
+            return
+        body = json.loads(request.post_data)
+        posts.append(body)
+        if status != 200:
+            await route.fulfill(status=status, body="{}")
+        else:
+            await route.fulfill(status=200, content_type="audio/wav",
+                                body=tone_wav(300 * len(body["text"].split())))
+
+    async def setup(ctx):
+        await ctx.route("**/api/speak", handle)
+    return setup
+
+
+@check
+async def natural_voice_reads_aloud_and_words_follow(browser):
+    posts = []
+    ctx, page = await fresh(browser, init=FAKE_SPEECH, setup=natural_voice_server(posts))
+    await open_text(page, "One two three four. Five six seven eight.")
+    await settings(page)
+    await page.check("#readAloud")
+    groups = await page.eval_on_selector_all("#readAloudVoice optgroup", "gs => gs.map(g => g.label)")
+    assert groups == ["Natural voices (online)", "Built into this device"], groups
+    assert await page.is_visible("#readAloudPrivacy")
+    assert await page.input_value("#readAloudVoice") == ""  # the first natural voice
+    await page.keyboard.press("Escape")
+    word = "document.getElementById('word').textContent"
+    await page.click("#play")
+    await page.wait_for_function(f"{word} === 'three'", timeout=4000)
+    assert posts[0]["text"] == "One two three four." and posts[0]["voice"] == "marin", posts
+    # The next sentence was fetched while the first played.
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=8000)
+    assert [p["text"] for p in posts[:2]] == ["One two three four.", "Five six seven eight."], posts
+    assert await page.evaluate("window.__speech.spoken.length") == 0, "the device voice spoke too"
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def natural_voice_failing_hands_over_to_the_device_voice(browser):
+    posts = []
+    ctx, page = await fresh(browser, init=FAKE_SPEECH, setup=natural_voice_server(posts, status=500))
+    await open_text(page, "One two three four. Five six seven eight.")
+    await settings(page)
+    await page.check("#readAloud")
+    await page.keyboard.press("Escape")
+    await page.click("#play")
+    await page.wait_for_function("window.__speech.spoken.length >= 1", timeout=4000)
+    assert len(posts) >= 1
+    assert "switched to this device" in await page.inner_text("#toast")
+    first = await page.evaluate("window.__speech.spoken[0]")
+    assert first["text"] == "One two three four.", first
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def a_device_voice_can_still_be_chosen_over_the_natural_one(browser):
+    posts = []
+    ctx, page = await fresh(browser, init=FAKE_SPEECH, setup=natural_voice_server(posts))
+    await open_text(page, "One two three four.")
+    await settings(page)
+    await page.check("#readAloud")
+    await page.select_option("#readAloudVoice", "Test voice")
+    await page.keyboard.press("Escape")
+    await page.click("#play")
+    await page.wait_for_function("window.__speech.spoken.length >= 1", timeout=4000)
+    assert posts == [], posts
     assert not page.errors, page.errors
     await ctx.close()
 

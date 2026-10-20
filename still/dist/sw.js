@@ -26,9 +26,12 @@ self.addEventListener("activate", (event) =>
   ),
 );
 self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  // The natural voice's server function is never cached.
   if (
     event.request.method !== "GET" ||
-    new URL(event.request.url).origin !== location.origin
+    url.origin !== location.origin ||
+    url.pathname.startsWith("/api/")
   )
     return;
   event.respondWith(

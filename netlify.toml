@@ -4,6 +4,12 @@
   publish = "still/dist"
   command = ""
 
+# Read aloud's natural voice (netlify/functions/speak.mjs, served at
+# /api/speak). It needs OPENAI_API_KEY set in the site's environment
+# variables, scoped to Functions; without it the app uses device voices.
+[functions]
+  directory = "netlify/functions"
+
 # Always fetch the newest service worker so readers get updates promptly.
 [[headers]]
   for = "/sw.js"
