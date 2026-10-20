@@ -46,3 +46,15 @@ export function fadeDuration(wordMs) {
   if (!Number.isFinite(wordMs) || wordMs <= 0) return 0;
   return Math.round(Math.min(40, Math.max(12, wordMs * 0.12)));
 }
+
+// Repeated words ("that that", "had had"): swapping a word for itself shows
+// no change, so the reader can't see that a second word went by. The repeat
+// starts with a blank moment, taken from its own time so the pace is
+// unchanged: a quarter of the word's time, between 40 and 90 ms (two to
+// five frames, enough to see), and never more than half of it, so the word
+// keeps the clear view it needs to be read.
+export function repeatGap(previous, word, wordMs) {
+  if (!word || word !== previous) return 0;
+  if (!Number.isFinite(wordMs) || wordMs <= 0) return 0;
+  return Math.round(Math.min(90, Math.max(40, wordMs * 0.25), wordMs / 2));
+}

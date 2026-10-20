@@ -228,6 +228,17 @@ export function voiceChoices(voices, lang = "") {
     );
 }
 
+// For voices without word boundaries: how much slower (above 1) or faster
+// than estimateWordTimes this voice really speaks, from how long its last
+// sentences took. Each sentence of at least CALIBRATE_MIN_WORDS words moves
+// the guess halfway to what it measured, within 0.5–2, so one odd sentence
+// can't throw the words far off the voice.
+export const CALIBRATE_MIN_WORDS = 3;
+export function calibrateVoicePace(pace, measuredMs, estimatedMs) {
+  if (!(measuredMs > 0) || !(estimatedMs > 0)) return pace;
+  return clamp((pace + clamp(measuredMs / estimatedMs, 0.5, 2)) / 2, 0.5, 2);
+}
+
 // Waits this long for the voice to start before carrying on without it.
 export const START_TIMEOUT_MS = 2500;
 // After the voice starts, waits this long (plus the first word) for a word
@@ -282,6 +293,7 @@ export class SpokenPlayback {
     this.run = 0; // bumped on every pause or restart; stale events are ignored
     this.utterance = null;
     this.boundaries = null; // learned: does this voice report word boundaries?
+    this.voicePace = 1; // learned: see calibrateVoicePace
     this.silent = false; // carrying on without a voice until the next play
     this.language = undefined;
   }
@@ -349,12 +361,15 @@ export class SpokenPlayback {
     const { text, offsets } = utteranceText(words);
     const wanted = this.wpm(start);
     const rate = wpmToRate(wanted);
+    const estimated = estimateWordTimes(words, rateToWpm(rate));
     const chunk = {
       start,
       end,
       offsets,
-      // Timer estimates follow the voice; without a voice, the pace itself.
-      voiceTimes: estimateWordTimes(words, rateToWpm(rate)),
+      // Timer estimates follow the voice, as fast as it has been speaking;
+      // without a voice, the pace itself.
+      estimatedMs: estimated.reduce((sum, t) => sum + t, 0),
+      voiceTimes: estimated.map((t) => t * this.voicePace),
       paceTimes: estimateWordTimes(words, wanted),
       // Slower than the slowest voice: wait between sentences to keep pace.
       slower: wanted < rateToWpm(MIN_RATE),
@@ -396,6 +411,16 @@ export class SpokenPlayback {
       if (!current()) return;
       this.utterance = null;
       if (chunk.heard || end > start) this.boundaries = chunk.heard;
+      if (
+        !chunk.heard &&
+        chunk.started !== null &&
+        end - start + 1 >= CALIBRATE_MIN_WORDS
+      )
+        this.voicePace = calibrateVoicePace(
+          this.voicePace,
+          this.clock() - chunk.started,
+          chunk.estimatedMs,
+        );
       this.finishChunk(run, chunk);
     };
     u.onerror = (event) => {
