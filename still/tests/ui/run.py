@@ -966,6 +966,53 @@ async def waitlist_and_feedback_post_to_netlify_forms(browser):
     await ctx.close()
 
 
+@check
+async def home_offers_the_waitlist_and_visits_are_counted_once_per_tab(browser):
+    ctx, page = await fresh(browser, reader=False)
+    posts, visits = [], []
+
+    async def capture(route):
+        if route.request.method == "POST":
+            posts.append(route.request.post_data)
+            await route.fulfill(status=200, body="ok")
+        else:
+            await route.continue_()
+
+    async def count(route):
+        visits.append(json.loads(route.request.post_data))
+        await route.fulfill(status=204)
+
+    await ctx.route("**/", capture)
+    await ctx.route("**/api/visit", count)
+    # A new tab is a new visit; reloading the same tab is not.
+    page = await ctx.new_page()
+    page.errors = []
+    page.on("pageerror", lambda e: page.errors.append(str(e)))
+    await page.goto(URL)
+    await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    await page.reload()
+    await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    await page.wait_for_timeout(200)
+    assert visits == [{"first": False}], visits
+    assert "still time to read" in await page.inner_text(".home-waitlist h2")
+    await page.fill("#waitlistEmailHome", "reader@example.com")
+    await page.click(".home-waitlist button")
+    await page.wait_for_function("document.querySelector('.home-waitlist .waitlist-status').textContent.includes('Thanks')")
+    assert "form-name=waitlist" in posts[0] and "where=home" in posts[0], posts
+    assert not page.errors, page.errors
+    await ctx.close()
+    # Someone opening Still for the first time is counted as new.
+    ctx = await browser.new_context(bypass_csp=True)
+    visits = []
+    await ctx.route("**/api/visit", count)
+    page = await ctx.new_page()
+    await page.goto(URL)
+    await page.wait_for_function("document.documentElement.dataset.ready === 'true'")
+    await page.wait_for_timeout(200)
+    assert visits == [{"first": True}], visits
+    await ctx.close()
+
+
 # A stand-in for the browser's speech engine: records each utterance, then
 # fires a word boundary every `__speechStep` ms and `end` after the last word.
 FAKE_SPEECH = """
