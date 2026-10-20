@@ -999,7 +999,7 @@ async def home_offers_the_waitlist_and_visits_are_counted_once_per_tab(browser):
     assert not page.errors, page.errors
     await ctx.close()
     # Someone opening Still for the first time is counted as new.
-    ctx, page = await fresh(browser, onboarded=False)
+    ctx = await browser.new_context(bypass_csp=True)
     visits = []
     await ctx.route("**/api/visit", count)
     page = await ctx.new_page()
