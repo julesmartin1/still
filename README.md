@@ -21,6 +21,10 @@ npm start          # http://127.0.0.1:4173
 npm test           # unit tests
 ```
 
+## Waitlist, feedback and visits (web only)
+
+The website's waitlist and feedback forms post to **Netlify Forms** (Netlify dashboard → Forms; form detection must be turned on there). A cookie-free **visit counter** lives in `netlify/functions/visit.mjs`: the app sends one anonymous ping per tab, and opening `/api/visit` shows daily visits and first-time visitors for the last 30 days. None of this runs in the iOS app.
+
 ## Shared code: edit once, sync
 
 Every file in `still/dist/` and `still/tests/` is shared with `still-ios/`, except `native-runtime.js` (browser storage on the web, the native vault on iOS) and the generated `offline-assets.js`. Edit shared files in `still/`, then from the repository root:

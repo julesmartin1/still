@@ -2436,6 +2436,17 @@ body.immersive .starter:not(:hover, :focus-within) {
 .feedback-status:empty {
   display: none;
 }
+/* At the foot of the library home, above the footer. */
+.home-waitlist {
+  margin-top: 0;
+  padding-top: 24px;
+  max-width: 460px;
+  width: 100%;
+}
+.home-waitlist label {
+  font-weight: 400;
+  color: var(--muted);
+}
 /* Inside the dark reader panel, after a finished reading. */
 .finish-card .waitlist {
   border-top-color: rgb(255 255 255 / 0.12);

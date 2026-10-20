@@ -4,6 +4,10 @@
   publish = "still/dist"
   command = ""
 
+# The visit counter (netlify/functions/visit.mjs) answers at /api/visit.
+[functions]
+  directory = "netlify/functions"
+
 # Always fetch the newest service worker so readers get updates promptly.
 [[headers]]
   for = "/sw.js"
