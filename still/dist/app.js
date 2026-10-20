@@ -63,6 +63,17 @@ import {
   wpmToRate,
 } from "./read-aloud.js";
 import {
+  CloudVoiceEngine,
+  DEFAULT_NATURAL_VOICE,
+  NATURAL_VOICES,
+  NaturalPlayback,
+  SPEAK_ENDPOINT,
+  WebAudioOutput,
+  naturalSupported,
+  naturalVoiceId,
+  naturalVoiceValue,
+} from "./natural-voice.js";
+import {
   checkInDue,
   endCheckInDue,
   followUp,
@@ -155,6 +166,12 @@ if (
 }
 // Two places: Home (the library) and the reader. See showView.
 let view = "home";
+// The natural voice for read aloud (see "Read aloud" below).
+let naturalEngine = null,
+  naturalOutput = null,
+  naturalState = "unknown", // unknown, checking, available, unavailable
+  naturalBroken = false, // failed while reading; device voice until chosen again
+  naturalSample = null;
 let documentId =
   typeof saved?.documentId === "string"
     ? saved.documentId
@@ -793,7 +810,6 @@ $("readerPanel").addEventListener(
   },
   true,
 );
-$("panelAloudOption").hidden = !speechSupported();
 $("panelAloud").onchange = () => {
   $("readAloud").checked = $("panelAloud").checked;
   $("readAloud").onchange();
@@ -862,7 +878,13 @@ for (const dialog of document.querySelectorAll("dialog")) {
 function createReader(index = 0) {
   reader?.pause();
   refreshTiming();
-  reader = new (readAloudOn() ? SpokenPlayback : Playback)({
+  reader = new (
+    !readAloudOn()
+      ? Playback
+      : naturalForReading()
+        ? NaturalPlayback
+        : SpokenPlayback
+  )({
     ...readAloudOptions(),
     length: data.tokens.length,
     duration: (i) => {
@@ -936,6 +958,9 @@ function play() {
   warmFrom = reader.finished ? 0 : reader.index;
   if (performance.now() - lastTimedAt > 10000) easeFrom = performance.now();
   startSession();
+  try {
+    naturalSample?.stop();
+  } catch {}
   reader.play();
   playbackUI();
   $("play").focus({ preventScroll: true });
@@ -943,25 +968,102 @@ function play() {
 function toggle() {
   reader.playing ? pause() : play();
 }
-// ---- Read aloud (see read-aloud.js) ----
-// The device's own voice reads each word as it is shown, and the word follows
-// the voice. It swaps in for Playback, so check-ins, "Pause after each
-// sentence" and the end of a reading work as usual. Switch in Reading settings.
+// ---- Read aloud (see read-aloud.js and natural-voice.js) ----
+// A voice reads each word as it is shown, and the word follows the voice. It
+// swaps in for Playback, so check-ins, "Pause after each sentence" and the
+// end of a reading work as usual. Switch in Reading options or Settings.
+//
+// On the web the voice is a natural one by default (OpenAI's, through this
+// site's server; see netlify/functions/speak.mjs): only the sentences about
+// to be read aloud are sent. Whenever it isn't set up, is offline or fails,
+// the device's own voice carries on from the same word.
+// Whether this browser could use the natural voice at all.
+function naturalPossible() {
+  return !native && naturalSupported();
+}
+// Read aloud is offered when the device has a voice or the natural voice is
+// set up on this site.
+function readAloudPossible() {
+  return (
+    speechSupported() || (naturalPossible() && naturalState === "available")
+  );
+}
+function readAloudOffered() {
+  const offered = readAloudPossible();
+  $("readAloudSetting").hidden = !offered;
+  $("welcomeAloudOption").hidden = !offered;
+  $("panelAloudOption").hidden = !offered;
+}
 function readAloudOn() {
-  return !!appearance.readAloud && speechSupported();
+  return !!appearance.readAloud && readAloudPossible();
+}
+// The natural voice chosen ("" for a device voice). No choice yet means the
+// first natural voice; "device" means the device's best voice.
+function naturalChoice() {
+  const chosen = appearance.readAloudVoice || "";
+  return chosen ? naturalVoiceId(chosen) : DEFAULT_NATURAL_VOICE;
+}
+// Whether this reading is read with the natural voice right now.
+function naturalForReading() {
+  return (
+    naturalPossible() &&
+    naturalState === "available" &&
+    !naturalBroken &&
+    !!naturalChoice()
+  );
+}
+function naturalAudio() {
+  return (naturalOutput ||= new WebAudioOutput());
+}
+function voiceEngine() {
+  return (naturalEngine ||= new CloudVoiceEngine({
+    decode: (bytes) => naturalAudio().decode(bytes),
+  }));
+}
+// Asks the server once whether the natural voice is set up here.
+async function checkNatural() {
+  if (!naturalPossible() || naturalState !== "unknown") return;
+  naturalState = "checking";
+  let available = false;
+  try {
+    const response = await fetch(SPEAK_ENDPOINT, { cache: "no-store" });
+    available = response.status === 204;
+  } catch {}
+  naturalState = available ? "available" : "unavailable";
+  readAloudOffered();
+  readAloudUI();
+  if (reader && !reader.playing && readAloudOn()) refreshReader();
+}
+// Rebuilds the reader (keeping its place) after the voice changes.
+function refreshReader() {
+  const { index, finished, playing } = reader;
+  createReader(index);
+  reader.finished = finished;
+  if (playing) reader.play();
+  playbackUI();
 }
 function readAloudOptions() {
   if (!readAloudOn()) return {};
   const tokens = data.tokens;
+  const wpm = (i) =>
+    targetWpm(
+      base,
+      profile,
+      tokens[i]?.paragraph === replayParagraph ||
+        !!replaySet?.has(tokens[i]?.paragraph),
+    );
+  if (naturalForReading())
+    return {
+      tokens,
+      wpm,
+      voice: () => naturalChoice() || DEFAULT_NATURAL_VOICE,
+      synth: voiceEngine(),
+      audio: naturalAudio(),
+      onFail: naturalFailed,
+    };
   return {
     tokens,
-    wpm: (i) =>
-      targetWpm(
-        base,
-        profile,
-        tokens[i]?.paragraph === replayParagraph ||
-          !!replaySet?.has(tokens[i]?.paragraph),
-      ),
+    wpm,
     lang: () => guessLanguage(tokens),
     voice: () => appearance.readAloudVoice || "",
     onSilent: (reason) =>
@@ -973,19 +1075,36 @@ function readAloudOptions() {
       ),
   };
 }
+// While reading: the natural voice can't carry on, so the device's voice
+// takes over from the same word.
+function naturalFailed(reason) {
+  naturalBroken = true;
+  showToast(
+    reason === "offline"
+      ? "You’re offline, so Still is reading with this device’s voice."
+      : reason === "busy"
+        ? "The natural voice is busy, so Still switched to this device’s voice for now."
+        : "The natural voice stopped, so Still switched to this device’s voice.",
+    7000,
+  );
+  renderVoices();
+  createReader(reader.index);
+  reader.play();
+  playbackUI();
+}
 function readAloudUI() {
   const on = readAloudOn();
   $("readAloud").checked = on;
   $("readAloudBadge").hidden = !on;
   renderVoices();
   // Some browsers only load their voices once asked for them.
-  if (on)
+  if (on && speechSupported())
     try {
       speechSynthesis.getVoices();
     } catch {}
 }
-// The voice chooser: the device's on-device voices for this reading's
-// language, most natural first.
+// The voice chooser: the natural voices (when set up here), then the device's
+// on-device voices for this reading's language, most natural first.
 function deviceVoices() {
   try {
     return speechSynthesis.getVoices() || [];
@@ -995,8 +1114,11 @@ function deviceVoices() {
 }
 function renderVoices() {
   const voices = deviceVoices();
+  const natural = naturalPossible() && naturalState === "available";
   const field = $("readAloudVoiceField");
-  field.hidden = !readAloudOn() || !voices.some((v) => v.localService);
+  field.hidden =
+    !readAloudOn() || (!voices.some((v) => v.localService) && !natural);
+  $("readAloudPrivacy").hidden = !readAloudOn() || !natural;
   if (field.hidden) return;
   const lang = guessLanguage(data.tokens);
   const choices = voiceChoices(voices, lang);
@@ -1007,17 +1129,46 @@ function renderVoices() {
     o.textContent = label;
     return o;
   };
-  $("readAloudVoice").replaceChildren(
-    option("", `Most natural here${auto ? ` (${auto.name})` : ""}`),
+  const group = (label, options) => {
+    const g = document.createElement("optgroup");
+    g.label = label;
+    g.append(...options);
+    return g;
+  };
+  const device = [
+    option(
+      natural ? "device" : "",
+      `Most natural here${auto ? ` (${auto.name})` : ""}`,
+    ),
     ...choices.map((v) => option(v.voiceURI, `${v.name} · ${v.lang}`)),
+  ];
+  $("readAloudVoice").replaceChildren(
+    ...(natural
+      ? [
+          group(
+            "Natural voices (online)",
+            NATURAL_VOICES.map((v, i) =>
+              option(i ? naturalVoiceValue(v.id) : "", v.name),
+            ),
+          ),
+          group("Built into this device", device),
+        ]
+      : device),
   );
-  $("readAloudVoice").value = choices.some(
-    (v) => v.voiceURI === appearance.readAloudVoice,
-  )
-    ? appearance.readAloudVoice
-    : "";
+  // Stored "" means the first natural voice when there is one.
+  const chosen = appearance.readAloudVoice || "";
+  const listed = [...$("readAloudVoice").options].map((o) => o.value);
+  $("readAloudVoice").value =
+    natural && chosen === naturalVoiceValue(DEFAULT_NATURAL_VOICE)
+      ? ""
+      : listed.includes(chosen)
+        ? chosen
+        : natural && chosen
+          ? "device"
+          : "";
   // Apple devices keep their natural voices as optional downloads.
   $("readAloudVoiceHint").hidden =
+    natural ||
     !/Macintosh|iPhone|iPad/.test(navigator.userAgent) ||
     choices.some((v) => voiceScore(v) >= 30);
 }
@@ -1028,24 +1179,62 @@ if (speechSupported())
 $("readAloudVoice").onchange = () => {
   appearance = { ...appearance, readAloudVoice: $("readAloudVoice").value };
   applyAppearance();
-  const { index, finished } = reader;
-  createReader(index);
-  reader.finished = finished;
-  playbackUI();
+  stopSamples();
+  // Choosing a natural voice is asking for it again after a failure.
+  if (naturalChoice()) naturalBroken = false;
+  refreshReader();
+  renderVoices();
 };
+function stopSamples() {
+  try {
+    naturalSample?.stop();
+  } catch {}
+  naturalSample = null;
+  try {
+    speechSynthesis.cancel();
+  } catch {}
+}
+const SAMPLE_TEXT = "This is how Still will read to you, one word at a time.";
 $("readAloudTry").onclick = () => {
+  stopSamples();
+  const natural = naturalChoice();
+  if (natural && naturalState === "available") {
+    try {
+      naturalAudio().unlock(); // sound can only start from the tap itself
+    } catch {}
+    voiceEngine()
+      .synthesize({ text: SAMPLE_TEXT, voice: natural, speed: 1 })
+      .then(
+        (clip) => {
+          stopSamples();
+          naturalSample = naturalAudio().play(
+            clip,
+            () => (naturalSample = null),
+          );
+        },
+        () => {
+          showToast(
+            "The natural voice can’t play right now, so this is the device’s voice.",
+            6000,
+          );
+          trySpoken();
+        },
+      );
+    return;
+  }
+  trySpoken();
+};
+function trySpoken() {
   const voices = deviceVoices();
   const voice = pickVoice(
     voices,
     guessLanguage(data.tokens),
     navigator.language,
-    $("readAloudVoice").value,
+    appearance.readAloudVoice || "",
   );
   try {
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(
-      "This is how Still will read to you, one word at a time.",
-    );
+    const u = new SpeechSynthesisUtterance(SAMPLE_TEXT);
     if (voice) {
       u.voice = voice;
       u.lang = voice.lang;
@@ -1053,10 +1242,11 @@ $("readAloudTry").onclick = () => {
     u.rate = wpmToRate(base);
     speechSynthesis.speak(u);
   } catch {}
-};
-$("readAloudSetting").hidden = !speechSupported();
-// Offered once more on first run, beside the first read.
-$("welcomeAloudOption").hidden = !speechSupported();
+}
+// Offered in Settings, in Reading options, and once more on first run beside
+// the first read.
+readAloudOffered();
+checkNatural();
 $("welcomeAloud").onchange = () => {
   $("readAloud").checked = $("welcomeAloud").checked;
   $("readAloud").onchange();
@@ -2345,7 +2535,10 @@ $("readingType").onchange = () => {
 };
 // Settings apply as they change; closing the sheet (Done, Escape or a tap
 // outside) keeps the title and check-in choices too.
-$("saveReadingDetails").onclick = () => $("settingsDialog").close();
+$("saveReadingDetails").onclick = () => {
+  $("settingsDialog").close();
+  returnToReader(); // at once, so a key pressed next reaches the reader
+};
 $("settingsDialog").addEventListener("close", () => {
   const every = checkinSpacing($("checkinMode").value);
   if (every !== checkinMode())

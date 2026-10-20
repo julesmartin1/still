@@ -265,8 +265,8 @@
                   aria-hidden="true"
                 />
                 <span class="waitlist-note"
-                  >One email when it’s out, nothing else. Your readings never
-                  leave your device.</span
+                  >One email when it’s out, nothing else. Your bookshelf stays
+                  on your device.</span
                 >
                 <span class="waitlist-status" role="status"></span>
               </form>
@@ -1071,8 +1071,12 @@
         >
         <p id="readAloudHint" class="muted field-hint">
           Hear each word as it appears. The words follow the voice, close to
-          your pace. The voice is built into this device, so nothing you read
-          leaves it.
+          your pace.
+        </p>
+        <p id="readAloudPrivacy" class="muted field-hint" hidden>
+          Natural voices are made by OpenAI, so the sentences being read aloud
+          are sent there to make the sound. Choose a voice built into this
+          device to keep everything on it.
         </p>
         <div id="readAloudVoiceField" class="read-aloud-voice" hidden>
           <label for="readAloudVoice">Voice</label>
@@ -1526,8 +1530,8 @@
             aria-hidden="true"
           />
           <span class="waitlist-note"
-            >One email when it’s out, nothing else. Your readings never leave
-            your device.</span
+            >One email when it’s out, nothing else. Your bookshelf stays on your
+            device.</span
           >
           <span class="waitlist-status" role="status"></span>
         </form>
@@ -1632,8 +1636,10 @@
       </p>
       <p>
         Your imported documents and notes stay in this app unless you choose to
-        export or share them. Backups are readable JSON files, not
-        password-protected archives. Anyone with a copy can read them.
+        export or share them. On the web, read aloud's natural voices send the
+        sentences being read to OpenAI to make the sound. Backups are readable
+        JSON files, not password-protected archives. Anyone with a copy can read
+        them.
       </p>
     </dialog>
     <dialog id="feedbackDialog" aria-labelledby="feedbackTitle">

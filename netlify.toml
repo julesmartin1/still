@@ -5,6 +5,9 @@
   command = ""
 
 # The visit counter (netlify/functions/visit.mjs) answers at /api/visit.
+# Read aloud's natural voice (netlify/functions/speak.mjs, served at
+# /api/speak). It needs OPENAI_API_KEY set in the site's environment
+# variables, scoped to Functions; without it the app uses device voices.
 [functions]
   directory = "netlify/functions"
 
