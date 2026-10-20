@@ -178,6 +178,7 @@ h2 {
 }
 .status {
   text-align: center;
+  text-wrap: balance;
   color: #aebbd1;
   font-size: 14px;
   min-height: 22px;
@@ -812,6 +813,10 @@ textarea:disabled {
   position: absolute;
   width: 1px;
   height: 1px;
+  /* No margin, so it can't stretch a clipped box (the reader card used to
+     scroll 17px on small phones when Play was pressed). */
+  margin: -1px;
+  padding: 0;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
@@ -1496,6 +1501,12 @@ html[data-theme="dark"] .file-button {
   color: #ffa47a; /* 8.4:1 on the reader's navy */
 }
 
+/* A repeated word ("that that") starts blank for a moment, so the second
+   one is seen arriving (see word-display.js repeatGap). */
+#word.blank {
+  visibility: hidden;
+}
+
 /* ---- Comprehension check-ins ---- */
 #checkinRecap {
   width: 100%;
@@ -1698,6 +1709,35 @@ html[data-theme="dark"] .text-check li .text-button {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   touch-action: manipulation;
+}
+/* Tapping a side of the stage jumps 15 words; a mark there says so. */
+.skip-hint {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #26345299;
+  color: #c7d2e8;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  opacity: 0;
+}
+.skip-hint[data-side="left"] {
+  left: 12px;
+}
+.skip-hint[data-side="right"] {
+  right: 12px;
+}
+.skip-hint.show {
+  animation: skip-hint 0.7s ease-out;
+}
+@keyframes skip-hint {
+  15%,
+  60% {
+    opacity: 1;
+  }
 }
 .peek {
   position: absolute;
@@ -1970,11 +2010,51 @@ html[data-theme="dark"] .streak-chip.lit .flame {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Play sits exactly under the word: back on its left, forward and review on
+   its right, and an empty column first that mirrors review. */
+.controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr);
+}
+#quickRewind {
+  grid-column: 2;
+}
+#review {
+  justify-self: start;
+}
 @media (max-width: 600px) {
+  /* On a phone review moves to the edge, apart from the three buttons. */
+  .controls {
+    grid-template-columns:
+      minmax(44px, 1fr) 44px minmax(0, 150px) 44px
+      minmax(44px, 1fr);
+    gap: 6px;
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+  .controls .round,
+  .controls .secondary:not(.round) {
+    width: 44px;
+    min-height: 44px;
+  }
   #play {
     min-width: 0;
-    flex: 1;
-    max-width: 220px;
+    padding: 0 8px;
+    gap: 6px;
+    font-size: calc(15px * var(--system-text-scale));
+    white-space: nowrap;
+  }
+  #review {
+    justify-self: end;
+  }
+  /* Two lines are kept for the hint under the word, so the buttons don't
+     jump when it appears on pause and goes on play. */
+  .status {
+    min-height: 3em;
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .controls .secondary:not(.round) span {
     display: none;
@@ -2819,6 +2899,17 @@ body[data-view="reader"] main {
   font-size: 14px;
   color: var(--muted);
 }
+/* The − pace + steppers sit centred under the reader, the unit below. */
+.pace-quick .pace-value {
+  flex-wrap: wrap;
+  justify-content: center;
+  row-gap: 0;
+  margin: 0;
+}
+.pace-quick .pace-unit {
+  flex-basis: 100%;
+  text-align: center;
+}
 .normal-toolbar #wordView {
   margin-right: auto;
 }
@@ -3038,5 +3129,25 @@ dialog[open]::backdrop {
   .home,
   .reader-view {
     animation: none;
+  }
+}
+/* The narrowest phones: Play shows just its icon (its label still names it
+   for screen readers), so it stays centred between the other buttons. */
+@media (max-width: 400px) {
+  #play {
+    font-size: calc(14px * var(--system-text-scale));
+  }
+}
+@media (max-width: 369px) {
+  .status {
+    min-height: 4.5em;
+  }
+  #play span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }

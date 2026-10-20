@@ -51,7 +51,8 @@ import {
 import { PASSAGES, nextPace, suggestedPace } from "./pace-finder.js";
 import { STARTER } from "./starter-shelf.js";
 import { repairPdfLines, repairText, describeGlyphMap } from "./text-repair.js";
-import { splitAtFocus, fadeDuration } from "./word-display.js";
+import { splitAtFocus, fadeDuration, repeatGap } from "./word-display.js";
+import { screenAwake } from "./screen-awake.js";
 import {
   SpokenPlayback,
   speechSupported,
@@ -389,11 +390,17 @@ function save() {
 }
 
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-let wordFade = null;
+let wordFade = null,
+  wordBlank = 0;
 // Shows one word, centred by default. Readers who choose "anchored" get the
 // focus letter fixed under the marks and tinted (see word-display.js).
-function showWord(word, { animate = false, durationMs = 0 } = {}) {
+// `blankMs` hides the word for that long first (a repeated word).
+function showWord(word, { animate = false, durationMs = 0, blankMs = 0 } = {}) {
   const el = $("word");
+  clearTimeout(wordBlank);
+  el.classList.toggle("blank", blankMs > 0);
+  if (blankMs > 0)
+    wordBlank = setTimeout(() => el.classList.remove("blank"), blankMs);
   const focus = appearance.placement === "anchored" && word.length <= 40;
   el.classList.toggle("focus-mode", focus);
   if (focus) {
@@ -414,6 +421,7 @@ function showWord(word, { animate = false, durationMs = 0 } = {}) {
   wordFade = null;
   if (
     animate &&
+    !blankMs &&
     appearance.transition !== "instant" &&
     !reducedMotion.matches &&
     el.animate
@@ -472,11 +480,18 @@ function fitWord() {
     el.style.whiteSpace = "nowrap";
   }
 }
+let shownIndex = -1;
 function render() {
   const t = data.tokens[reader.index];
+  const previous =
+    reader.playing && shownIndex === reader.index - 1
+      ? data.tokens[shownIndex]?.text
+      : null;
+  shownIndex = reader.index;
   showWord(t?.text || "No visible words", {
     animate: reader.playing,
     durationMs: timingPlan[reader.index],
+    blankMs: repeatGap(previous, t?.text, timingPlan[reader.index]),
   });
   $("count").textContent =
     `${data.tokens.length ? reader.index + 1 : 0} / ${plural(data.tokens.length, "word")}`;
@@ -585,8 +600,11 @@ const ICONS = {
   again: icon('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
 };
 const touch = matchMedia("(pointer: coarse)");
+const awake = screenAwake();
 function playbackUI() {
   const playing = reader.playing;
+  // The screen stays on while words play (see screen-awake.js).
+  awake.set(playing);
   $("play").innerHTML = playing
     ? `${ICONS.pause} <span>Pause</span>`
     : reader.finished
@@ -2940,15 +2958,58 @@ function hidePeek() {
   if (resume) play();
   else playbackUI();
 }
+// Tapping either side of the word jumps SKIP_WORDS words: back on the side
+// the text came from, forward on the side it goes to.
+const SKIP_WORDS = 15;
+let skipHintTimer = 0;
+function skipWords(count) {
+  if (!data.tokens.length) return;
+  const playing = reader.playing;
+  pause();
+  const index = clamp(reader.index + count, 0, data.tokens.length - 1);
+  if (index !== reader.index) {
+    // Going back is a rewind, as with the back-a-sentence button.
+    if (index < reader.index) {
+      replayParagraph = data.tokens[index].paragraph;
+      profile = recordRewind(profile, replayParagraph);
+      refreshTiming();
+    }
+    reader.seek(index);
+  }
+  const hint = $("skipHint");
+  hint.textContent = count < 0 ? `‹ ${-count}` : `${count} ›`;
+  hint.dataset.side = count < 0 === wordIsRtl() ? "right" : "left";
+  hint.hidden = false;
+  hint.classList.remove("show");
+  void hint.offsetWidth; // restart the fade
+  hint.classList.add("show");
+  clearTimeout(skipHintTimer);
+  skipHintTimer = setTimeout(() => (hint.hidden = true), 700);
+  if (playing) play();
+  checkpoint();
+}
+function wordIsRtl() {
+  try {
+    return $("word").matches(":dir(rtl)");
+  } catch {
+    return false;
+  }
+}
 {
-  // A quick tap plays or pauses; holding shows the sentence.
+  // A quick tap plays or pauses, or on either side jumps 15 words; holding
+  // shows the sentence.
   const stage = document.querySelector("#wordReader .stage");
   let holdTimer = 0,
-    tap = false;
+    tap = false,
+    side = 0;
   stage.addEventListener("pointerdown", (e) => {
     if (e.button !== 0 || e.target.closest("#finishCard")) return;
     clearTimeout(holdTimer);
     tap = true;
+    const r = stage.getBoundingClientRect(),
+      x = (e.clientX - r.left) / r.width;
+    side = x < 0.25 ? -1 : x > 0.75 ? 1 : 0;
+    if (wordIsRtl()) side = -side;
     holdTimer = setTimeout(() => {
       tap = false;
       showPeek();
@@ -2956,7 +3017,7 @@ function hidePeek() {
   });
   stage.addEventListener("pointerup", () => {
     clearTimeout(holdTimer);
-    if (tap && !peekState) toggle();
+    if (tap && !peekState) side ? skipWords(side * SKIP_WORDS) : toggle();
     tap = false;
     hidePeek();
   });

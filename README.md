@@ -1,6 +1,6 @@
 # Still
 
-A calm reading app that shows one word at a time, at an average pace that adapts to the reader. It has paragraph review, local-only storage, optional citation filtering for papers, and ungraded comprehension check-ins. It also has chapters from a PDF's table of contents, hold-to-see-the-sentence, a short "find my pace" warm-up, and import checks that repair common book-PDF faults. To make short, regular reading easy, it shows the time left, offers a daily goal with a streak, fades the page back while you read, and lets you tap the word to play or pause.
+A calm reading app that shows one word at a time, at an average pace that adapts to the reader. It has paragraph review, local-only storage, optional citation filtering for papers, and ungraded comprehension check-ins. It also has chapters from a PDF's table of contents, hold-to-see-the-sentence, a short "find my pace" warm-up, and import checks that repair common book-PDF faults. To make short, regular reading easy, it shows the time left, offers a daily goal with a streak, fades the page back while you read, keeps the screen on while words play, and lets you tap the word to play or pause, or either side of it to jump 15 words. A repeated word ("that that") starts with a blank moment so the second one is seen.
 
 | Folder | What it is |
 |---|---|
