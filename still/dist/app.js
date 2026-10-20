@@ -4134,6 +4134,21 @@ updateToday();
     onboarded = !!storage.getItem(ONBOARDED);
   } catch {}
   if (!onboarded && !saved) openWelcome("intro");
+  // Visit counter (web only): one anonymous ping per tab to this same site,
+  // saying only whether this browser is new to Still. No cookies, and
+  // nothing about the reader or their readings. See netlify/functions/.
+  if (!native)
+    try {
+      if (!sessionStorage.getItem("still-visit-counted")) {
+        sessionStorage.setItem("still-visit-counted", "1");
+        fetch("/api/visit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ first: !onboarded && !saved }),
+          keepalive: true,
+        }).catch(() => {});
+      }
+    } catch {}
 }
 {
   let start = "home";

@@ -118,6 +118,39 @@
           </div>
           <ul id="starterList" class="starter-list"></ul>
         </section>
+        <form
+          class="waitlist home-waitlist"
+          data-where="home"
+          aria-labelledby="waitlistHomeTitle"
+          hidden
+        >
+          <h2 id="waitlistHomeTitle">There’s still time to read.</h2>
+          <label for="waitlistEmailHome"
+            >Get the iPhone app when it’s ready</label
+          >
+          <span class="waitlist-row"
+            ><input
+              id="waitlistEmailHome"
+              type="email"
+              name="email"
+              autocomplete="email"
+              placeholder="you@example.com"
+              required
+            /><button type="submit" class="secondary">Notify me</button></span
+          >
+          <input
+            class="hp"
+            name="company"
+            tabindex="-1"
+            autocomplete="off"
+            aria-hidden="true"
+          />
+          <span class="waitlist-note"
+            >One email when it’s out, nothing else. Your readings never leave
+            your device.</span
+          >
+          <span class="waitlist-status" role="status"></span>
+        </form>
         <footer>
           <span class="footer-links"
             ><button id="aboutStill" class="text-button">
@@ -1591,7 +1624,8 @@
         finalized before release.
       </p>
       <p id="webNotices" hidden>
-        Third-party licenses:
+        This website counts visits without cookies: one anonymous tally per
+        visit, noting only whether it’s your first. Third-party licenses:
         <a href="vendor/pdfjs/LICENSE">PDF.js</a> ·
         <a href="dictionary/LICENSE.txt">WordNet dictionary</a>
       </p>
