@@ -796,12 +796,16 @@ async function renderHome() {
     })(),
   );
 }
-// Reading options: one small sheet for everything that isn't the words.
-$("readerTools").onclick = () => {
+// Settings: one small sheet for everything that isn't the words, with read
+// aloud, its voice, the background and the text size up front.
+function openSettings() {
   pause();
-  $("panelAloud").checked = readAloudOn();
+  renderVoices();
   $("readerPanel").showModal();
-};
+}
+$("readerTools").onclick = openSettings;
+// The speaker mark in the reader names the voice; tapping it changes it.
+$("readAloudBadge").onclick = openSettings;
 // A tool closes the sheet before it opens its own, so the two never stack.
 $("readerPanel").addEventListener(
   "click",
@@ -810,10 +814,6 @@ $("readerPanel").addEventListener(
   },
   true,
 );
-$("panelAloud").onchange = () => {
-  $("readAloud").checked = $("panelAloud").checked;
-  $("readAloud").onchange();
-};
 // Every sheet closes with a tap outside it and, on a phone, a swipe down
 // from its top edge, as well as with Escape or its close button.
 for (const dialog of document.querySelectorAll("dialog")) {
@@ -992,7 +992,6 @@ function readAloudOffered() {
   const offered = readAloudPossible();
   $("readAloudSetting").hidden = !offered;
   $("welcomeAloudOption").hidden = !offered;
-  $("panelAloudOption").hidden = !offered;
 }
 function readAloudOn() {
   return !!appearance.readAloud && readAloudPossible();
@@ -1096,6 +1095,7 @@ function readAloudUI() {
   const on = readAloudOn();
   $("readAloud").checked = on;
   $("readAloudBadge").hidden = !on;
+  $("readAloudHint").hidden = on;
   renderVoices();
   // Some browsers only load their voices once asked for them.
   if (on && speechSupported())
@@ -1119,6 +1119,13 @@ function renderVoices() {
   field.hidden =
     !readAloudOn() || (!voices.some((v) => v.localService) && !natural);
   $("readAloudPrivacy").hidden = !readAloudOn() || !natural;
+  const name = voiceName();
+  $("readAloudName").textContent = name || "Read aloud";
+  $("readAloudBadge").classList.toggle("named", !!name);
+  $("readAloudBadge").setAttribute(
+    "aria-label",
+    name ? `Read aloud with ${name}. Change voice` : "Read aloud settings",
+  );
   if (field.hidden) return;
   const lang = guessLanguage(data.tokens);
   const choices = voiceChoices(voices, lang);
@@ -1166,11 +1173,52 @@ function renderVoices() {
         : natural && chosen
           ? "device"
           : "";
+  // With natural voices, each is one tap; the device's own voices sit in
+  // the list behind This device.
+  const current = naturalChoice();
+  $("voiceChoices").hidden = !natural;
+  if (natural)
+    $("voiceChoices").replaceChildren(
+      ...NATURAL_VOICES.map((v, i) =>
+        voiceChip(i ? naturalVoiceValue(v.id) : "", v.name, current === v.id),
+      ),
+      voiceChip("device", "This device", !current),
+    );
+  $("deviceVoiceRow").hidden = natural && !!current;
   // Apple devices keep their natural voices as optional downloads.
   $("readAloudVoiceHint").hidden =
     natural ||
+    !!current ||
     !/Macintosh|iPhone|iPad/.test(navigator.userAgent) ||
     choices.some((v) => voiceScore(v) >= 30);
+}
+function voiceChip(value, label, chosen) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "voice-chip";
+  chip.textContent = label;
+  chip.setAttribute("aria-pressed", String(chosen));
+  chip.onclick = () => {
+    if (!chosen) {
+      // Keep a device voice picked earlier when coming back to This device.
+      const keep = value === "device" && deviceVoiceChosen();
+      $("readAloudVoice").value = keep ? appearance.readAloudVoice : value;
+      $("readAloudVoice").onchange();
+    }
+    $("readAloudTry").click(); // hear it at once
+    $("voiceChoices").querySelector(`[aria-pressed="true"]`)?.focus();
+  };
+  return chip;
+}
+function deviceVoiceChosen() {
+  const chosen = appearance.readAloudVoice || "";
+  return !!chosen && chosen !== "device" && !naturalVoiceId(chosen);
+}
+// The name shown beside the speaker mark in the reader.
+function voiceName() {
+  const natural = naturalPossible() && naturalState === "available";
+  const id = natural && !naturalBroken ? naturalChoice() : "";
+  return (id && NATURAL_VOICES.find((v) => v.id === id)?.name) || "";
 }
 if (speechSupported())
   try {
@@ -2520,8 +2568,6 @@ $("readingSettings").onclick = () => {
   $("readingType").value = readingOptions.documentType;
   $("checkinMode").value = String(checkinMode());
   updateFilterUI();
-  renderVoices();
-  $("moreSettings").open = false;
   $("settingsDialog").showModal();
 };
 $("readingType").onchange = () => {
@@ -3259,6 +3305,13 @@ function applyAppearance() {
     theme === "dark" ||
     (theme === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
+  // The reading card: navy (the default) or light, on a light page.
+  document.documentElement.dataset.card =
+    appearance.card === "paper" ? "paper" : "navy";
+  const look =
+    theme === "light" ? (appearance.card === "paper" ? "paper" : "navy") : theme;
+  for (const swatch of document.querySelectorAll("#backgroundChoices .swatch"))
+    swatch.setAttribute("aria-pressed", String(swatch.dataset.look === look));
   const font =
     {
       serif: "var(--serif)",
@@ -3272,7 +3325,6 @@ function applyAppearance() {
   document.documentElement.classList.toggle("wide-spacing", wide);
   $("appearanceSpacing").value = wide ? "wide" : "normal";
   $("sentenceStop").checked = !!appearance.sentenceStop;
-  $("appearanceTheme").value = theme;
   $("appearanceFont").value = appearance.font || "serif";
   $("appearancePlacement").value =
     appearance.placement === "anchored" ? "anchored" : "centered";
@@ -3280,17 +3332,16 @@ function applyAppearance() {
     appearance.transition === "instant" ? "instant" : "soft";
   $("appearanceProgress").value =
     appearance.progress === "percent" ? "percent" : "time";
-  $("appearanceSize").value = size;
   $("appearanceSizeLabel").textContent = size + "%";
+  $("sizeDown").disabled = size <= 80;
+  $("sizeUp").disabled = size >= 200;
   try {
     storage.setItem("still-appearance", JSON.stringify(appearance));
   } catch {}
   if (reader) showWord(data.tokens[reader.index]?.text || "No visible words");
 }
 for (const id of [
-  "appearanceTheme",
   "appearanceFont",
-  "appearanceSize",
   "appearancePlacement",
   "appearanceTransition",
   "appearanceProgress",
@@ -3302,9 +3353,7 @@ for (const id of [
       ...appearance,
       spacing: $("appearanceSpacing").value,
       sentenceStop: $("sentenceStop").checked,
-      theme: $("appearanceTheme").value,
       font: $("appearanceFont").value,
-      size: Number($("appearanceSize").value),
       placement: $("appearancePlacement").value,
       transition: $("appearanceTransition").value,
       progress: $("appearanceProgress").value,
@@ -3312,6 +3361,28 @@ for (const id of [
     applyAppearance();
     if (reader) updateTimeLeft();
   };
+// Background: Light and Navy are both the light theme, with a light or a navy
+// reading card; Dark is dark throughout; Auto follows the device.
+for (const swatch of document.querySelectorAll("#backgroundChoices .swatch"))
+  swatch.onclick = () => {
+    const look = swatch.dataset.look;
+    appearance = {
+      ...appearance,
+      theme: look === "paper" || look === "navy" ? "light" : look,
+      ...(look === "paper" || look === "navy"
+        ? { card: look === "paper" ? "paper" : "navy" }
+        : {}),
+    };
+    applyAppearance();
+  };
+// Text size in steps of a tenth, from 80% to 200%.
+function stepSize(by) {
+  const size = clamp((Number(appearance.size) || 100) + by, 80, 200);
+  appearance = { ...appearance, size };
+  applyAppearance();
+}
+$("sizeDown").onclick = () => stepSize(-10);
+$("sizeUp").onclick = () => stepSize(10);
 // Tapping the time left switches to percent read, and back.
 $("timeLeft").onclick = () => {
   appearance = {
