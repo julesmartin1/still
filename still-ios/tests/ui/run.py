@@ -1502,6 +1502,10 @@ async def text_fields_are_large_enough_not_to_zoom_a_phone(browser):
         .map(e => e.id || e.name)""")
     assert small == [], small
     assert await page.evaluate("document.documentElement.scrollWidth") <= 390
+    # A double tap (say on play, or + for pace) must not zoom the page either.
+    for where in ("html", "button", "#faster"):
+        action = await page.evaluate(f"getComputedStyle(document.querySelector('{where}')).touchAction")
+        assert action == "manipulation", (where, action)
     assert not page.errors, page.errors
     await ctx.close()
 
