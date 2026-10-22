@@ -2587,7 +2587,7 @@ body.immersive .starter:not(:hover, :focus-within) {
   }
 }
 .read-aloud-voice {
-  margin: 4px 0 8px 30px;
+  margin: 4px 0 0;
 }
 .read-aloud-voice label {
   display: block;
@@ -2878,15 +2878,23 @@ body[data-view="reader"] main {
   color: var(--ink);
   font-size: 15px;
 }
+/* Settings: a labelled pill, so it reads as a button and not a glyph. */
 .reader-tools-button {
   justify-self: end;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 0 14px 0 12px;
+  border: 1px solid var(--field);
+  border-radius: 999px;
   background: transparent;
   color: var(--ink);
-  font-family: var(--serif);
-  font-size: 19px;
+  font-size: 15px;
+}
+.reader-tools-button .icon {
+  width: 17px;
+  height: 17px;
 }
 :is(.back-home, .reader-tools-button):hover {
   filter: none;
@@ -3160,5 +3168,241 @@ dialog[open]::backdrop {
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+}
+
+/* ---- Settings sheet: read aloud and voice, background, text size ---- */
+.sheet-card {
+  margin: 0 0 12px;
+  padding: 4px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.sheet-card .switch {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.sheet-card .field-hint {
+  margin: -6px 0 12px;
+}
+.sheet-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+  margin: 0;
+}
+.read-aloud-voice .sheet-label {
+  margin: 6px 0 8px;
+}
+.voice-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.voice-chip,
+.swatch {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--field);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+}
+.voice-chip[aria-pressed="true"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--on-ink);
+}
+.voice-chip:hover,
+.swatch:hover {
+  filter: none;
+  background: var(--hover);
+}
+.voice-chip[aria-pressed="true"]:hover {
+  background: var(--ink);
+}
+#deviceVoiceRow {
+  margin-top: 8px;
+}
+#deviceVoiceRow[hidden] {
+  display: none;
+}
+#readAloudTry {
+  min-height: 40px;
+}
+.read-aloud-voice .field-hint {
+  margin: 0 0 10px;
+}
+.sheet-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 12px 0;
+}
+.sheet-row + .sheet-row {
+  border-top: 1px solid var(--line);
+}
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+  padding: 8px 4px;
+  border-radius: 14px;
+  font-size: 14px;
+}
+.swatch[aria-pressed="true"] {
+  border: 2px solid var(--ink);
+  padding: 7px 3px;
+  font-weight: 600;
+}
+.swatch-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid #0002;
+  flex: none;
+}
+[data-look="paper"] .swatch-dot {
+  background: #ffffff;
+}
+[data-look="navy"] .swatch-dot {
+  background: #172137;
+}
+[data-look="dark"] .swatch-dot {
+  background: #101827;
+  border-color: #fff4;
+}
+[data-look="system"] .swatch-dot {
+  background: linear-gradient(135deg, #ffffff 50%, #101827 50%);
+}
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.stepper output {
+  min-width: 52px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.size-step {
+  width: 44px;
+  height: 40px;
+  border: 1px solid var(--field);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 21px;
+}
+.size-step.small {
+  font-size: 15px;
+}
+/* The speaker mark in the reader is a button: it opens the voices. */
+button.read-aloud-badge {
+  min-height: 0;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+}
+button.read-aloud-badge[hidden] {
+  display: none;
+}
+@media (max-width: 600px) {
+  /* A natural voice's short name stays: it is the quickest way back in. */
+  .named #readAloudName {
+    position: static;
+    width: auto;
+    height: auto;
+    clip: auto;
+  }
+}
+
+/* ---- Light reading card (Background: Light) ---- */
+html[data-theme="light"][data-card="paper"] {
+  --paper-ink: #1d2740;
+  --paper-muted: #5c687e;
+}
+html[data-theme="light"][data-card="paper"] .reader {
+  background: #ffffff;
+  color: var(--paper-ink);
+  border: 1px solid var(--line);
+  box-shadow: 0 14px 35px #17213710;
+}
+html[data-theme="light"][data-card="paper"] :is(.reader-top, .status, .finish-card p, .finish-card .waitlist-status) {
+  color: var(--paper-muted);
+}
+html[data-theme="light"][data-card="paper"] :is(#timeLeft, #mode.chapter, .read-aloud-badge) {
+  color: var(--paper-ink);
+}
+html[data-theme="light"][data-card="paper"] .focal-line {
+  background: #c3ccdb;
+}
+html[data-theme="light"][data-card="paper"] #word.focus-mode .focus,
+html[data-theme="light"][data-card="paper"] .peek mark {
+  color: #c2410c; /* 5.2:1 on white */
+}
+html[data-theme="light"][data-card="paper"] .peek {
+  background: #ffffff;
+  color: var(--paper-ink);
+}
+html[data-theme="light"][data-card="paper"] .reader .primary {
+  background: var(--ink);
+  color: #ffffff;
+}
+html[data-theme="light"][data-card="paper"] .reader .secondary {
+  background: transparent;
+  border-color: var(--field);
+}
+html[data-theme="light"][data-card="paper"] .skip-hint {
+  background: #e9eef6;
+  color: var(--paper-ink);
+}
+html[data-theme="light"][data-card="paper"] .progress-track {
+  background: #edf1f7;
+}
+html[data-theme="light"][data-card="paper"] #progress {
+  background: var(--blue);
+}
+html[data-theme="light"][data-card="paper"] .finish-card .waitlist {
+  border-top-color: var(--line);
+}
+/* The dark theme's field colour would otherwise cover the switch track. */
+html[data-theme="dark"] .switch input {
+  background-color: var(--field);
+}
+html[data-theme="dark"] .switch input:checked {
+  background-color: var(--blue);
+}
+html[data-theme="dark"] .swatch-dot {
+  border-color: #fff4;
+}
+/* On the narrowest phones the title needs the room: the icon alone. */
+@media (max-width: 359px) {
+  .reader-tools-button {
+    padding: 0 11px;
+  }
+  .reader-tools-button span {
+    display: none;
   }
 }

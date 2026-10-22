@@ -189,9 +189,22 @@
             class="reader-tools-button"
             type="button"
             aria-haspopup="dialog"
-            aria-label="Reading options"
+            aria-label="Settings"
           >
-            Aa
+            <svg
+              class="icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path
+                d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"
+              /></svg
+            ><span>Settings</span>
           </button>
         </div>
         <span id="saved" class="muted saved-note">Saved on this device</span>
@@ -199,7 +212,12 @@
           <div class="reader-top">
             <span id="mode">Ready when you are</span
             ><span class="reader-meta"
-              ><span id="readAloudBadge" class="read-aloud-badge" hidden
+              ><button
+                id="readAloudBadge"
+                type="button"
+                class="read-aloud-badge"
+                aria-haspopup="dialog"
+                hidden
                 ><svg
                   class="icon"
                   viewBox="0 0 24 24"
@@ -213,7 +231,9 @@
                   <path d="M11 5 6 9H2v6h4l5 4V5z" />
                   <path d="M15.5 8.5a5 5 0 0 1 0 7" />
                   <path d="M19 5a10 10 0 0 1 0 14" /></svg
-                ><span class="read-aloud-label">Read aloud</span></span
+                ><span id="readAloudName" class="read-aloud-label"
+                  >Read aloud</span
+                ></button
               ><button id="timeLeft" type="button" class="meta-toggle"></button
               ><span id="count">1 / 200 words</span></span
             >
@@ -403,11 +423,11 @@
     </main>
     <dialog id="readerPanel" class="panel" aria-labelledby="readerPanelTitle">
       <div class="dialog-heading">
-        <h2 id="readerPanelTitle">Reading options</h2>
+        <h2 id="readerPanelTitle">Settings</h2>
         <button
           data-close="readerPanel"
           class="close"
-          aria-label="Close reading options"
+          aria-label="Close settings"
         >
           <svg
             class="icon"
@@ -423,10 +443,91 @@
           </svg>
         </button>
       </div>
-      <label id="panelAloudOption" class="switch" hidden
-        ><input id="panelAloud" type="checkbox" role="switch" />
-        <span>Read aloud</span></label
-      >
+      <section id="readAloudSetting" class="sheet-card" hidden>
+        <label class="switch"
+          ><input
+            id="readAloud"
+            type="checkbox"
+            role="switch"
+            aria-describedby="readAloudHint"
+          />
+          <span>Read aloud</span></label
+        >
+        <p id="readAloudHint" class="muted field-hint">
+          Hear each word as it appears. The words follow the voice, close to
+          your pace.
+        </p>
+        <div id="readAloudVoiceField" class="read-aloud-voice" hidden>
+          <p id="voiceChoicesLabel" class="sheet-label">Voice</p>
+          <div
+            id="voiceChoices"
+            class="voice-chips"
+            role="group"
+            aria-labelledby="voiceChoicesLabel"
+            hidden
+          ></div>
+          <span id="deviceVoiceRow" class="voice-row"
+            ><select id="readAloudVoice" aria-label="Voice"></select
+          ></span>
+          <button type="button" id="readAloudTry" class="text-button">
+            Hear a sample
+          </button>
+          <p id="readAloudPrivacy" class="muted field-hint" hidden>
+            Natural voices come from OpenAI, so the text being read is sent
+            there. Pick This device to keep everything on it.
+          </p>
+          <p id="readAloudVoiceHint" class="muted field-hint" hidden>
+            For a more natural voice, open Settings › Accessibility › Spoken
+            Content › Voices on this device, download a voice marked Enhanced or
+            Premium, then pick it here.
+          </p>
+        </div>
+      </section>
+      <section class="sheet-card look" aria-label="Look">
+        <div class="sheet-row">
+          <span id="backgroundLabel" class="sheet-label">Background</span>
+          <div
+            id="backgroundChoices"
+            class="swatches"
+            role="group"
+            aria-labelledby="backgroundLabel"
+          >
+            <button type="button" class="swatch" data-look="paper">
+              <span class="swatch-dot" aria-hidden="true"></span>Light
+            </button>
+            <button type="button" class="swatch" data-look="navy">
+              <span class="swatch-dot" aria-hidden="true"></span>Navy
+            </button>
+            <button type="button" class="swatch" data-look="dark">
+              <span class="swatch-dot" aria-hidden="true"></span>Dark
+            </button>
+            <button type="button" class="swatch" data-look="system">
+              <span class="swatch-dot" aria-hidden="true"></span>Auto
+            </button>
+          </div>
+        </div>
+        <div class="sheet-row size-row">
+          <span id="sizeLabel" class="sheet-label">Text size</span>
+          <span class="stepper" role="group" aria-labelledby="sizeLabel"
+            ><button
+              type="button"
+              id="sizeDown"
+              class="size-step small"
+              aria-label="Smaller text"
+            >
+              A</button
+            ><output id="appearanceSizeLabel" aria-live="polite">100%</output
+            ><button
+              type="button"
+              id="sizeUp"
+              class="size-step"
+              aria-label="Larger text"
+            >
+              A
+            </button></span
+          >
+        </div>
+      </section>
       <nav class="panel-tools" aria-label="Reading tools">
         <button id="contents" class="panel-tool" data-tool>
           <svg
@@ -549,7 +650,7 @@
             <path
               d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"
             /></svg
-          ><span>Settings</span
+          ><span>More settings</span
           ><svg
             class="icon"
             viewBox="0 0 24 24"
@@ -1040,11 +1141,11 @@
     </dialog>
     <dialog id="settingsDialog" aria-labelledby="settingsTitle">
       <div class="dialog-heading">
-        <h2 id="settingsTitle">Settings</h2>
+        <h2 id="settingsTitle">More settings</h2>
         <button
           data-close="settingsDialog"
           class="close"
-          aria-label="Close reading settings"
+          aria-label="Close more settings"
         >
           <svg
             class="icon"
@@ -1060,56 +1161,7 @@
           </svg>
         </button>
       </div>
-      <div id="readAloudSetting" hidden>
-        <label class="check-label read-aloud-option"
-          ><input
-            id="readAloud"
-            type="checkbox"
-            aria-describedby="readAloudHint"
-          />
-          Read aloud</label
-        >
-        <p id="readAloudHint" class="muted field-hint">
-          Hear each word as it appears. The words follow the voice, close to
-          your pace.
-        </p>
-        <p id="readAloudPrivacy" class="muted field-hint" hidden>
-          Natural voices are made by OpenAI, so the sentences being read aloud
-          are sent there to make the sound. Choose a voice built into this
-          device to keep everything on it.
-        </p>
-        <div id="readAloudVoiceField" class="read-aloud-voice" hidden>
-          <label for="readAloudVoice">Voice</label>
-          <span class="voice-row"
-            ><select id="readAloudVoice"></select
-            ><button type="button" id="readAloudTry" class="secondary">
-              Try it
-            </button></span
-          >
-          <p id="readAloudVoiceHint" class="muted field-hint" hidden>
-            For a more natural voice, open Settings › Accessibility › Spoken
-            Content › Voices on this device, download a voice marked Enhanced or
-            Premium, then pick it here.
-          </p>
-        </div>
-      </div>
-      <label for="appearanceTheme">Theme</label
-      ><select id="appearanceTheme">
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-        <option value="system">Follow device</option>
-      </select>
-      <label for="appearanceSize">Text size</label
-      ><input
-        id="appearanceSize"
-        type="range"
-        min="80"
-        max="200"
-        step="5"
-        value="100"
-      /><span id="appearanceSizeLabel">100%</span>
-      <details id="moreSettings">
-        <summary>More settings</summary>
+      <div id="moreSettings">
         <label for="readingTitle">Title</label
         ><input id="readingTitle" maxlength="240" /><label for="readingType"
           >Reading type</label
@@ -1201,7 +1253,7 @@
           Save the app, dictionary and PDF reader for offline use. Your readings
           are already stored on this device.
         </p>
-      </details>
+      </div>
 
       <div class="dialog-actions">
         <button id="saveReadingDetails" class="primary">Done</button>

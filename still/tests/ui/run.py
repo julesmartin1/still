@@ -89,16 +89,21 @@ async def shelf(page):
 
 
 async def tool(page, selector):
-    """Reading tools live in the reading options sheet (Aa)."""
+    """Reading tools live in the Settings sheet."""
     if not await page.is_visible(selector):
         await page.click("#readerTools")
     await page.click(selector)
 
 
 async def settings(page):
-    """Opens Settings with everything under More settings showing."""
+    """Opens More settings (title, check-ins, font and the rest)."""
     await tool(page, "#readingSettings")
-    await page.evaluate("document.getElementById('moreSettings').open = true")
+
+
+async def quick_settings(page):
+    """Opens the Settings sheet: read aloud and voice, background, text size."""
+    if not await dialog_open(page, "readerPanel"):
+        await page.click("#readerTools")
 
 
 async def open_text(page, text, title="Test reading", kind=None, checkins=None):
@@ -1081,7 +1086,7 @@ async def read_aloud_moves_words_with_the_voice(browser):
     # The slowest pace: the timer alone would hold "One" for over 2 seconds.
     await page.fill("#speedValue", "40")
     await page.press("#speedValue", "Enter")
-    await settings(page)
+    await quick_settings(page)
     assert await page.is_visible("#readAloud")
     assert await page.locator("#readAloudBadge").is_hidden()
     await page.check("#readAloud")
@@ -1134,7 +1139,7 @@ async def read_aloud_moves_words_with_the_voice(browser):
     assert "Pause" in await page.inner_text("#play")
     # Turning it off goes back to the timer and hides the speaker mark.
     await page.click("#play")
-    await settings(page)
+    await quick_settings(page)
     await page.uncheck("#readAloud")
     await page.keyboard.press("Escape")
     assert await page.locator("#readAloudBadge").is_hidden()
@@ -1150,7 +1155,7 @@ async def read_aloud_moves_words_with_the_voice(browser):
 @check
 async def read_aloud_is_hidden_without_speech(browser):
     ctx, page = await fresh(browser, init=NO_SPEECH)
-    await settings(page)
+    await quick_settings(page)
     assert await page.locator("#readAloudSetting").count() == 1
     assert await page.locator("#readAloudSetting").is_hidden()
     assert await page.locator("#readAloudBadge").is_hidden()
@@ -1175,7 +1180,7 @@ async def read_aloud_is_offered_on_first_run(browser):
 @check
 async def read_aloud_voice_can_be_chosen_and_tried(browser):
     ctx, page = await fresh(browser, init=FAKE_SPEECH)
-    await settings(page)
+    await quick_settings(page)
     assert await page.locator("#readAloudVoiceField").is_hidden()
     await page.check("#readAloud")
     assert await page.is_visible("#readAloudVoice")
@@ -1365,7 +1370,7 @@ async def natural_voice_reads_aloud_and_words_follow(browser):
     posts = []
     ctx, page = await fresh(browser, init=FAKE_SPEECH, setup=natural_voice_server(posts))
     await open_text(page, "One two three four. Five six seven eight.")
-    await settings(page)
+    await quick_settings(page)
     await page.check("#readAloud")
     groups = await page.eval_on_selector_all("#readAloudVoice optgroup", "gs => gs.map(g => g.label)")
     assert groups == ["Natural voices (online)", "Built into this device"], groups
@@ -1389,7 +1394,7 @@ async def natural_voice_failing_hands_over_to_the_device_voice(browser):
     posts = []
     ctx, page = await fresh(browser, init=FAKE_SPEECH, setup=natural_voice_server(posts, status=500))
     await open_text(page, "One two three four. Five six seven eight.")
-    await settings(page)
+    await quick_settings(page)
     await page.check("#readAloud")
     await page.keyboard.press("Escape")
     await page.click("#play")
@@ -1407,13 +1412,81 @@ async def a_device_voice_can_still_be_chosen_over_the_natural_one(browser):
     posts = []
     ctx, page = await fresh(browser, init=FAKE_SPEECH, setup=natural_voice_server(posts))
     await open_text(page, "One two three four.")
-    await settings(page)
+    await quick_settings(page)
     await page.check("#readAloud")
+    assert await page.locator("#readAloudVoice").is_hidden()  # behind This device
+    await page.click("#voiceChoices >> text=This device")
     await page.select_option("#readAloudVoice", "Test voice")
     await page.keyboard.press("Escape")
     await page.click("#play")
     await page.wait_for_function("window.__speech.spoken.length >= 1", timeout=4000)
     assert posts == [], posts
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def natural_voices_switch_with_one_tap(browser):
+    posts = []
+    ctx, page = await fresh(browser, init=FAKE_SPEECH, setup=natural_voice_server(posts))
+    await open_text(page, "One two three four. Five six seven eight.")
+    await quick_settings(page)
+    await page.check("#readAloud")
+    chips = await page.locator("#voiceChoices button").all_inner_texts()
+    assert chips == ["Marin", "Cedar", "Coral", "Sage", "This device"], chips
+    pressed = "#voiceChoices [aria-pressed=true]"
+    assert await page.inner_text(pressed) == "Marin"
+    await page.click("#voiceChoices >> text=Coral")
+    assert await page.inner_text(pressed) == "Coral"
+    stored = "JSON.parse(localStorage.getItem('still-appearance')).readAloudVoice"
+    assert await page.evaluate(stored) == "natural:coral"
+    # Choosing a voice plays a sample in it.
+    for _ in range(30):
+        if posts:
+            break
+        await page.wait_for_timeout(100)
+    assert posts and posts[-1]["voice"] == "coral", posts
+    await page.keyboard.press("Escape")
+    # The reader names the voice, and tapping the name opens the voices.
+    assert await page.inner_text("#readAloudName") == "Coral"
+    await page.click("#readAloudBadge")
+    assert await dialog_open(page, "readerPanel")
+    await page.click("#voiceChoices >> text=Marin")
+    assert await page.evaluate(stored) == ""  # the first natural voice
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def background_and_text_size_are_one_tap_away(browser):
+    ctx, page = await fresh(browser, viewport={"width": 390, "height": 844}, has_touch=True)
+    await quick_settings(page)
+    html = "document.documentElement.dataset"
+    stored = "JSON.parse(localStorage.getItem('still-appearance') || '{}')"
+    await page.click("[data-look=paper]")
+    assert await page.evaluate(f"{html}.theme") == "light"
+    assert await page.evaluate(f"{html}.card") == "paper"
+    bg = await page.evaluate("getComputedStyle(document.getElementById('wordReader')).backgroundColor")
+    assert bg == "rgb(255, 255, 255)", bg
+    assert await page.get_attribute("[data-look=paper]", "aria-pressed") == "true"
+    await page.click("[data-look=dark]")
+    assert await page.evaluate(f"{html}.theme") == "dark"
+    await page.click("[data-look=navy]")
+    assert await page.evaluate(f"{stored}.theme") == "light"
+    assert await page.evaluate(f"{html}.card") == "navy"
+    await page.click("[data-look=system]")
+    assert await page.evaluate(f"{stored}.theme") == "system"
+    await page.click("#sizeUp")
+    await page.click("#sizeUp")
+    assert await page.inner_text("#appearanceSizeLabel") == "120%"
+    assert await page.evaluate(f"{stored}.size") == 120
+    for _ in range(6):
+        if await page.is_enabled("#sizeDown"):
+            await page.click("#sizeDown")
+    assert await page.inner_text("#appearanceSizeLabel") == "80%"
+    assert not await page.is_enabled("#sizeDown")
+    # The sheet fits a phone without sideways scrolling.
+    assert await page.evaluate("document.getElementById('readerPanel').scrollWidth <= document.getElementById('readerPanel').clientWidth")
     assert not page.errors, page.errors
     await ctx.close()
 
