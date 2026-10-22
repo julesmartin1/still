@@ -3421,3 +3421,10 @@ html[data-theme="dark"] .swatch-dot {
     font-size: 16px !important;
   }
 }
+/* A quick second tap (play, pace + and −, a voice) must never zoom the page
+   on a phone: iPhones zoom in on a double tap and keep the page zoomed and
+   off centre, even after a reload. Pinching to zoom still works. */
+html,
+:is(button, a, input, select, textarea, label, summary, [role="button"]) {
+  touch-action: manipulation;
+}
