@@ -1491,6 +1491,21 @@ async def background_and_text_size_are_one_tap_away(browser):
     await ctx.close()
 
 
+@check
+async def text_fields_are_large_enough_not_to_zoom_a_phone(browser):
+    # iOS zooms in on any field under 16px when it gets focus, and stays zoomed.
+    ctx, page = await fresh(browser, viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    await go_home(page)
+    small = await page.evaluate("""[...document.querySelectorAll('input,select,textarea')]
+        .filter(e => !['range','checkbox','radio','file','hidden'].includes(e.type) && e.tabIndex >= 0)
+        .filter(e => parseFloat(getComputedStyle(e).fontSize) < 16)
+        .map(e => e.id || e.name)""")
+    assert small == [], small
+    assert await page.evaluate("document.documentElement.scrollWidth") <= 390
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],

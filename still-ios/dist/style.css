@@ -3406,3 +3406,18 @@ html[data-theme="dark"] .swatch-dot {
     display: none;
   }
 }
+/* iPhones zoom the page in when a field under 16px gets focus, and it stays
+   zoomed (and off centre) after. Text fields are 16px on touch screens. */
+@media (pointer: coarse) {
+  input:not(
+      [type="range"],
+      [type="checkbox"],
+      [type="radio"],
+      [type="file"],
+      #speedValue
+    ),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
