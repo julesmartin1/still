@@ -1323,8 +1323,13 @@ async def play_is_centred_and_buttons_stay_put(browser):
         await page.wait_for_timeout(400)  # the reader's slide-in has finished
         word, play = await page.evaluate(centre, "#word"), await page.evaluate(centre, "#play")
         assert abs(word - play) < 1, (width, word, play)
-        # The label stays on one line (icon only on the narrowest phones).
-        assert await page.evaluate("document.getElementById('play').getBoundingClientRect().height") < 60, width
+        # Play is the big round button, with back and forward the same
+        # distance either side of it so the row looks centred too.
+        box = "s => { const b = document.querySelector(s).getBoundingClientRect(); return [b.left, b.right, b.width, b.height]; }"
+        p, back, fwd = [await page.evaluate(box, s) for s in ("#play", "#quickRewind", "#quickForward")]
+        assert p[2] >= 70 and abs(p[2] - p[3]) < 1, (width, p)
+        assert abs((p[0] - back[1]) - (fwd[0] - p[1])) < 1, (width, back, p, fwd)
+        assert back[1] - back[0] == fwd[1] - fwd[0], width
         top = "document.getElementById('play').getBoundingClientRect().top"
         paused = await page.evaluate(top)
         await page.click("#play")

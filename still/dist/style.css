@@ -1906,28 +1906,46 @@ html[data-theme="dark"] .streak-chip.lit .flame {
 .controls {
   align-items: center;
 }
+/* Play is the one big round button, so it reads as the control at a glance;
+   its label stays for screen readers. */
 #play {
-  min-width: 190px;
-  min-height: 54px;
-  font-size: calc(16px * var(--system-text-scale));
-  font-weight: 600;
-  border-radius: 999px;
+  position: relative;
+  width: 76px;
+  height: 76px;
+  min-height: 76px;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 7px #dbe5ff1f,
+    0 10px 24px #0005;
+  transition: transform 0.12s ease;
+}
+#play:active {
+  transform: scale(0.95);
+}
+#play span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .controls .secondary {
   border-radius: 999px;
-  min-height: 46px;
+  min-height: 52px;
 }
 .controls .round {
-  width: 46px;
+  width: 52px;
   padding: 0;
 }
 .controls .icon {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
 }
 #play .icon {
-  width: 16px;
-  height: 16px;
+  width: 30px;
+  height: 30px;
 }
 .toast {
   position: absolute;
@@ -2010,42 +2028,40 @@ html[data-theme="dark"] .streak-chip.lit .flame {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Play sits exactly under the word: back on its left, forward and review on
-   its right, and an empty column first that mirrors review. */
+/* Back, play and forward sit as one even row with play exactly under the
+   word; review is a quiet line of its own beneath, so nothing tips the row. */
 .controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto auto minmax(0, 1fr);
+  column-gap: 28px;
+  row-gap: 10px;
 }
 #quickRewind {
   grid-column: 2;
 }
-#review {
-  justify-self: start;
+.controls #review {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border-color: transparent;
+  background: transparent;
+  font-size: calc(13px * var(--system-text-scale));
+  opacity: 0.75;
+}
+.controls #review .icon {
+  width: 16px;
+  height: 16px;
+}
+body.immersive .controls #review:not(:hover, :focus-visible) {
+  opacity: 0.3;
 }
 @media (max-width: 600px) {
-  /* On a phone review moves to the edge, apart from the three buttons. */
   .controls {
-    grid-template-columns:
-      minmax(44px, 1fr) 44px minmax(0, 150px) 44px
-      minmax(44px, 1fr);
-    gap: 6px;
+    column-gap: 22px;
     margin-left: 12px;
     margin-right: 12px;
-  }
-  .controls .round,
-  .controls .secondary:not(.round) {
-    width: 44px;
-    min-height: 44px;
-  }
-  #play {
-    min-width: 0;
-    padding: 0 8px;
-    gap: 6px;
-    font-size: calc(15px * var(--system-text-scale));
-    white-space: nowrap;
-  }
-  #review {
-    justify-self: end;
   }
   /* Two lines are kept for the hint under the word, so the buttons don't
      jump when it appears on pause and goes on play. */
@@ -2055,13 +2071,6 @@ html[data-theme="dark"] .streak-chip.lit .flame {
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-  .controls .secondary:not(.round) span {
-    display: none;
-  }
-  .controls .secondary:not(.round) {
-    width: 46px;
-    padding: 0;
   }
   .reader-meta #count {
     display: none;
@@ -3150,24 +3159,9 @@ dialog[open]::backdrop {
     animation: none;
   }
 }
-/* The narrowest phones: Play shows just its icon (its label still names it
-   for screen readers), so it stays centred between the other buttons. */
-@media (max-width: 400px) {
-  #play {
-    font-size: calc(14px * var(--system-text-scale));
-  }
-}
 @media (max-width: 369px) {
   .status {
     min-height: 4.5em;
-  }
-  #play span {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
   }
 }
 
