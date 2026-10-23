@@ -139,6 +139,44 @@ export function naturalWordStarts(
 // Natural voice chunks are shorter than the device voice's: a short first
 // chunk starts sooner, and each one is a single small request.
 export const NATURAL_CHUNK_WORDS = 40;
+// Starting cold (play, a jump, a new pace), the first chunk is cut at the
+// first sentence or clause end within this many words, so the voice starts
+// about twice as soon; it is never cut mid-phrase.
+export const FIRST_CHUNK_WORDS = 16;
+export const FIRST_CHUNK_MIN_WORDS = 4;
+// How many chunks are fetched ahead of the one being read, so a short
+// sentence never leaves the voice waiting on the next.
+export const FETCH_AHEAD = 2;
+// Clips come with silence before and after the voice. Most of it is cut, so
+// sentences follow each other like speech: a short breath before the voice,
+// and a pause after it about the length of a spoken full stop.
+export const KEEP_LEAD_MS = 30;
+export const KEEP_TAIL_MS = 220;
+// The end of a short opening chunk: the first sentence end, or clause end of
+// at least FIRST_CHUNK_MIN_WORDS, within FIRST_CHUNK_WORDS; -1 when there is
+// none (the normal chunk is used).
+export function firstChunkEnd(tokens, start) {
+  const limit = Math.min(tokens.length - 1, start + FIRST_CHUNK_WORDS - 1);
+  for (let i = start; i <= limit; i++) {
+    const t = tokens[i];
+    if (t.paragraphEnd || sentenceEnd.test(t.text)) return i;
+    if (
+      i - start + 1 >= FIRST_CHUNK_MIN_WORDS &&
+      (clauseEnd.test(t.text) || /[—–]$/.test(t.text))
+    )
+      return i;
+  }
+  return -1;
+}
+// The part of a clip to play (ms), with most of its silence cut.
+export function playedSpan(durationMs, span) {
+  const from = Math.max(0, (span.lead || 0) - KEEP_LEAD_MS);
+  const to = Math.max(
+    from,
+    durationMs - Math.max(0, (span.tail || 0) - KEEP_TAIL_MS),
+  );
+  return { from, to };
+}
 // How long a chunk may take to arrive while the reader waits, before giving
 // up on the natural voice (a little longer the first time).
 export const WAIT_LIMIT_MS = 12000;
@@ -256,8 +294,10 @@ export class NaturalPlayback {
       sound?.stop();
     } catch {}
   }
-  chunkAt(start) {
-    const end = chunkEnd(this.tokens, start, NATURAL_CHUNK_WORDS);
+  chunkAt(start, cold = false) {
+    const short = cold ? firstChunkEnd(this.tokens, start) : -1;
+    const end =
+      short >= 0 ? short : chunkEnd(this.tokens, start, NATURAL_CHUNK_WORDS);
     const words = this.tokens.slice(start, end + 1).map((t) => t.text);
     const wanted = this.wpm(start);
     return {
@@ -302,16 +342,25 @@ export class NaturalPlayback {
     promise.catch(() => {
       if (this.clips.get(chunk.start) === entry) this.clips.delete(chunk.start);
     });
-    while (this.clips.size > 4)
+    while (this.clips.size > FETCH_AHEAD + 3)
       this.clips.delete(this.clips.keys().next().value);
     return promise;
+  }
+  // Asks for the chunks after `chunk` ahead of time.
+  fetchAhead(chunk) {
+    for (let n = 0; n < FETCH_AHEAD && chunk.end + 1 < this.length; n++) {
+      chunk = this.chunkAt(chunk.end + 1);
+      this.clip(chunk, false).catch(() => {});
+    }
   }
   speakFrom(start) {
     const run = ++this.run;
     this.clearTimers();
-    const chunk = this.chunkAt(start);
+    // Nothing made ahead for this word: start with a short chunk.
+    const chunk = this.chunkAt(start, !this.clips.has(start));
     this.speed = chunk.speed;
     const pending = this.clip(chunk, true);
+    this.fetchAhead(chunk);
     // Don't leave the reader waiting on a voice that can't keep up.
     this.watchdog = this.schedule(
       () => {
@@ -342,26 +391,31 @@ export class NaturalPlayback {
       this.voiceId,
       learnOneWpm(this.oneWpm, chunk.words.length, voiced, chunk.speed),
     );
+    const { from, to } = playedSpan(duration, span);
     let sound;
     try {
-      sound = this.audio.play(clip, () => {
-        if (run !== this.run || this.sound !== sound) return;
-        this.sound = null;
-        this.finishChunk(run, chunk);
-      });
+      sound = this.audio.play(
+        clip,
+        () => {
+          if (run !== this.run || this.sound !== sound) return;
+          this.sound = null;
+          this.finishChunk(run, chunk);
+        },
+        { from, to },
+      );
     } catch {
       return this.fail(run, "failed");
     }
     this.sound = sound;
-    chunk.started = sound.startedAt ?? this.audio.now();
+    // Word times count from the clip's start, before the silence cut.
+    chunk.started = (sound.startedAt ?? this.audio.now()) - from;
     // If the sound never ends (audio blocked or stuck), stop waiting for it.
     this.watchdog = this.schedule(() => {
       this.watchdog = null;
       if (run === this.run && this.sound === sound) this.fail(run, "failed");
-    }, duration + END_GRACE_MS);
-    // Fetch the next sentence while this one plays.
-    if (chunk.end + 1 < this.length)
-      this.clip(this.chunkAt(chunk.end + 1), false).catch(() => {});
+    }, to - from + END_GRACE_MS);
+    // Keep the next sentences coming while this one plays.
+    this.fetchAhead(chunk);
     // Line the words up with the clip. The word shown may be past the
     // chunk's start (resuming mid-sentence re-speaks from it, so it is).
     const tick = () => {
@@ -471,7 +525,8 @@ export class WebAudioOutput {
   now() {
     return this.context ? this.context.currentTime * 1000 : performance.now();
   }
-  play({ samples, sampleRate }, onEnded) {
+  // Plays the clip from `from` to `to` (ms); startedAt is when `from` sounds.
+  play({ samples, sampleRate }, onEnded, { from = 0, to = null } = {}) {
     const context = this.unlock();
     const buffer = context.createBuffer(1, samples.length, sampleRate);
     buffer.copyToChannel(samples, 0);
@@ -483,7 +538,9 @@ export class WebAudioOutput {
       if (!stopped) onEnded();
     };
     const at = context.currentTime + 0.02;
-    source.start(at);
+    const total = (samples.length / sampleRate) * 1000;
+    const end = Math.min(total, to ?? total);
+    source.start(at, from / 1000, Math.max(0, end - from) / 1000);
     return {
       startedAt: at * 1000,
       stop() {

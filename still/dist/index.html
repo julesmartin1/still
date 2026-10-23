@@ -28,7 +28,29 @@
           >a little room to read</span
         ></a
       >
-      <nav class="header-actions" aria-label="Add">
+      <nav class="header-actions" aria-label="Settings and add">
+        <button
+          id="homeSettings"
+          class="reader-tools-button"
+          type="button"
+          aria-haspopup="dialog"
+          aria-label="Settings"
+        >
+          <svg
+            class="icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path
+              d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"
+            /></svg
+          ><span>Settings</span>
+        </button>
         <button id="newText" class="primary" aria-label="Add reading">
           <svg
             class="icon"
@@ -1162,6 +1184,7 @@
         </button>
       </div>
       <div id="moreSettings">
+        <div class="reading-only">
         <label for="readingTitle">Title</label
         ><input id="readingTitle" maxlength="240" /><label for="readingType"
           >Reading type</label
@@ -1212,6 +1235,7 @@
             </details>
           </section>
         </details>
+        </div>
         <label for="appearanceFont">Reading font</label
         ><select id="appearanceFont">
           <option value="serif">Serif</option>

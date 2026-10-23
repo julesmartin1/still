@@ -3428,3 +3428,17 @@ html,
 :is(button, a, input, select, textarea, label, summary, [role="button"]) {
   touch-action: manipulation;
 }
+/* Settings on Home: the same sheet, minus the tools for one reading. */
+.header-actions {
+  align-items: center;
+}
+.header-actions .reader-tools-button {
+  min-height: 44px;
+}
+body[data-view="home"] #readerPanel .panel-tool:not(#readingSettings),
+body[data-view="home"] #settingsDialog .reading-only {
+  display: none;
+}
+body[data-view="home"] #readerPanel #readingSettings {
+  border-top: 0;
+}

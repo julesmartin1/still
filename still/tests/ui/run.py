@@ -1510,6 +1510,28 @@ async def text_fields_are_large_enough_not_to_zoom_a_phone(browser):
     await ctx.close()
 
 
+@check
+async def settings_open_from_home_too(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH, viewport={"width": 390, "height": 844}, has_touch=True)
+    await go_home(page)
+    await page.click("#homeSettings")
+    assert await dialog_open(page, "readerPanel")
+    assert await page.is_visible("#readAloud") and await page.is_visible("#backgroundChoices")
+    # The tools for one reading stay in the reader.
+    for tool_id in ("#contents", "#readingMode", "#bookmarks"):
+        assert await page.locator(tool_id).is_hidden(), tool_id
+    await page.click("[data-look=dark]")
+    assert await page.evaluate("document.documentElement.dataset.theme") == "dark"
+    await page.click("#readingSettings")
+    assert await dialog_open(page, "settingsDialog")
+    assert await page.locator("#readingTitle").is_hidden()
+    assert await page.is_visible("#appearanceFont")
+    await page.click("#saveReadingDetails")
+    assert await page.evaluate("document.body.dataset.view") == "home"
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
 async def main():
     server = subprocess.Popen(
         ["node", "server.mjs"],
