@@ -15,6 +15,10 @@ import {
   CloudVoiceEngine,
   MAX_SPEAK_CHARS,
   NATURAL_ONE_WPM,
+  firstChunkEnd,
+  playedSpan,
+  KEEP_LEAD_MS,
+  KEEP_TAIL_MS,
   WAIT_LIMIT_MS,
   FIRST_WAIT_LIMIT_MS,
   END_GRACE_MS,
@@ -146,8 +150,8 @@ function harness(text, options = {}) {
       this.unlocks++;
     },
     now: () => now,
-    play(c, onEnded) {
-      const sound = { clip: c, onEnded, stopped: false, startedAt: now };
+    play(c, onEnded, options) {
+      const sound = { clip: c, onEnded, options, stopped: false, startedAt: now };
       sound.stop = () => (sound.stopped = true);
       sounds.push(sound);
       return sound;
@@ -210,7 +214,8 @@ test("speaks chunk by chunk, words follow the clip, the next chunk is made ahead
   const h = harness("One two three. Four five.");
   h.player.play();
   assert.equal(h.audio.unlocks, 1);
-  assert.equal(h.requests.length, 1);
+  // The sentence to read now, and the next one asked for at the same time.
+  assert.equal(h.requests.length, 2);
   assert.equal(h.requests[0].text, "One two three.");
   assert.deepEqual(h.requests[0].words, ["One", "two", "three."]);
   assert.equal(h.requests[0].speed, 1);
@@ -221,7 +226,7 @@ test("speaks chunk by chunk, words follow the clip, the next chunk is made ahead
   h.requests[0].resolve(h.clip(900, [3, 3, 3]));
   await tick();
   assert.equal(h.sounds.length, 1);
-  // The next sentence is asked for while this one plays.
+  // The next sentence was asked for ahead, and only once.
   assert.equal(h.requests.length, 2);
   assert.equal(h.requests[1].text, "Four five.");
   assert.equal(h.requests[1].urgent, false);
@@ -302,9 +307,9 @@ test("seeking speaks from the new word; a pace change re-speaks at the new speed
   assert.equal(h.requests.length, count);
   h.player.wpm = () => 240;
   h.player.retime();
-  assert.equal(h.requests.length, count + 1);
-  assert.equal(h.requests.at(-1).text, "four five.");
-  assert.equal(h.requests.at(-1).speed, 1.5);
+  assert.equal(h.requests.length, count + 2); // the sentence and the next
+  assert.equal(h.requests.at(-2).text, "four five.");
+  assert.equal(h.requests.at(-2).speed, 1.5);
 });
 
 test("paces slower than the voice goes hold the sentence's last word", async () => {
@@ -370,6 +375,47 @@ test("a failed clip, a voice too slow or a stuck sound hands back to the app", a
   h.advance(600 + END_GRACE_MS + 1); // the sound never said it ended
   assert.deepEqual(h.events, ["fail failed"]);
   assert.equal(h.sounds[0].stopped, true);
+});
+
+test("starting cold, the first chunk ends at the first clause; later ones are whole sentences", async () => {
+  const h = harness(
+    "Once upon a time, in a quiet village by the sea, there lived an old man. He said little.",
+  );
+  h.player.play();
+  assert.equal(h.requests[0].text, "Once upon a time,");
+  assert.equal(h.requests[0].urgent, true);
+  // Two chunks are fetched ahead.
+  assert.equal(
+    h.requests[1].text,
+    "in a quiet village by the sea, there lived an old man.",
+  );
+  // (Ahead, chunks are whole sentences again.)
+  assert.equal(h.requests[2].text, "He said little.");
+  assert.equal(h.requests.length, 3);
+  // A phrase with no comma or full stop early on is never cut short.
+  assert.equal(firstChunkEnd(parseText("One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen.").tokens, 0), -1);
+});
+
+test("most of a clip's silence is cut, and words still line up", async () => {
+  assert.deepEqual(playedSpan(2000, { lead: 200, tail: 500 }), {
+    from: 200 - KEEP_LEAD_MS,
+    to: 2000 - (500 - KEEP_TAIL_MS),
+  });
+  assert.deepEqual(playedSpan(1000, { lead: 10, tail: 100 }), { from: 0, to: 1000 });
+  const h = harness("One two three. Four.");
+  h.player.play();
+  // 200 ms of silence, then three words over 900 ms, then 600 ms of silence.
+  const samples = new Float32Array(1700);
+  samples.fill(0.5, 200, 1100);
+  h.requests[0].resolve({ samples, sampleRate: 1000, weights: [3, 3, 3] });
+  await tick();
+  // Play starts 150 ms in (180 ms of measured lead, less the 30 ms kept), so
+  // the second word, about 493 ms into the clip, shows 343 ms after play.
+  assert.deepEqual(h.sounds[0].options, { from: 150, to: 1700 - (580 - KEEP_TAIL_MS) });
+  h.advance(330);
+  assert.equal(h.player.index, 0);
+  h.advance(20);
+  assert.equal(h.player.index, 1);
 });
 
 test("the voice's pace is learned so later sentences match the reader's", async () => {

@@ -804,6 +804,8 @@ function openSettings() {
   $("readerPanel").showModal();
 }
 $("readerTools").onclick = openSettings;
+// The same sheet from Home, without the tools for the open reading.
+$("homeSettings").onclick = openSettings;
 // The speaker mark in the reader names the voice; tapping it changes it.
 $("readAloudBadge").onclick = openSettings;
 // A tool closes the sheet before it opens its own, so the two never stack.
@@ -2583,7 +2585,8 @@ $("readingType").onchange = () => {
 // outside) keeps the title and check-in choices too.
 $("saveReadingDetails").onclick = () => {
   $("settingsDialog").close();
-  returnToReader(); // at once, so a key pressed next reaches the reader
+  // At once, so a key pressed next reaches the reader (Home stays Home).
+  if (document.body.dataset.view === "reader") returnToReader();
 };
 $("settingsDialog").addEventListener("close", () => {
   const every = checkinSpacing($("checkinMode").value);
@@ -2596,7 +2599,7 @@ $("settingsDialog").addEventListener("close", () => {
     save();
     checkpoint();
   }
-  if (!erasing) returnToReader();
+  if (!erasing && document.body.dataset.view === "reader") returnToReader();
 });
 function readingSections() {
   return readingOptions.sections
