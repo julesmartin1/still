@@ -15,6 +15,7 @@
   -webkit-font-smoothing: antialiased;
   --ink: #202b43;
   --on-ink: #ffffff;
+  --ink-ring: #202b4314; /* the soft halo round a play button */
   --blue: #365fe5;
   --muted: #5c687e; /* 4.5:1+ on every light surface */
   --line: #e2e7ef;
@@ -1305,6 +1306,7 @@ html[data-theme="dark"] {
   color: #e4eaf5;
   --ink: #e4eaf5;
   --on-ink: #101827;
+  --ink-ring: #e4eaf51f;
   --muted: #a6b4cb;
   --blue: #a5bdff;
   --line: #26324a;
@@ -2741,18 +2743,28 @@ body[data-view="reader"] main {
   border-radius: 4px;
   overflow: hidden;
 }
+/* The same round play button as the reader's, a size down to fit the card.
+   The triangle is drawn centred on its weight, so it needs no nudge. */
 .continue-go {
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: 60px;
+  height: 60px;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--ink);
   color: var(--on-ink);
+  box-shadow:
+    0 0 0 6px var(--ink-ring),
+    0 8px 18px #10182733;
+  transition: transform 0.12s ease;
+}
+.continue-card:active .continue-go {
+  transform: scale(0.95);
 }
 .continue-go .icon {
-  margin-left: 3px;
+  width: 24px;
+  height: 24px;
 }
 
 .home .today {
@@ -3119,8 +3131,8 @@ dialog[open]::backdrop {
     font-size: 20px;
   }
   .continue-go {
-    width: 46px;
-    height: 46px;
+    width: 54px;
+    height: 54px;
   }
   .book-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3363,6 +3375,11 @@ html[data-theme="light"][data-card="paper"] .peek {
 html[data-theme="light"][data-card="paper"] .reader .primary {
   background: var(--ink);
   color: #ffffff;
+}
+html[data-theme="light"][data-card="paper"] #play {
+  box-shadow:
+    0 0 0 7px var(--ink-ring),
+    0 10px 24px #10182733;
 }
 html[data-theme="light"][data-card="paper"] .reader .secondary {
   background: transparent;
