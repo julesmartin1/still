@@ -22,6 +22,11 @@ import {
   WAIT_LIMIT_MS,
   FIRST_WAIT_LIMIT_MS,
   END_GRACE_MS,
+  SHOW_EARLY_MS,
+  speechGaps,
+  matchGaps,
+  alignedWordStarts,
+  WebAudioOutput,
 } from "../dist/natural-voice.js";
 
 test("words a minute map to the voice's speed, clamped to 0.6–1.5", () => {
@@ -93,12 +98,134 @@ test("commas and sentence ends inside a chunk get extra time", () => {
   );
 });
 
-test("without phoneme counts, letters stand in", () => {
-  assert.deepEqual(letterWeights(["a", "word", "—"]), [1, 3.4, 1]);
+test("without phoneme counts, each word's spoken length stands in", () => {
+  const [a, word, dash, year] = letterWeights(["a", "word", "—", "1984"]);
+  assert.ok(a < word && dash === 1);
+  // "1984" is said "nineteen eighty-four", far longer than its four digits.
+  assert.ok(year > 3 * word, year);
   const starts = naturalWordStarts(["a", "longer"], 1000, null);
   assert.ok(starts[1] < 300); // "a" is short
   const bad = naturalWordStarts(["a", "longer"], 1000, [0, Number.NaN]);
   assert.deepEqual(bad, starts);
+});
+
+// A clip of speech at 1000 samples a second: `parts` alternate sound and
+// silence lengths in ms, starting with sound.
+function speech(parts, lead = 0, tail = 0) {
+  const total = lead + parts.reduce((a, b) => a + b, 0) + tail;
+  const samples = new Float32Array(total);
+  let at = lead;
+  parts.forEach((ms, i) => {
+    if (i % 2 === 0) samples.fill(0.4, at, at + ms);
+    at += ms;
+  });
+  return samples;
+}
+
+test("pauses in the voice are found, but not short stops inside words", () => {
+  // 600 ms of voice, a 200 ms pause, 400 ms, a 40 ms stop, 300 ms.
+  const samples = speech([600, 200, 400, 40, 300], 100, 200);
+  const span = voicedSpan(samples, 1000);
+  assert.deepEqual(speechGaps(samples, 1000, span), [{ from: 700, to: 900 }]);
+  assert.deepEqual(speechGaps(new Float32Array(500), 1000, span), []);
+});
+
+test("words line up with the pauses the voice makes", () => {
+  // "The tortoise, slow and steady, won." The voice pauses 300 ms after
+  // each comma, and takes longer over "The tortoise" than an even share.
+  const words = ["The", "tortoise,", "slow", "and", "steady,", "won."];
+  const samples = speech([900, 300, 700, 300, 400]);
+  const span = voicedSpan(samples, 1000);
+  const gaps = speechGaps(samples, 1000, span);
+  assert.equal(gaps.length, 2);
+  const { starts, matches } = alignedWordStarts(words, samples.length, null, span, gaps);
+  assert.deepEqual(
+    matches.map((m) => m.word),
+    [2, 5],
+  );
+  // "slow" starts as the voice comes back after the first pause, "won." after
+  // the second, exactly; words between pauses share the time between them.
+  assert.equal(starts[2], 1200);
+  assert.equal(starts[5], 2200);
+  assert.ok(starts[1] > 0 && starts[1] < 900);
+  assert.ok(starts[3] > 1200 && starts[4] < 1900 && starts[3] < starts[4]);
+  // Without the pauses heard, a guess from word lengths is well off.
+  const guessed = naturalWordStarts(words, samples.length, null, span);
+  assert.ok(Math.abs(guessed[2] - 1200) > 100, guessed[2]);
+  assert.ok(Math.abs(guessed[5] - 2200) > 100, guessed[5]);
+});
+
+test("a pause far from any word boundary is left alone", () => {
+  const words = ["One", "two", "three", "four"];
+  // A long pause right at the start of the voiced part, after a few ms.
+  const samples = speech([100, 250, 1300]);
+  const span = voicedSpan(samples, 1000);
+  const gaps = speechGaps(samples, 1000, span);
+  const { matches } = alignedWordStarts(words, samples.length, [3, 3, 3, 3], span, gaps);
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].word, 1); // the only boundary near 350 ms
+  assert.deepEqual(matchGaps(words, [0, 400, 800, 1200], [], 1650), []);
+});
+
+test("each clip reports how its stretches of speech and pauses took", async () => {
+  const timings = [];
+  const h = harness("Slow and steady, wins the race today.", {
+    onTiming: (t) => timings.push(t),
+  });
+  h.player.play();
+  h.requests[0].resolve({ samples: speech([800, 300, 900]), sampleRate: 1000 });
+  await tick();
+  assert.equal(timings.length, 1);
+  const [t] = timings;
+  assert.deepEqual(t.words, ["Slow", "and", "steady,", "wins", "the", "race", "today."]);
+  assert.deepEqual(
+    t.stretches.map(([a, b]) => [a, b]),
+    [
+      [0, 3],
+      [3, 7],
+    ],
+  );
+  assert.equal(t.matches[0].word, 3);
+});
+
+test("words are shown just before the voice says them", async () => {
+  const h = harness("One two three.", { early: true });
+  h.player.play();
+  h.requests[0].resolve(h.clip(900, [3, 3, 3]));
+  await tick();
+  // The second word is said at 300 ms and shown SHOW_EARLY_MS before.
+  h.advance(300 - SHOW_EARLY_MS - 2);
+  assert.equal(h.player.index, 0);
+  h.advance(3);
+  assert.equal(h.player.index, 1);
+});
+
+test("the audio clock follows what is heard, after the output's delay", () => {
+  const output = new WebAudioOutput({ AudioContext: function () {} });
+  const realNow = performance.now;
+  try {
+    performance.now = () => 10000;
+    // Bluetooth: 250 ms between making a sample and hearing it.
+    output.context = { currentTime: 5, outputLatency: 0.25 };
+    assert.equal(output.now(), 4750);
+    // A timestamp from the output itself wins: heard 4.7 s at 9.9 s, so
+    // 4.8 s now.
+    output.context = {
+      currentTime: 5,
+      outputLatency: 0.25,
+      getOutputTimestamp: () => ({ contextTime: 4.7, performanceTime: 9900 }),
+    };
+    assert.equal(output.now(), 4800);
+    // Nonsense from the output is ignored.
+    output.context = {
+      currentTime: 5,
+      baseLatency: 0.01,
+      getOutputTimestamp: () => ({ contextTime: 9, performanceTime: 9900 }),
+    };
+    assert.equal(output.now(), 4990);
+  } finally {
+    performance.now = realNow;
+  }
 });
 
 test("natural voice values in settings", () => {
@@ -149,7 +276,9 @@ function harness(text, options = {}) {
     unlock() {
       this.unlocks++;
     },
-    now: () => now,
+    // Words are shown SHOW_EARLY_MS before the voice says them; the clock
+    // here runs that much behind, so the times below are the words' own.
+    now: () => now - (options.early ? 0 : SHOW_EARLY_MS),
     play(c, onEnded, options) {
       const sound = { clip: c, onEnded, options, stopped: false, startedAt: now };
       sound.stop = () => (sound.stopped = true);
@@ -168,6 +297,7 @@ function harness(text, options = {}) {
     breakAfter: options.breakAfter ?? null,
     onBreak: (i) => events.push(`break ${i}`),
     onFail: (reason) => events.push(`fail ${reason}`),
+    onTiming: options.onTiming ?? null,
     wpm: () => options.wpm ?? NATURAL_ONE_WPM,
     voice: "marin",
     synth,
