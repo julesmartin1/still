@@ -1339,6 +1339,19 @@ async def play_is_centred_and_buttons_stay_put(browser):
         await ctx.close()
 
 
+@check
+async def home_play_button_is_round_and_centred(browser):
+    for width in (375, 1100):
+        ctx, page = await fresh(browser, reader=False, viewport={"width": width, "height": 800})
+        go, icon = [await page.evaluate(
+            "s => { const b = document.querySelector(s).getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2, b.width, b.height]; }", s)
+            for s in (".continue-go", ".continue-go .icon")]
+        assert go[2] >= 53.5 and abs(go[2] - go[3]) < 0.5, (width, go)
+        # The triangle is drawn centred on its weight; any nudge pushes it off.
+        assert abs(go[0] - icon[0]) < 0.5 and abs(go[1] - icon[1]) < 0.5, (width, go, icon)
+        await ctx.close()
+
+
 def tone_wav(ms, rate=8000):
     """A WAV clip of a quiet tone, standing in for the natural voice's MP3."""
     import math
