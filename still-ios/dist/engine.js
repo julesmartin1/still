@@ -1,3 +1,9 @@
+import {
+  DEFAULT_VOICE_TIMING,
+  averageSpokenMs,
+  spokenMs,
+} from "./spoken.js";
+
 export const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 export const cleanWord = (w) =>
   w.toLowerCase().replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
@@ -143,22 +149,30 @@ export function recordLookup(profile, word) {
   return { ...profile, lookups };
 }
 // Relative weights allocate the paragraph's budget; they do not add time to it.
+//
+// How long a word takes to say sets most of its time on screen. A voice
+// spends a fixed time on any word plus a little per sound in it (spoken.js);
+// the natural voice measures both, and its pauses, as it reads aloud, and
+// `voice` carries what it measured. Against an average word:
+//   weight = 0.45 + 0.55 × spoken(word) / spoken(average word)
+// so "a" gets about 0.8, an average word 1 and "extraordinary" about 1.9.
+// The fixed part keeps short words on screen long enough to be seen. The
+// pause after a comma or a full stop adds half the voice's pause there.
 export function wordWeight(
   token,
-  { profile = freshProfile(), now = Date.now() } = {},
+  { profile = freshProfile(), now = Date.now(), voice = DEFAULT_VOICE_TIMING } = {},
 ) {
-  const letters = (token.norm.match(/\p{L}/gu) || []).length;
-  // Longer words take longer to recognise: in normal reading the eye stays
-  // roughly 20-30 ms longer per extra letter. A 10-letter word gets about
-  // 40% more time than a short one, up to double for very long words.
-  let weight = clamp(1 + 0.08 * Math.max(0, letters - 5), 1, 2);
+  const average = averageSpokenMs(voice);
+  const said = spokenMs(token.text ?? token.norm, voice) / average;
+  let weight = clamp(0.45 + 0.55 * said, 0.75, 2.2);
   weight += token.complexity || 0;
   if (token.rare) weight += 0.16;
   const looked = profile.lookups[token.norm];
   if (Number.isFinite(looked))
     weight += 0.25 * clamp(1 - (now - looked) / 86400000 / 30, 0, 1);
-  if (clauseEnd.test(token.text)) weight += 0.35;
-  if (sentenceEnd.test(token.text)) weight += 0.7;
+  if (clauseEnd.test(token.text)) weight += clamp((0.5 * voice.comma) / average, 0.2, 0.6);
+  if (sentenceEnd.test(token.text))
+    weight += clamp((0.5 * voice.stop) / average, 0.4, 1.1);
   if (token.paragraphEnd) weight += 0.6;
   return weight;
 }
@@ -209,6 +223,7 @@ export function buildTimingPlan(
     replayParagraph = null,
     replayParagraphs = null, // Set of paragraphs to replay slower
     now = Date.now(),
+    voice = DEFAULT_VOICE_TIMING, // what the voice taught (spoken.js)
   } = {},
 ) {
   const groups = new Map();
@@ -216,7 +231,7 @@ export function buildTimingPlan(
     if (!groups.has(token.paragraph)) groups.set(token.paragraph, []);
     groups
       .get(token.paragraph)
-      .push({ index, weight: wordWeight(token, { profile, now }) });
+      .push({ index, weight: wordWeight(token, { profile, now, voice }) });
   });
   const durations = new Array(tokens.length);
   for (const [paragraph, words] of groups) {

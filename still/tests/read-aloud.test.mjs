@@ -5,6 +5,7 @@ import {
   wpmToRate,
   chunkEnd,
   utteranceText,
+  withoutQuoteMarks,
   wordAtChar,
   estimateWordTimes,
   guessLanguage,
@@ -388,4 +389,24 @@ test("the most natural on-device voice is chosen, and the reader's pick wins", (
   );
   const names = voiceChoices(voices, "en").map((x) => x.name);
   assert.deepEqual(names, ["Ava (Premium)", "Daniel (Enhanced)", "Samantha"]);
+});
+
+test("quotation marks are left out of what the voice reads, apostrophes kept", () => {
+  const cases = [
+    ["“I am not tired,” said the hare.", " I am not tired,  said the hare."],
+    ['"Yes," she said, "it is."', " Yes,  she said,  it is. "],
+    ["‘No,’ he said. Don’t go.", " No,  he said. Don’t go."],
+    ["The dogs’ bowls, ’tis true, since the ’90s.", "The dogs’ bowls, ’tis true, since the ’90s."],
+    ["He said ‘hello’ twice.", "He said  hello  twice."],
+    ["``Quoted'' here", "  Quoted   here"],
+    ["“A quote that closes in the next sentence", " A quote that closes in the next sentence"],
+  ];
+  for (const [text, spoken] of cases) {
+    assert.equal(withoutQuoteMarks(text), spoken);
+    // Same length, so each word is still where the voice says it is.
+    assert.equal(withoutQuoteMarks(text).length, text.length);
+  }
+  const { text, offsets } = utteranceText(["“Wait,”", "she", "said."]);
+  assert.equal(text, " Wait,  she said.");
+  assert.deepEqual(offsets, [0, 8, 12]);
 });

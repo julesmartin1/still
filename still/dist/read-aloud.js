@@ -68,7 +68,36 @@ export function utteranceText(words) {
     offsets.push(text.length);
     text += word;
   });
-  return { text, offsets };
+  return { text: withoutQuoteMarks(text), offsets };
+}
+
+// Quotation marks are left out of what a voice is given. Voices read quoted
+// speech in an acted, different voice, read a lone mark out, or change tone
+// when a quote opens in one sentence and closes in the next one (which is
+// spoken separately). Each mark becomes a space, so every word stays where
+// it was. Apostrophes (don't, dogs’, ’90s, ’tis) stay.
+const ELISIONS = /^(?:tis|twas|em|cause|cos|til|till|n|round|bout|kay)\b/i;
+export function withoutQuoteMarks(text) {
+  const chars = String(text).replace(/``|''/g, "  ").split("");
+  const letter = (c) => !!c && /[\p{L}\p{N}]/u.test(c);
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
+    if (/["“”„‟«»＂]/.test(c) || c === "‘" || c === "`") chars[i] = " ";
+    else if (c === "’" || c === "'") {
+      const before = chars[i - 1],
+        after = chars[i + 1];
+      if (letter(before) && letter(after)) continue; // don't, it’s
+      if (letter(before)) {
+        // Closing a quote, unless it marks a plural possessive (dogs’).
+        if (!/s/i.test(before)) chars[i] = " ";
+      } else if (letter(after)) {
+        // Opening a quote, unless it is an elision (’tis) or a year (’90s).
+        if (!/\p{N}/u.test(after) && !ELISIONS.test(chars.slice(i + 1, i + 7).join("")))
+          chars[i] = " ";
+      } else chars[i] = " ";
+    }
+  }
+  return chars.join("");
 }
 
 // The word that contains `charIndex`: the last word starting at or before it.

@@ -13,7 +13,9 @@ export const MODELS = ["gpt-4o-mini-tts-2025-12-15", "gpt-4o-mini-tts"];
 const SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 
 // How the voice should read: like an unhurried audiobook narrator, a little
-// slower or quicker to match the reader's pace.
+// slower or quicker to match the reader's pace, and in one even voice: left
+// to itself the voice acts out quoted speech in other voices, which sounds
+// odd when the words are read a sentence at a time.
 export function readingInstructions(speed) {
   const pace =
     speed <= 0.85
@@ -21,7 +23,7 @@ export function readingInstructions(speed) {
       : speed >= 1.2
         ? "Speak at a brisk but clear pace."
         : "Speak at a calm, steady pace.";
-  return `Read this aloud like a warm, unhurried audiobook narrator. ${pace} Keep the same voice and tone from one sentence to the next.`;
+  return `Read this aloud like a warm, unhurried audiobook narrator. ${pace} Keep the same voice and tone from one sentence to the next. Read dialogue and quoted words in that same narrator voice: don't act out characters or change your voice for them. Read only the words; never say punctuation, such as quotation marks, aloud.`;
 }
 
 const reply = (status, message) =>

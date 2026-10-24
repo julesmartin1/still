@@ -12,6 +12,11 @@ import {
   recordLookup,
   Playback,
 } from "../dist/engine.js";
+import {
+  DEFAULT_VOICE_TIMING,
+  averageSpokenMs,
+  spokenMs,
+} from "../dist/spoken.js";
 test("text order, punctuation and paragraph mapping are preserved", () => {
   const { tokens } = parseText("One two.\n\nThree four!");
   assert.deepEqual(
@@ -115,7 +120,7 @@ test("dictionary supports common inflections and includes real definitions", asy
 
 const sum = (values) => values.reduce((a, b) => a + b, 0);
 const near = (a, b) => assert.ok(Math.abs(a - b) < 0.000001, `${a} != ${b}`);
-test("length weights keep short words neutral and give long words clearly more time", () => {
+test("words stay on screen about as long as they take to say", () => {
   const bare = (word) => ({
     norm: word,
     text: word,
@@ -123,18 +128,41 @@ test("length weights keep short words neutral and give long words clearly more t
     rare: false,
     paragraphEnd: false,
   });
-  near(wordWeight(bare("a")), 1);
-  near(wordWeight(bare("daily")), 1);
-  near(wordWeight(bare("extraordinary")), 1.64);
-  near(wordWeight(bare("a".repeat(40))), 2);
-  near(wordWeight(bare("can't")), 1);
+  // weight = 0.45 + 0.55 × spoken(word) / spoken(average word)
+  const expect = (word) =>
+    0.45 + (0.55 * spokenMs(word)) / averageSpokenMs();
+  for (const word of ["the", "daily", "notice", "extraordinary"])
+    near(wordWeight(bare(word)), expect(word));
+  // Short words keep a floor, so they are still seen; long ones a ceiling.
+  near(wordWeight(bare("a")), Math.max(0.75, expect("a")));
+  near(wordWeight(bare("a".repeat(40))), 2.2);
+  assert.ok(wordWeight(bare("a")) < wordWeight(bare("daily")));
+  assert.ok(wordWeight(bare("extraordinary")) > 1.6);
+  // Numbers are as long as they are to say, not as they look.
+  assert.ok(wordWeight(bare("1984")) > wordWeight(bare("extraordinary")));
   const tokens = ["We", "notice", "extraordinary", "things", "daily"].map(
     (w, index) => ({ ...bare(w), paragraph: 0, index }),
   );
   const plan = buildTimingPlan(tokens, { base: 300 });
   near(sum(plan), 1000);
-  near(plan[2], (1000 * 1.64) / 5.8);
-  assert.ok(plan[2] > plan[1] && plan[1] > plan[0]);
+  // Every word keeps a readable minimum (most of these are at it); the
+  // long word gets what is left.
+  assert.ok(plan[2] > plan[1] && plan[1] >= plan[0]);
+  near(plan[0], minimumWordTime(200));
+  assert.ok(plan[2] > 1.3 * plan[0]);
+});
+test("what the voice measures changes the timing, not the pace", () => {
+  const { tokens } = parseText("Yes, the gentle hare ran. Then it slept.");
+  const plain = buildTimingPlan(tokens, { base: 300 });
+  // A voice that lingers on long words and pauses longer at full stops.
+  const voice = { ...DEFAULT_VOICE_TIMING, perWord: 40, perBeat: 80, stop: 900 };
+  const taught = buildTimingPlan(tokens, { base: 300, voice });
+  near(sum(taught), sum(plain));
+  assert.ok(taught[4] > plain[4]); // "ran." before a longer full stop
+  const weight = (word, v) =>
+    wordWeight({ norm: word, text: word, complexity: 0, rare: false }, { voice: v });
+  assert.ok(weight("gentle", voice) > weight("gentle")); // long, said slowly
+  assert.ok(weight("the", voice) < weight("the")); // short, said quickly
 });
 test("each paragraph meets its WPM budget including punctuation and difficulty", () => {
   const { tokens } = parseText(

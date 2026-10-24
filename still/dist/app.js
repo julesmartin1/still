@@ -73,6 +73,7 @@ import {
   naturalVoiceId,
   naturalVoiceValue,
 } from "./natural-voice.js";
+import { learnFromClip, normalVoiceTiming } from "./spoken.js";
 import {
   checkInDue,
   endCheckInDue,
@@ -310,12 +311,27 @@ const WELCOME_COPY = {
 };
 // Running totals of the plan, for "N min left" (see engine.planSums).
 let timingSums = new Float64Array(1);
+// How long the natural voice takes over words and pauses (spoken.js). It
+// is measured while the voice reads, and sets how long words stay on
+// screen when reading silently too.
+const VOICE_TIMING = "still-voice-timing";
+let voiceTiming = normalVoiceTiming(null);
+try {
+  voiceTiming = normalVoiceTiming(JSON.parse(storage.getItem(VOICE_TIMING)));
+} catch {}
+function learnVoiceTiming(clip) {
+  voiceTiming = learnFromClip(voiceTiming, clip);
+  try {
+    storage.setItem(VOICE_TIMING, JSON.stringify(voiceTiming));
+  } catch {}
+}
 function refreshTiming() {
   timingPlan = buildTimingPlan(data.tokens, {
     base,
     profile,
     replayParagraph,
     replayParagraphs: replaySet,
+    voice: voiceTiming,
   });
   timingSums = planSums(timingPlan);
 }
@@ -1061,6 +1077,7 @@ function readAloudOptions() {
       synth: voiceEngine(),
       audio: naturalAudio(),
       onFail: naturalFailed,
+      onTiming: learnVoiceTiming,
     };
   return {
     tokens,
@@ -3541,6 +3558,7 @@ $("confirmDelete").onclick = async () => {
         HABITS,
         ONBOARDED,
         PACE_FOUND,
+        VOICE_TIMING,
       ])
         storage.removeItem(key);
       await flushStorage();

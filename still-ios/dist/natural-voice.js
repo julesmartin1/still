@@ -12,6 +12,7 @@
 // word is said, since the voice gives no word timings.
 import { clamp, sentenceEnd, clauseEnd } from "./engine.js";
 import { chunkEnd, utteranceText, estimateWordTimes } from "./read-aloud.js";
+import { spokenBeats } from "./spoken.js";
 
 export const NATURAL_PREFIX = "natural:";
 // The voices offered (OpenAI's names); the server accepts only these.
@@ -90,11 +91,10 @@ export function voicedSpan(samples, sampleRate, threshold = 0.02) {
     tail: Math.min(Math.max(0, total - ms(last + 1) - 20), total * 0.4),
   };
 }
-// When the phoneme counts aren't known: letters stand in for sounds.
+// How long each word takes to say, in beats (see spoken.js): sounds and
+// syllables, with numbers and abbreviations read out as the voice says them.
 export function letterWeights(words) {
-  return words.map((word) =>
-    Math.max(1, 0.85 * (word.match(/[\p{L}\p{N}]/gu) || []).length),
-  );
+  return words.map((word) => spokenBeats(word));
 }
 // Extra time, in phonemes, for the pause the voice makes after a comma or a
 // sentence end inside a chunk (about a quarter and half a second).
@@ -133,6 +133,153 @@ export function naturalWordStarts(
     starts.push(lead + (voiced * sum) / total);
   }
   return starts;
+}
+
+// ---- Lining the words up with the voice ----
+// The voice gives no word timings, but its pauses can be heard: it stops at
+// most commas and full stops and often between phrases. Each pause found in
+// the clip is matched to the word boundary it most likely is, and the words
+// between two pauses share out the time between them. So the shown word
+// lines up with the voice again at every pause instead of drifting further
+// off through a long sentence.
+export const FRAME_MS = 10;
+// Shorter gaps are usually inside a word (the stop before a "t" or "p").
+export const MIN_GAP_MS = 70;
+// Silence is quieter than this share of the clip's loud level.
+export const QUIET = 0.06;
+// Gaps of silence inside the voiced part of a clip, as { from, to } in ms.
+export function speechGaps(
+  samples,
+  sampleRate,
+  span = {},
+  { minMs = MIN_GAP_MS, quiet: share = QUIET } = {},
+) {
+  const n = samples?.length || 0;
+  if (!n || !sampleRate) return [];
+  const size = Math.max(1, Math.round((sampleRate * FRAME_MS) / 1000));
+  const frames = Math.floor(n / size);
+  const level = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) {
+    let sum = 0;
+    for (let i = f * size, end = i + size; i < end; i++)
+      sum += samples[i] * samples[i];
+    level[f] = Math.sqrt(sum / size);
+  }
+  const durationMs = (n / sampleRate) * 1000;
+  const first = Math.ceil((span.lead || 0) / FRAME_MS);
+  const last = Math.floor((durationMs - (span.tail || 0)) / FRAME_MS) - 1;
+  if (last - first < 4) return [];
+  // The loud level: near the top of the voiced frames, ignoring a few peaks.
+  const sorted = Array.from(level.subarray(first, last + 1)).sort((a, b) => a - b);
+  const loud = sorted[Math.floor(sorted.length * 0.9)] || 0;
+  if (!loud) return [];
+  const quiet = Math.max(loud * share, 0.003);
+  const gaps = [];
+  let start = -1;
+  for (let f = first; f <= last + 1; f++) {
+    const silent = f <= last && level[f] < quiet;
+    if (silent && start < 0) start = f;
+    else if (!silent && start >= 0) {
+      if ((f - start) * FRAME_MS >= minMs && start > first)
+        gaps.push({ from: start * FRAME_MS, to: f * FRAME_MS });
+      start = -1;
+    }
+  }
+  // A gap running into the end is the trailing silence, not a pause.
+  return gaps.filter((g) => g.to <= last * FRAME_MS);
+}
+// Whether the voice is likely to pause after `word`, and how strongly.
+const pauseAfter = (word) =>
+  sentenceEnd.test(word) ? 2 : clauseEnd.test(word) || /[—–]$/.test(word) ? 1 : 0;
+// Matches gaps to word boundaries (dynamic programming, in order): a gap
+// near where a boundary is expected, after punctuation, is the best match; a
+// long gap left unmatched, or punctuation with no pause, costs a little.
+// Returns [{ word, gap }] where `word` starts when `gap` ends.
+export function matchGaps(words, expected, gaps, durationMs, span = {}) {
+  const n = words.length,
+    k = gaps.length;
+  if (n < 2 || !k) return [];
+  const lead = span.lead || 0,
+    end = durationMs - (span.tail || 0);
+  const skipGap = (g) =>
+    0.8 + 2.4 * clamp((g.to - g.from - MIN_GAP_MS) / 230, 0, 1);
+  const skipWord = (b) => [0, 0.35, 0.8][pauseAfter(words[b - 1])];
+  const pair = (b, g) => {
+    // The guess gets less sure away from the clip's two ends.
+    const sure = 110 + 0.22 * Math.min(expected[b] - lead, end - expected[b]);
+    const off = Math.abs(expected[b] - g.to) / sure;
+    return off > 3 ? Infinity : off + [0.9, 0, -0.3][pauseAfter(words[b - 1])];
+  };
+  // cost[i][b]: first i gaps placed among boundaries before b (1..n-1).
+  const INF = Infinity;
+  const cost = Array.from({ length: k + 1 }, () => new Float64Array(n + 1).fill(INF));
+  const from = Array.from({ length: k + 1 }, () => new Int8Array(n + 1));
+  cost[0][1] = 0;
+  for (let i = 0; i <= k; i++)
+    for (let b = 1; b <= n; b++) {
+      const here = cost[i][b];
+      if (here === INF) continue;
+      if (i < k && here + skipGap(gaps[i]) < cost[i + 1][b]) {
+        cost[i + 1][b] = here + skipGap(gaps[i]);
+        from[i + 1][b] = 1;
+      }
+      if (b < n) {
+        if (here + skipWord(b) < cost[i][b + 1]) {
+          cost[i][b + 1] = here + skipWord(b);
+          from[i][b + 1] = 2;
+        }
+        const c = i < k ? pair(b, gaps[i]) : INF;
+        if (c !== INF && here + c < cost[i + 1][b + 1]) {
+          cost[i + 1][b + 1] = here + c;
+          from[i + 1][b + 1] = 3;
+        }
+      }
+    }
+  const matches = [];
+  for (let i = k, b = n; i > 0 || b > 1; ) {
+    const step = from[i][b];
+    if (step === 1) i--;
+    else if (step === 2) b--;
+    else if (step === 3) {
+      matches.push({ word: b - 1, gap: gaps[i - 1] });
+      i--;
+      b--;
+    } else break;
+  }
+  return matches.reverse();
+}
+// When each word starts in a clip (ms from its start), lined up with the
+// pauses heard in it. Also returns the matches, which teach the pace.
+export function alignedWordStarts(words, durationMs, weights = null, span = {}, gaps = []) {
+  const n = words.length;
+  const expected = naturalWordStarts(words, durationMs, weights, span);
+  if (n < 2) return { starts: expected, matches: [], stretches: [] };
+  const matches = matchGaps(words, expected, gaps, durationMs, span);
+  if (!matches.length)
+    return {
+      starts: expected,
+      matches,
+      stretches: [[0, n, span.lead || 0, durationMs - (span.tail || 0)]],
+    };
+  const w = weights?.length === n ? weights : letterWeights(words);
+  const starts = new Array(n);
+  // Stretches of speech between pauses: words a..b-1 from `at` to `until`.
+  const lead = Math.max(0, span.lead || 0);
+  const stretches = [];
+  let a = 0,
+    at = lead;
+  for (const { word, gap } of matches) {
+    stretches.push([a, word, at, gap.from]);
+    a = word;
+    at = gap.to;
+  }
+  stretches.push([a, n, at, durationMs - Math.max(0, span.tail || 0)]);
+  for (const [s, e, t0, t1] of stretches) {
+    const part = naturalWordStarts(words.slice(s, e), Math.max(1, t1 - t0), w.slice(s, e));
+    part.forEach((t, i) => (starts[s + i] = t0 + t));
+  }
+  starts[0] = 0; // the first word is already shown
+  return { starts, matches, stretches };
 }
 
 // ---- Playback ----
@@ -183,6 +330,9 @@ export const WAIT_LIMIT_MS = 12000;
 export const FIRST_WAIT_LIMIT_MS = 20000;
 // Extra time after a clip should have ended before deciding the sound is stuck.
 export const END_GRACE_MS = 3000;
+// Each word is shown this much before the voice reaches it: reading a word
+// just ahead of hearing it feels in step, hearing it first feels late.
+export const SHOW_EARLY_MS = 40;
 // Learned pace per voice, shared by every NaturalPlayback in this page.
 const learnedWpm = new Map();
 
@@ -206,6 +356,9 @@ export class NaturalPlayback {
     // Called with a reason ("slow", "failed", "offline", "unavailable",
     // "busy") when the natural voice can't carry on; playback is paused by then.
     onFail = null,
+    // Called with { words, speed, stretches, matches } for each clip played:
+    // how long its stretches of speech and its pauses took (see spoken.js).
+    onTiming = null,
     rates = learnedWpm,
     schedule = (fn, ms) => setTimeout(fn, ms),
     cancel = (id) => clearTimeout(id),
@@ -222,6 +375,7 @@ export class NaturalPlayback {
       synth,
       audio,
       onFail,
+      onTiming,
       rates,
       schedule,
       cancel,
@@ -385,7 +539,22 @@ export class NaturalPlayback {
     this.clearTimers();
     const duration = (clip.samples.length / clip.sampleRate) * 1000;
     const span = voicedSpan(clip.samples, clip.sampleRate);
-    const starts = naturalWordStarts(chunk.words, duration, clip.weights, span);
+    const gaps = speechGaps(clip.samples, clip.sampleRate, span);
+    const { starts, stretches, matches } = alignedWordStarts(
+      chunk.words,
+      duration,
+      clip.weights,
+      span,
+      gaps,
+    );
+    try {
+      this.onTiming?.({
+        words: chunk.words,
+        speed: chunk.speed,
+        stretches,
+        matches,
+      });
+    } catch {}
     const voiced = duration - span.lead - span.tail;
     this.rates.set(
       this.voiceId,
@@ -421,7 +590,7 @@ export class NaturalPlayback {
     const tick = () => {
       this.timer = null;
       if (run !== this.run || !this.playing) return;
-      const elapsed = this.audio.now() - chunk.started;
+      const elapsed = this.audio.now() - chunk.started + SHOW_EARLY_MS;
       let k = 0;
       // Within 1 ms counts as due, so rounding can never stall the words.
       while (k < starts.length - 1 && starts[k + 1] <= elapsed + 1) k++;
@@ -522,8 +691,23 @@ export class WebAudioOutput {
     const audio = await this.audioContext.decodeAudioData(bytes);
     return { samples: audio.getChannelData(0), sampleRate: audio.sampleRate };
   }
+  // The audio clock where it is being heard, in ms. Phones, and Bluetooth
+  // headphones most of all, play sound a little (up to a third of a second)
+  // after the page makes it; words follow what is heard, not what is made.
   now() {
-    return this.context ? this.context.currentTime * 1000 : performance.now();
+    const context = this.context;
+    if (!context) return performance.now();
+    const made = context.currentTime * 1000;
+    try {
+      const stamp = context.getOutputTimestamp?.();
+      if (stamp?.contextTime > 0 && stamp.performanceTime > 0) {
+        const heard =
+          stamp.contextTime * 1000 + (performance.now() - stamp.performanceTime);
+        if (heard <= made && made - heard < 1000) return heard;
+      }
+    } catch {}
+    const latency = Number(context.outputLatency || context.baseLatency) || 0;
+    return made - Math.min(1000, Math.max(0, latency * 1000));
   }
   // Plays the clip from `from` to `to` (ms); startedAt is when `from` sounds.
   play({ samples, sampleRate }, onEnded, { from = 0, to = null } = {}) {

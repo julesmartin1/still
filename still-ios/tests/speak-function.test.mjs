@@ -158,4 +158,7 @@ test("served at /api/speak with a per-reader rate limit", () => {
   assert.deepEqual(config.rateLimit.aggregateBy, ["ip", "domain"]);
   assert.match(readingInstructions(1), /steady/);
   assert.match(readingInstructions(1.3), /brisk/);
+  // Quoted speech in the narrator's own voice, with no marks read out.
+  assert.match(readingInstructions(1), /same narrator voice/);
+  assert.match(readingInstructions(1), /never say punctuation/);
 });
