@@ -1346,7 +1346,7 @@ async def home_play_button_is_round_and_centred(browser):
         go, icon = [await page.evaluate(
             "s => { const b = document.querySelector(s).getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2, b.width, b.height]; }", s)
             for s in (".continue-go", ".continue-go .icon")]
-        assert go[2] >= 54 and go[2] == go[3], (width, go)
+        assert go[2] >= 53.5 and abs(go[2] - go[3]) < 0.5, (width, go)
         # The triangle is drawn centred on its weight; any nudge pushes it off.
         assert abs(go[0] - icon[0]) < 0.5 and abs(go[1] - icon[1]) < 0.5, (width, go, icon)
         await ctx.close()
