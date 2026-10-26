@@ -1772,6 +1772,53 @@ html[data-theme="dark"] .text-check li .text-button {
   visibility: hidden;
 }
 
+/* ---- A sentence at a time (Settings › Show) ----
+   The whole sentence, with the word being read (or due, reading silently)
+   underlined. It fills the stage and shrinks to fit (see fitSentence). */
+.sentence-view {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 12px 24px;
+  display: flex;
+  text-align: center;
+  font-family: var(--reading-font);
+  font-size: calc(28px * var(--reading-scale));
+  line-height: 1.6;
+  text-wrap: pretty;
+  overflow: hidden;
+}
+.sentence-view > span {
+  margin: auto;
+  max-width: 24em; /* a comfortable line length on wide screens */
+}
+.sentence-view[hidden],
+#wordReader.peeking .sentence-view,
+#wordReader.done .sentence-view {
+  display: none;
+}
+.sentence-view .now {
+  text-decoration: underline;
+  text-decoration-color: #ffa47a; /* 8.4:1 on the reader's navy */
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.28em;
+  text-decoration-skip-ink: none;
+}
+#wordReader.sentence-mode #word,
+#wordReader.sentence-mode .focal-line {
+  visibility: hidden;
+}
+.wide-spacing .sentence-view {
+  letter-spacing: 0.12em;
+  word-spacing: 0.16em;
+}
+.view-row {
+  padding-bottom: 8px;
+}
+.view-row .voice-chips {
+  margin: 0;
+}
+
 /* ---- Find my pace ---- */
 .pace-find {
   margin: 10px 0 0;
@@ -3363,6 +3410,9 @@ html[data-theme="light"][data-card="paper"] :is(#timeLeft, #mode.chapter, .read-
 }
 html[data-theme="light"][data-card="paper"] .focal-line {
   background: #c3ccdb;
+}
+html[data-theme="light"][data-card="paper"] .sentence-view .now {
+  text-decoration-color: #c2410c; /* 5.2:1 on white */
 }
 html[data-theme="light"][data-card="paper"] #word.focus-mode .focus,
 html[data-theme="light"][data-card="paper"] .peek mark {

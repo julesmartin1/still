@@ -271,6 +271,7 @@
             <div class="focal-line"></div>
             <div id="word" dir="auto">There</div>
             <div class="focal-line"></div>
+            <p id="sentence" class="sentence-view" dir="auto" hidden></p>
             <p id="peek" class="peek" dir="auto" aria-live="polite" hidden></p>
             <span id="skipHint" class="skip-hint" aria-hidden="true" hidden></span>
             <div id="finishCard" class="finish-card" hidden>
@@ -505,6 +506,36 @@
           </p>
         </div>
       </section>
+      <section class="sheet-card" aria-labelledby="viewLabel">
+        <div class="sheet-row view-row">
+          <span id="viewLabel" class="sheet-label">Show</span>
+          <div
+            id="viewChoices"
+            class="voice-chips"
+            role="group"
+            aria-labelledby="viewLabel"
+          >
+            <button
+              type="button"
+              class="voice-chip"
+              data-view="word"
+              aria-pressed="true"
+            >
+              One word</button
+            ><button
+              type="button"
+              class="voice-chip"
+              data-view="sentence"
+              aria-pressed="false"
+            >
+              A sentence
+            </button>
+          </div>
+        </div>
+        <p id="viewHint" class="muted field-hint">
+          One word at a time, always in the same spot.
+        </p>
+      </section>
       <section class="sheet-card look" aria-label="Look">
         <div class="sheet-row">
           <span id="backgroundLabel" class="sheet-label">Background</span>
@@ -724,8 +755,8 @@
             ><button id="reset" class="text-button">Reset adjustments</button>
           </div>
           <p class="muted pace-note">
-            Longer words get a little more time and short ones a little less;
-            your average stays the same.<span class="keys">
+            Longer and less common words get a little more time, and short,
+            everyday ones a little less; your average stays the same.<span class="keys">
               ↑ and ↓ change the pace.</span
             >
           </p>
@@ -1703,7 +1734,8 @@
         This website counts visits without cookies: one anonymous tally per
         visit, noting only whether it’s your first. Third-party licenses:
         <a href="vendor/pdfjs/LICENSE">PDF.js</a> ·
-        <a href="dictionary/LICENSE.txt">WordNet dictionary</a>
+        <a href="dictionary/LICENSE.txt">WordNet dictionary</a> ·
+        <a href="frequency/README.txt">wordfreq word frequencies</a>
       </p>
       <p id="appNotices">
         <a href="privacy.html">Privacy information (draft)</a> ·

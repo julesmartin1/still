@@ -99,7 +99,10 @@ import {
   warmUpFactor,
   easeInFactor,
   planSums,
+  sentenceSpans,
+  spanAt,
 } from "./engine.js";
+import { loadFrequencies } from "./word-frequency.js";
 import {
   GOALS,
   normalizeHabits,
@@ -333,8 +336,46 @@ function refreshTiming() {
     replayParagraph,
     replayParagraphs: replaySet,
     voice: voiceTiming,
+    frequency: readingFrequency(),
+    viewStarts: sentenceView() ? readingSpans().starts : null,
   });
   timingSums = planSums(timingPlan);
+}
+// How common each word is in the reading's language (word-frequency.js),
+// so uncommon words get a little more time. The list loads in the
+// background; until it arrives (or with no list for the language), words
+// are timed by their length and sound alone.
+let frequencyFor = { tokens: null, lookup: null };
+function readingFrequency() {
+  if (frequencyFor.tokens !== data.tokens) {
+    const tokens = data.tokens;
+    frequencyFor = { tokens, lookup: null };
+    loadFrequencies(guessLanguage(tokens)).then((lookup) => {
+      if (!lookup || frequencyFor.tokens !== tokens) return;
+      frequencyFor.lookup = lookup;
+      refreshTiming();
+      if (reader) updateTimeLeft();
+    });
+  }
+  return frequencyFor.lookup;
+}
+// ---- A sentence at a time (Settings › Show) ----
+// The stage shows the whole sentence instead of one word, with the word
+// being read underlined. Playback still moves word by word (the voice's
+// words with read aloud, the timing plan without), so check-ins, "Pause
+// after each sentence", skips and time left all work as they do for words.
+const sentenceView = () => appearance.view === "sentence";
+let spansFor = { tokens: null, spans: [], starts: new Set() };
+function readingSpans() {
+  if (spansFor.tokens !== data.tokens) {
+    const spans = sentenceSpans(data.tokens);
+    spansFor = {
+      tokens: data.tokens,
+      spans,
+      starts: new Set(spans.map(([start]) => start)),
+    };
+  }
+  return spansFor;
 }
 // Check-ins are chosen per reading (see checkins.js); off unless chosen.
 const checkinMode = () => checkinSpacing(readingOptions.checkinEvery);
@@ -497,19 +538,112 @@ function fitWord() {
     el.style.whiteSpace = "nowrap";
   }
 }
+// Words in scripts written without spaces are joined without them.
+const noSpaceScript =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
+let shownSpan = null,
+  sentenceFade = null;
+function showSentence(index, { animate = false } = {}) {
+  const el = $("sentence");
+  const span = data.tokens.length
+    ? spanAt(readingSpans().spans, index) || [index, index]
+    : null;
+  if (!span) {
+    shownSpan = null;
+    el.textContent = "No visible words";
+    return;
+  }
+  if (shownSpan?.[0] !== span[0] || shownSpan?.[1] !== span[1]) {
+    shownSpan = span;
+    const parts = [];
+    for (let j = span[0]; j <= span[1]; j++) {
+      const word = data.tokens[j].text;
+      if (
+        j > span[0] &&
+        !(noSpaceScript.test(data.tokens[j - 1].text) && noSpaceScript.test(word))
+      )
+        parts.push(" ");
+      const w = document.createElement("span");
+      w.textContent = word;
+      w.dataset.i = j;
+      parts.push(w);
+    }
+    const line = document.createElement("span");
+    line.append(...parts);
+    el.replaceChildren(line);
+    fitSentence();
+    sentenceFade?.cancel();
+    sentenceFade = null;
+    if (
+      animate &&
+      appearance.transition !== "instant" &&
+      !reducedMotion.matches &&
+      el.animate
+    )
+      sentenceFade = el.animate([{ opacity: 0.25 }, { opacity: 1 }], {
+        duration: 120,
+        easing: "ease-out",
+      });
+  }
+  el.querySelector(".now")?.classList.remove("now");
+  el.querySelector(`[data-i="${index}"]`)?.classList.add("now");
+}
+// The sentence's size: the reading size, made smaller until it fits.
+function fitSentence() {
+  const el = $("sentence");
+  if (el.hidden) return;
+  el.style.fontSize = "";
+  let size = parseFloat(getComputedStyle(el).fontSize);
+  while (el.scrollHeight > el.clientHeight + 1 && size > 15) {
+    size -= 1;
+    el.style.fontSize = size + "px";
+  }
+}
+function applyView() {
+  const on = sentenceView();
+  $("wordReader").classList.toggle("sentence-mode", on);
+  $("sentence").hidden = !on;
+  shownSpan = null;
+  for (const chip of document.querySelectorAll("#viewChoices .voice-chip"))
+    chip.setAttribute(
+      "aria-pressed",
+      String(chip.dataset.view === (on ? "sentence" : "word")),
+    );
+  $("viewHint").textContent = !on
+    ? "One word at a time, always in the same spot."
+    : readAloudOn()
+      ? "The whole sentence, with the word being read underlined."
+      : "The whole sentence, with a line under each word at your pace.";
+}
+for (const chip of document.querySelectorAll("#viewChoices .voice-chip"))
+  chip.onclick = () => {
+    if ((chip.dataset.view === "sentence") === sentenceView()) return;
+    appearance = { ...appearance, view: chip.dataset.view };
+    applyAppearance();
+    if (reader) {
+      refreshTiming();
+      render();
+      if (!reader.playing) playbackUI();
+    }
+  };
 let shownIndex = -1;
 function render() {
+  if (sentenceView()) {
+    shownIndex = reader.index;
+    showSentence(reader.index, { animate: reader.playing });
+  }
   const t = data.tokens[reader.index];
   const previous =
     reader.playing && shownIndex === reader.index - 1
       ? data.tokens[shownIndex]?.text
       : null;
   shownIndex = reader.index;
-  showWord(t?.text || "No visible words", {
-    animate: reader.playing,
-    durationMs: timingPlan[reader.index],
-    blankMs: repeatGap(previous, t?.text, timingPlan[reader.index]),
-  });
+  if (!sentenceView())
+    showWord(t?.text || "No visible words", {
+      animate: reader.playing,
+      durationMs: timingPlan[reader.index],
+      blankMs: repeatGap(previous, t?.text, timingPlan[reader.index]),
+    });
   $("count").textContent =
     `${data.tokens.length ? reader.index + 1 : 0} / ${plural(data.tokens.length, "word")}`;
   updateModeLabel();
@@ -618,6 +752,7 @@ const ICONS = {
 };
 const touch = matchMedia("(pointer: coarse)");
 const awake = screenAwake();
+const tapTarget = () => (sentenceView() ? "the sentence" : "the word");
 function playbackUI() {
   const playing = reader.playing;
   // The screen stays on while words play (see screen-awake.js).
@@ -639,13 +774,17 @@ function playbackUI() {
       ? ""
       : sentenceBreakAt === reader.index
         ? touch.matches
-          ? "End of the sentence. Tap the word for the next one."
-          : "End of the sentence. Tap the word or press Space for the next one."
+          ? `End of the sentence. Tap ${tapTarget()} for the next one.`
+          : `End of the sentence. Tap ${tapTarget()} or press Space for the next one.`
         : lastSession
           ? sessionSummary(lastSession)
-          : touch.matches
-            ? "Tap the word to start. Hold it to see the whole sentence."
-            : "Press Space or tap the word to start. Hold it to see the whole sentence.";
+          : sentenceView()
+            ? touch.matches
+              ? "Tap the sentence to start."
+              : "Press Space or tap the sentence to start."
+            : touch.matches
+              ? "Tap the word to start. Hold it to see the whole sentence."
+              : "Press Space or tap the word to start. Hold it to see the whole sentence.";
   // Words are not announced one by one (far too fast for a screen reader);
   // announce the state and position whenever playback starts or stops.
   const position = data.tokens.length
@@ -1116,6 +1255,7 @@ function readAloudUI() {
   $("readAloud").checked = on;
   $("readAloudBadge").hidden = !on;
   $("readAloudHint").hidden = on;
+  applyView();
   renderVoices();
   // Some browsers only load their voices once asked for them.
   if (on && speechSupported())
@@ -2043,7 +2183,10 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden) pause();
 });
 window.addEventListener("pagehide", save);
-window.addEventListener("resize", fitWord);
+window.addEventListener("resize", () => {
+  fitWord();
+  fitSentence();
+});
 document.fonts.ready.then(fitWord);
 filterAnchor =
   savedPosition?.documentId === documentId
@@ -2994,7 +3137,8 @@ function sentenceAround(tokens, i) {
   return [start, end];
 }
 function showPeek() {
-  if (peekState || !data.tokens.length) return;
+  // A sentence at a time already shows it.
+  if (peekState || !data.tokens.length || sentenceView()) return;
   peekState = { resume: reader.playing };
   pause();
   const [start, end] = sentenceAround(data.tokens, reader.index);
@@ -3359,7 +3503,11 @@ function applyAppearance() {
   try {
     storage.setItem("still-appearance", JSON.stringify(appearance));
   } catch {}
-  if (reader) showWord(data.tokens[reader.index]?.text || "No visible words");
+  applyView();
+  if (reader) {
+    if (sentenceView()) showSentence(reader.index);
+    else showWord(data.tokens[reader.index]?.text || "No visible words");
+  }
 }
 for (const id of [
   "appearanceFont",
@@ -3968,7 +4116,7 @@ function saveHabits() {
 // What the reader sees after pausing: a small, honest "well done".
 function sessionSummary(last) {
   if (last.ms < 15000 || last.words < 20)
-    return "Paused. Tap the word or press Space to carry on.";
+    return `Paused. Tap ${tapTarget()} or press Space to carry on.`;
   const t = today(habits);
   const goal = t.met
     ? "Today’s goal is done."

@@ -11,6 +11,7 @@
 // the app swaps one for the other and keeps its own handling of check-ins,
 // "Pause after each sentence" and the end of a reading.
 import { clamp, sentenceEnd, clauseEnd, cleanWord } from "./engine.js";
+import { DEFAULT_VOICE_TIMING, spokenMs } from "./spoken.js";
 
 // Most voices speak about 180 words a minute at rate 1. Browsers accept
 // rates from 0.1 to 10, but voices sound broken outside 0.5–2.
@@ -116,17 +117,17 @@ export function wordAtChar(offsets, charIndex) {
 }
 
 // For voices that never report word boundaries: how long each word should
-// stay on screen, in ms, at `wpm` words a minute. Longer words and words
-// before a pause get more time; the average stays at the pace.
-export function estimateWordTimes(words, wpm) {
+// stay on screen, in ms, at `wpm` words a minute. Each word gets the time a
+// voice takes to say it and the pause after it (spoken.js, the same model
+// that times silent reading); the average stays at the pace.
+export function estimateWordTimes(words, wpm, voice = DEFAULT_VOICE_TIMING) {
   if (!words.length) return [];
   const perWord = 60000 / Math.max(1, wpm);
   const weights = words.map((word) => {
-    const letters = (word.match(/[\p{L}\p{N}]/gu) || []).length;
-    let weight = clamp(0.55 + 0.09 * letters, 0.6, 2);
-    if (sentenceEnd.test(word)) weight += 0.4;
-    else if (clauseEnd.test(word)) weight += 0.2;
-    return weight;
+    let ms = spokenMs(word, voice);
+    if (sentenceEnd.test(word)) ms += voice.stop;
+    else if (clauseEnd.test(word) || /[—–]$/.test(word)) ms += voice.comma;
+    return ms;
   });
   const mean = weights.reduce((sum, w) => sum + w, 0) / weights.length;
   return weights.map((w) => (perWord * w) / mean);

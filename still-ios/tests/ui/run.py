@@ -1153,6 +1153,63 @@ async def read_aloud_moves_words_with_the_voice(browser):
 
 
 @check
+async def a_sentence_at_a_time_underlines_the_word_being_read(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH)
+    await open_text(page, "One two three four. Five six seven eight.\n\nNine ten.")
+    now = "document.querySelector('#sentence .now')?.textContent"
+    shown = "document.getElementById('sentence').textContent"
+    await quick_settings(page)
+    assert await page.get_attribute("#viewChoices [data-view='word']", "aria-pressed") == "true"
+    await page.click("#viewChoices [data-view='sentence']")
+    assert "whole sentence" in await page.inner_text("#viewHint")
+    await page.keyboard.press("Escape")
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).view") == "sentence"
+    # The whole sentence replaces the word, with the current word underlined.
+    assert await page.is_visible("#sentence")
+    assert not await page.is_visible("#word")
+    assert await page.evaluate(shown) == "One two three four."
+    assert await page.evaluate(now) == "One"
+    assert "tap the sentence" in (await page.inner_text("#status")).lower()
+    # Silent: the line moves word by word at the pace.
+    await page.click("#play")
+    await page.wait_for_function(f"{now} === 'two'", timeout=3000)
+    await page.keyboard.press("Space")
+    await page.click("#quickRewind")
+    assert await page.evaluate(now) == "One"
+    # Read aloud: the line follows the voice's word boundaries, and the next
+    # sentence replaces this one.
+    await quick_settings(page)
+    await page.check("#readAloud")
+    assert "being read" in await page.inner_text("#viewHint")
+    await page.keyboard.press("Escape")
+    assert await page.evaluate(shown) == "One two three four."
+    await page.click("#play")
+    await page.wait_for_function("window.__speech.spoken.length === 1")
+    await page.wait_for_function(f"{now} === 'three'", timeout=1500)
+    assert await page.evaluate(shown) == "One two three four."
+    await page.wait_for_function(f"{shown} === 'Five six seven eight.'", timeout=5000)
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=8000)
+    assert await page.evaluate(shown) == "Nine ten."
+    assert await page.evaluate(now) == "ten."
+    # Holding doesn't open the separate sentence view: it's already shown.
+    box = await page.locator("#wordReader .stage").bounding_box()
+    await page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    await page.mouse.down()
+    await page.wait_for_timeout(400)
+    assert await page.locator("#peek").is_hidden()
+    await page.mouse.up()
+    # One word again (after the find-my-pace offer that follows a finish).
+    if await dialog_open(page, "paceDialog"):
+        await page.keyboard.press("Escape")
+    await quick_settings(page)
+    await page.click("#viewChoices [data-view='word']")
+    await page.keyboard.press("Escape")
+    assert await page.locator("#sentence").is_hidden()
+    assert "sentence-mode" not in await page.get_attribute("#wordReader", "class")
+    await ctx.close()
+
+
+@check
 async def read_aloud_is_hidden_without_speech(browser):
     ctx, page = await fresh(browser, init=NO_SPEECH)
     await quick_settings(page)
