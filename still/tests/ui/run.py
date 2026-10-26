@@ -444,7 +444,9 @@ async def check_ins_can_be_turned_off(browser):
     await page.fill("#speedValue", "600")
     await page.press("#speedValue", "Enter")
     await page.click("#play")
-    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=20000)
+    # About 11 s of words (90 at 600 wpm, plus easing in); a busy CI runner
+    # can take nearly twice that.
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=40000)
     assert not await dialog_open(page, "checkinDialog")
     await ctx.close()
 
