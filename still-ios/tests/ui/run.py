@@ -1343,6 +1343,9 @@ async def play_is_centred_and_buttons_stay_put(browser):
 async def home_play_button_is_round_and_centred(browser):
     for width in (375, 1100):
         ctx, page = await fresh(browser, reader=False, viewport={"width": width, "height": 800})
+        # Measure once Home has slid into place: part way through its
+        # entrance the icon can sit half a pixel off on some machines.
+        await page.evaluate("Promise.all(document.getAnimations().map(a => a.finished))")
         go, icon = [await page.evaluate(
             "s => { const b = document.querySelector(s).getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2, b.width, b.height]; }", s)
             for s in (".continue-go", ".continue-go .icon")]
