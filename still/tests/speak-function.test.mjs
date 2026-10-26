@@ -68,6 +68,42 @@ test("only this site's pages may use it, and only by POST", async () => {
   assert.equal(api.calls.length, 0);
 });
 
+test("the app on GitHub Pages may use it across origins", async () => {
+  const api = openai(200);
+  const pages = "https://julesmartin1.github.io";
+  const preflight = await handle(
+    ask(null, { method: "OPTIONS", origin: pages }),
+    {
+      env,
+      fetch: api.fetch,
+    },
+  );
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), pages);
+  assert.match(
+    preflight.headers.get("access-control-allow-headers"),
+    /Content-Type/,
+  );
+  const probe = await handle(ask(null, { method: "GET", origin: pages }), {
+    env,
+    fetch: api.fetch,
+  });
+  assert.equal(probe.status, 204);
+  assert.equal(probe.headers.get("access-control-allow-origin"), pages);
+  const spoken = await handle(ask({ text: "Hi." }, { origin: pages }), {
+    env,
+    fetch: api.fetch,
+  });
+  assert.equal(spoken.status, 200);
+  assert.equal(spoken.headers.get("access-control-allow-origin"), pages);
+  const other = await handle(
+    ask(null, { method: "OPTIONS", origin: "https://elsewhere.example" }),
+    { env, fetch: api.fetch },
+  );
+  assert.equal(other.status, 403);
+  assert.equal(other.headers.get("access-control-allow-origin"), null);
+});
+
 test("small chunks, known voices and sane speeds only", async () => {
   const api = openai(200);
   const status = async (body) =>

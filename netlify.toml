@@ -3,6 +3,10 @@
 [build]
   publish = "still/dist"
   command = ""
+  # The app itself is published on GitHub Pages (.github/workflows/pages.yml),
+  # and every Netlify deploy costs credits, so Netlify only rebuilds when its
+  # server functions or this file change.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- netlify/ netlify.toml"
 
 # The visit counter (netlify/functions/visit.mjs) answers at /api/visit.
 # Read aloud's natural voice (netlify/functions/speak.mjs, served at
