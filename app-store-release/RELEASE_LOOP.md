@@ -5,9 +5,8 @@ Created 2026-09-23. Target confirmed by owner: Apple App Store first, iPhone and
 ## Mission
 Turn the existing Still reader into a maintainable, tested iOS/iPadOS application that is ready for App Store submission. Execute implementation, verification and repair, not just recommendations. Preserve the approved reading experience. Work through all independently actionable items; isolate genuine external blockers instead of stopping the whole project. Continue until the release gates below have evidence, or the only remaining work requires unavailable accounts, hardware, owner decisions or professional review.
 
-Project: `/Users/mattiasnelson/Documents/Codex/2026-09-22/hi-there-what-can-i-help/outputs/still`.
-Release dossier: `/Users/mattiasnelson/Documents/Codex/2026-09-22/hi-there-what-can-i-help/outputs/app-store-release`.
-Existing private website: https://still-reading-mn.mattiasnelson11.chatgpt.site/
+Project: `still/` and `still-ios/` in this repository.
+Release dossier: `app-store-release/` in this repository.
 
 Read applicable AGENTS.md, skills, current source, README, PROGRESS, acceptance files and this dossier before working. Source and reproducible results take precedence over historical progress claims. Respect the Sites source-opening/publishing workflow if changing the hosted site. Native development is not itself a Sites deployment. Preserve the existing website audience and user data. Do not overwrite another contributor's changes.
 

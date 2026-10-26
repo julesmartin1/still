@@ -35,7 +35,20 @@ export function naturalVoiceId(value) {
 }
 // The longest text the server takes in one request.
 export const MAX_SPEAK_CHARS = 1200;
-export const SPEAK_ENDPOINT = "/api/speak";
+// The server functions (this voice, the visit counter and the waitlist and
+// feedback forms) run on Netlify. Served from anywhere else, such as GitHub
+// Pages, the app calls them there; on Netlify or locally, on the same site.
+export const SERVER_SITE = "https://still123.netlify.app";
+export function serverBase(scope = globalThis) {
+  const host = scope.location?.hostname || "";
+  return !host ||
+    host.endsWith(".netlify.app") ||
+    host === "localhost" ||
+    host === "127.0.0.1"
+    ? ""
+    : SERVER_SITE;
+}
+export const SPEAK_ENDPOINT = serverBase() + "/api/speak";
 
 // Everything the natural voice needs from the browser: Web Audio to play the
 // clips, and fetch to get them.

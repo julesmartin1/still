@@ -72,6 +72,7 @@ import {
   naturalSupported,
   naturalVoiceId,
   naturalVoiceValue,
+  serverBase,
 } from "./natural-voice.js";
 import { learnFromClip, normalVoiceTiming } from "./spoken.js";
 import {
@@ -3658,18 +3659,25 @@ $("textFile").onchange = async () => {
 // The privacy/help pages are generated for the iOS app only; the web build
 // links straight to the bundled third-party licenses instead.
 // Waitlist and feedback (web only) go to Netlify Forms: a plain post to
-// this same site, with no third-party scripts and no cookies.
+// Still's Netlify site, with no third-party scripts and no cookies. From
+// another host (GitHub Pages) the form's reply can't be read, so the voice
+// function is asked first: it answers across origins only while the
+// Netlify site is up (not paused, say, for running out of credits), and a
+// post only counts as sent when it does.
 const WAITLISTED = "still-waitlisted";
 async function postForm(name, data) {
   const body = new URLSearchParams(data);
   if (body.get("company")) return; // a bot filled the hidden field
   body.set("form-name", name);
-  const res = await fetch("/", {
+  const server = serverBase();
+  if (server) await fetch(server + "/api/speak", { cache: "no-store" });
+  const res = await fetch(server + "/", {
     method: "POST",
+    mode: server ? "no-cors" : "cors",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
   });
-  if (!res.ok) throw Error(`Form post failed: ${res.status}`);
+  if (!server && !res.ok) throw Error(`Form post failed: ${res.status}`);
 }
 {
   let joined = false;
@@ -4226,16 +4234,21 @@ updateToday();
     onboarded = !!storage.getItem(ONBOARDED);
   } catch {}
   if (!onboarded && !saved) openWelcome("intro");
-  // Visit counter (web only): one anonymous ping per tab to this same site,
-  // saying only whether this browser is new to Still. No cookies, and
+  // Visit counter (web only): one anonymous ping per tab to Still's Netlify
+  // site, saying only whether this browser is new to Still. No cookies, and
   // nothing about the reader or their readings. See netlify/functions/.
   if (!native)
     try {
       if (!sessionStorage.getItem("still-visit-counted")) {
         sessionStorage.setItem("still-visit-counted", "1");
-        fetch("/api/visit", {
+        const server = serverBase();
+        fetch(server + "/api/visit", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          // From another host, a plain-text post needs no CORS handshake.
+          mode: server ? "no-cors" : "cors",
+          headers: {
+            "Content-Type": server ? "text/plain" : "application/json",
+          },
           body: JSON.stringify({ first: !onboarded && !saved }),
           keepalive: true,
         }).catch(() => {});
