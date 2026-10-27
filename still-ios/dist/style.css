@@ -651,21 +651,6 @@ dialog details[open] > summary::before {
   }
 }
 
-.pdf-upload {
-  margin-top: 20px;
-}
-.pdf-upload .pdf-label {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 0 12px;
-  font-weight: 600;
-  gap: 12px;
-}
-.pdf-label span {
-  font-size: 13px;
-  color: var(--blue);
-}
 input[type="file"] {
   font-size: 14px;
   max-width: 100%;
@@ -681,19 +666,6 @@ input[type="file"]::file-selector-button {
   padding: 10px 14px;
   margin-right: 10px;
   cursor: pointer;
-}
-.pdf-upload p {
-  margin: 10px 0 0;
-  font-size: 13px;
-  line-height: 1.6;
-}
-#pdfStatus {
-  color: var(--ink);
-}
-.import-divider {
-  margin: 0 0 6px;
-  font-size: 14px;
-  font-weight: 500;
 }
 [hidden] {
   display: none !important;
@@ -1159,16 +1131,9 @@ select {
 #duplicateNotice button {
   margin: 6px 4px 0 0;
 }
-#startOptions {
-  margin: 16px 0;
-}
-#startOptions summary,
 .backup-controls summary,
 #citationSettings summary {
   cursor: pointer;
-}
-#startPreview {
-  line-height: 1.6;
 }
 #settingsDialog .reading-filters {
   padding: 0;
@@ -1770,6 +1735,53 @@ html[data-theme="dark"] .text-check li .text-button {
 #wordReader.peeking #word,
 #wordReader.peeking .focal-line {
   visibility: hidden;
+}
+
+/* ---- A sentence at a time (Settings › Show) ----
+   The whole sentence, with the word being read (or due, reading silently)
+   underlined. It fills the stage and shrinks to fit (see fitSentence). */
+.sentence-view {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 12px 24px;
+  display: flex;
+  text-align: center;
+  font-family: var(--reading-font);
+  font-size: calc(28px * var(--reading-scale));
+  line-height: 1.6;
+  text-wrap: pretty;
+  overflow: hidden;
+}
+.sentence-view > span {
+  margin: auto;
+  max-width: 24em; /* a comfortable line length on wide screens */
+}
+.sentence-view[hidden],
+#wordReader.peeking .sentence-view,
+#wordReader.done .sentence-view {
+  display: none;
+}
+.sentence-view .now {
+  text-decoration: underline;
+  text-decoration-color: #ffa47a; /* 8.4:1 on the reader's navy */
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.28em;
+  text-decoration-skip-ink: none;
+}
+#wordReader.sentence-mode #word,
+#wordReader.sentence-mode .focal-line {
+  visibility: hidden;
+}
+.wide-spacing .sentence-view {
+  letter-spacing: 0.12em;
+  word-spacing: 0.16em;
+}
+.view-row {
+  padding-bottom: 8px;
+}
+.view-row .voice-chips {
+  margin: 0;
 }
 
 /* ---- Find my pace ---- */
@@ -3364,6 +3376,9 @@ html[data-theme="light"][data-card="paper"] :is(#timeLeft, #mode.chapter, .read-
 html[data-theme="light"][data-card="paper"] .focal-line {
   background: #c3ccdb;
 }
+html[data-theme="light"][data-card="paper"] .sentence-view .now {
+  text-decoration-color: #c2410c; /* 5.2:1 on white */
+}
 html[data-theme="light"][data-card="paper"] #word.focus-mode .focus,
 html[data-theme="light"][data-card="paper"] .peek mark {
   color: #c2410c; /* 5.2:1 on white */
@@ -3452,4 +3467,293 @@ body[data-view="home"] #settingsDialog .reading-only {
 }
 body[data-view="home"] #readerPanel #readingSettings {
   border-top: 0;
+}
+
+/* ---- Adding a reading ----
+   One place to choose a file, or text pasted below it. A file is summed up
+   at the top with its text folded away; pasted text keeps its box first
+   and the summary follows. */
+#inputForm {
+  display: flex;
+  flex-direction: column;
+}
+#inputForm > * {
+  min-width: 0;
+}
+#inputForm[data-source="paste"] .import-summary {
+  order: 1;
+}
+#inputForm .more-options {
+  order: 2;
+}
+#inputForm .dialog-actions {
+  order: 3;
+}
+.drop-zone {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  margin: 0 !important;
+  padding: 26px 20px 24px;
+  border: 1.5px dashed var(--field);
+  border-radius: 14px;
+  background: #f2f5fb;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.drop-zone:hover,
+.drop-zone.dragging {
+  border-color: var(--blue);
+  background: #e9effd;
+}
+.drop-zone:focus-within {
+  outline: 3px solid #83a5ff;
+  outline-offset: 2px;
+}
+.drop-zone.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.drop-icon {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 4px;
+  color: var(--blue);
+}
+.drop-title {
+  font-size: 17px;
+  font-weight: 600;
+}
+.drop-hint {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+html[data-theme="dark"] .drop-zone {
+  background: #111a2a;
+  border-color: #43516b;
+}
+html[data-theme="dark"] .drop-zone:hover,
+html[data-theme="dark"] .drop-zone.dragging {
+  background: #1b2740;
+  border-color: var(--blue);
+}
+.import-progress {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #eef2f9;
+  font-size: 14px;
+}
+.import-progress p {
+  flex: 1;
+  min-width: 12em;
+  margin: 0;
+  line-height: 1.5;
+}
+.import-progress .text-button {
+  min-height: 36px;
+}
+.import-progress details {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.import-progress .spinner {
+  display: none;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--field);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.import-progress.busy .spinner {
+  display: block;
+}
+.import-progress.error {
+  background: #fdecea;
+  color: #7a1c12;
+}
+html[data-theme="dark"] .import-progress {
+  background: #111a2a;
+}
+html[data-theme="dark"] .import-progress.error {
+  background: #3a1f1c;
+  color: #ffc2b8;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .import-progress .spinner {
+    animation-duration: 2.4s;
+  }
+}
+.import-summary {
+  margin-top: 16px;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: white;
+}
+html[data-theme="dark"] .import-summary {
+  background: #111a2a;
+  border-color: #2c3a55;
+}
+.summary-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+/* A small book: the file's kind on its cover. */
+.summary-kind {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 56px;
+  border-radius: 4px 9px 9px 4px;
+  background: var(--ink);
+  box-shadow: inset 4px 0 0 #ffffff26;
+  color: var(--on-ink);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.summary-name {
+  flex: 1;
+  min-width: 0;
+}
+input.summary-title {
+  margin: 0 0 0 -7px;
+  width: calc(100% + 7px);
+  padding: 3px 6px;
+  border-color: transparent;
+  background: transparent;
+  font: 600 19px/1.35 var(--serif);
+}
+input.summary-title:hover {
+  border-color: var(--field);
+}
+html[data-theme="dark"] input.summary-title {
+  background: transparent;
+  border-color: transparent;
+}
+html[data-theme="dark"] input.summary-title:hover,
+html[data-theme="dark"] input.summary-title:focus {
+  border-color: #43516b;
+}
+.summary-facts {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.summary-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+}
+dialog .summary-field > label,
+.summary-label {
+  flex: 0 0 4.6em;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.summary-field select {
+  flex: 1;
+  min-width: 0;
+}
+.summary-field .voice-chips {
+  margin: 0;
+}
+.start-preview,
+#startNote {
+  margin: 8px 0 0 calc(4.6em + 12px);
+}
+.start-preview {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--field);
+  font: 15px/1.55 var(--serif);
+  color: var(--ink);
+}
+.preview-head {
+  display: block;
+  font: 600 12px/1.6 var(--sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+#importNotes {
+  margin: 12px 0 0;
+}
+#importNotes:empty {
+  display: none;
+}
+dialog label.other-file {
+  display: inline-block;
+  margin: 10px 0 0;
+  padding: 6px 0;
+  font-size: 14px;
+  color: var(--blue);
+  cursor: pointer;
+}
+.other-file:hover {
+  text-decoration: underline;
+}
+#inputForm:not([data-source="file"]) .other-file {
+  display: none;
+}
+/* Pasted text has its box out in the open; a file's is folded away. */
+#inputForm:not([data-source="file"]) .text-details {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+#inputForm:not([data-source="file"]) #textDetailsSummary {
+  display: none;
+}
+#inputForm:not([data-source="file"]) textarea {
+  min-height: 140px;
+}
+#inputForm[data-source="file"] textarea {
+  margin-top: 4px;
+}
+@media (max-width: 600px) {
+  .drop-zone {
+    padding: 20px 16px 18px;
+  }
+  .summary-field {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+  dialog .summary-field > label,
+  .summary-label {
+    flex-basis: 100%;
+  }
+  .start-preview,
+  #startNote {
+    margin-left: 0;
+  }
 }

@@ -5,6 +5,7 @@ The native build copies original upstream notices into its bundled Third-party n
 - Capacitor core/iOS 8.5.2: MIT; npm lock pins integrity. Swift package uses exact 8.5.2. Preserve upstream notices, including Cordova transitive notices in frameworks; final archive audit pending.
 - PDF.js 6.3.289: Apache-2.0; main license and cmap/font/wasm notices retained. Embedded Foxit, Liberation, OpenJPEG, JBIG2 and QCMS notices copied into the app.
 - WordNet 3.1 data transformed from wordnet-db 3.1.14: original license and transformation README retained. No implication that Princeton endorses Still.
+- Word frequency lists (still/dist/frequency) derived from wordfreq 3.1.1 data: CC BY-SA 4.0; attribution and terms in frequency/README.txt, linked from the About notes. The lists are a separate data file, not mixed into app code.
 - Native visuals: simple Still bars icon/launch screen generated for this app; original web brand carried forward. System fonts replace Google Fonts.
 - Build-only packages: npm dependency inventory includes licenses; the tools themselves are not intentionally included in the app runtime. Verify bundle contents during archive inspection.
 - Imported user content: never package the owner's papers/books as samples. Synthetic sample text and EPUB test fixture are included; confirm publisher rights to all original project contributions.

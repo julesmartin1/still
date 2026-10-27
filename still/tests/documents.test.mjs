@@ -32,6 +32,44 @@ test("chapters are found in real book layouts, not in contents pages", () => {
     ],
   );
 });
+test("a contents list ends where the first chapter's own heading starts", () => {
+  const body = (n) => `Text of chapter ${n}. ` + "word ".repeat(40);
+  // Line under line in one paragraph, as copied from a web page.
+  const lines = [
+    "PRIDE AND PREJUDICE",
+    "CONTENTS\nChapter 1\nChapter 2\nChapter 3",
+    "Chapter 1",
+    body(1),
+    "Chapter 2",
+    body(2),
+    "Chapter 3",
+    body(3),
+  ];
+  assert.deepEqual(
+    detectSections(lines.join("\n\n"), "book").map((s) => [s.title, s.paragraph]),
+    [
+      ["Chapter 1", 3],
+      ["Chapter 2", 5],
+      ["Chapter 3", 7],
+    ],
+  );
+  // A paragraph each, straight into the first chapter: it repeats an entry.
+  const separate = [
+    "PRIDE AND PREJUDICE",
+    "Chapter 1 Chapter 2", // two on a line, as a PDF can give them
+    "Chapter 3",
+    "Chapter 1",
+    body(1),
+    "Chapter 2",
+    body(2),
+    "Chapter 3",
+    body(3),
+  ];
+  assert.deepEqual(
+    detectSections(separate.join("\n\n"), "book").map((s) => s.paragraph),
+    [4, 6, 8],
+  );
+});
 test("document type suggestions and section anchors distinguish papers from books", () => {
   const paper =
     "Abstract\n\nStudy overview.\n\n1. Introduction\n\nSome prose.\n\nReferences\n\nSmith (2020).";

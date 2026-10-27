@@ -271,6 +271,7 @@
             <div class="focal-line"></div>
             <div id="word" dir="auto">There</div>
             <div class="focal-line"></div>
+            <p id="sentence" class="sentence-view" dir="auto" hidden></p>
             <p id="peek" class="peek" dir="auto" aria-live="polite" hidden></p>
             <span id="skipHint" class="skip-hint" aria-hidden="true" hidden></span>
             <div id="finishCard" class="finish-card" hidden>
@@ -505,6 +506,40 @@
           </p>
         </div>
       </section>
+      <section class="sheet-card" aria-labelledby="viewLabel">
+        <div class="sheet-row view-row">
+          <span id="viewLabel" class="sheet-label">Show</span>
+          <div
+            id="viewChoices"
+            class="voice-chips"
+            role="group"
+            aria-labelledby="viewLabel"
+          >
+            <button
+              type="button"
+              class="voice-chip"
+              data-view="word"
+              aria-pressed="true"
+            >
+              One word</button
+            ><button
+              type="button"
+              class="voice-chip"
+              data-view="sentence"
+              aria-pressed="false"
+            >
+              A sentence
+            </button>
+          </div>
+        </div>
+        <p id="viewHint" class="muted field-hint">
+          One word at a time, always in the same spot.
+        </p>
+        <label id="sentenceUnderlineRow" class="check-label" hidden
+          ><input id="sentenceUnderline" type="checkbox" checked />
+          Underline each word as it is read</label
+        >
+      </section>
       <section class="sheet-card look" aria-label="Look">
         <div class="sheet-row">
           <span id="backgroundLabel" class="sheet-label">Background</span>
@@ -724,8 +759,8 @@
             ><button id="reset" class="text-button">Reset adjustments</button>
           </div>
           <p class="muted pace-note">
-            Longer words get a little more time and short ones a little less;
-            your average stays the same.<span class="keys">
+            Longer and less common words get a little more time, and short,
+            everyday ones a little less; your average stays the same.<span class="keys">
               ↑ and ↓ change the pace.</span
             >
           </p>
@@ -809,11 +844,11 @@
         </button>
       </div>
     </dialog>
-    <dialog id="inputDialog">
-      <form id="inputForm">
+    <dialog id="inputDialog" class="add-dialog">
+      <form id="inputForm" data-source="none">
         <div class="dialog-heading">
           <div>
-            <h2>What are you reading?</h2>
+            <h2>Add something to read</h2>
           </div>
           <button
             type="button"
@@ -835,85 +870,44 @@
             </svg>
           </button>
         </div>
-        <label for="textTitle">Title</label
-        ><input
-          id="textTitle"
-          maxlength="240"
-          placeholder="Untitled reading"
-        /><label for="textInput">Text to read</label
-        ><textarea
-          dir="auto"
-          id="textInput"
-          required
-          placeholder="Paste a chapter, an article, or a few paragraphs…"
-        ></textarea>
-        <div id="textCheck" class="text-check" role="status" hidden>
-          <p class="text-check-title">Worth a look before you read</p>
-          <ul id="textCheckList"></ul>
-        </div>
-        <div class="pdf-upload">
-          <p class="import-divider">Or import a file</p>
-          <div class="file-buttons">
-            <label class="file-button" for="textFile"
-              >Text file<input
-                id="textFile"
-                class="sr-only"
-                type="file"
-                accept=".txt,.md,.markdown,text/plain,text/markdown" /></label
-            ><label class="file-button" for="epubFile"
-              >EPUB book<input
-                id="epubFile"
-                class="sr-only"
-                type="file"
-                accept=".epub,application/epub+zip" /></label
-            ><label class="file-button" for="pdfFile"
-              >PDF<input
-                id="pdfFile"
-                class="sr-only"
-                type="file"
-                accept="application/pdf,.pdf"
-                aria-describedby="pdfHint pdfStatus"
-            /></label>
-          </div>
-          <p id="textFileStatus" role="status"></p>
-          <p id="epubStatus" class="muted" role="status"></p>
-          <div id="epubParts" class="inline-field" hidden>
-            <label for="epubPart" class="inline-label">Part to read</label
-            ><select id="epubPart"></select>
-          </div>
-          <p id="pdfHint" class="muted">
-            PDFs with selectable text · up to 50 MB · processed on your device
-          </p>
-          <p id="pdfStatus" role="status" aria-live="polite" hidden></p>
+        <label id="dropZone" class="drop-zone" for="bookFile"
+          ><svg
+            class="icon drop-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 19.5V5a2 2 0 0 1 2-2h13v15H6.5a2.5 2.5 0 0 0 0 5H19" />
+            <path d="M12 7v7M9 10l3-3 3 3" />
+          </svg>
+          <span class="drop-title">Choose a book or document</span>
+          <span id="pdfHint" class="drop-hint"
+            >EPUB, PDF or text file, or drop one here. It stays on this
+            device.</span
+          ><input
+            id="bookFile"
+            class="sr-only"
+            type="file"
+            accept=".epub,application/epub+zip,.pdf,application/pdf,.txt,.md,.markdown,text/plain,text/markdown"
+        /></label>
+        <div id="importProgress" class="import-progress" hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <p id="importStatus" role="status" aria-live="polite"></p>
+          <button type="button" id="cancelPdf" class="text-button" hidden>
+            Cancel
+          </button>
           <button type="button" id="retryPdf" class="text-button" hidden>
-            Retry this PDF
+            Try again
           </button>
           <details id="pdfErrorDetails" hidden>
             <summary>Error details</summary>
             <p id="pdfErrorDetailText"></p>
           </details>
-          <button type="button" id="cancelPdf" class="text-button" hidden>
-            Cancel import
-          </button>
         </div>
-        <fieldset id="pdfOptions" hidden>
-          <legend>Pages to read</legend>
-          <div class="pdf-range">
-            <label
-              >From
-              <input id="pdfFrom" type="number" min="1" value="1" /></label
-            ><label
-              >To <input id="pdfTo" type="number" min="1" value="1" /></label
-            ><button type="button" id="applyPdfRange" class="outline">
-              Apply
-            </button>
-          </div>
-          <label class="check-label"
-            ><input id="pdfMargins" type="checkbox" checked /> Remove repeated
-            page headers and footers</label
-          >
-          <p id="pdfRangeStatus" class="muted" role="status"></p>
-        </fieldset>
         <div id="duplicateNotice" hidden>
           <p id="duplicateMessage" role="status"></p>
           <button type="button" id="duplicateOpen" class="primary">
@@ -922,6 +916,77 @@
             Import separate copy
           </button>
         </div>
+        <section id="importSummary" class="import-summary" hidden>
+          <div class="summary-top">
+            <span id="summaryKind" class="summary-kind" aria-hidden="true"
+              >Text</span
+            >
+            <div class="summary-name">
+              <label for="textTitle" class="sr-only">Title</label
+              ><input
+                id="textTitle"
+                class="summary-title"
+                maxlength="240"
+                placeholder="Add a title"
+              />
+              <p id="summaryFacts" class="summary-facts"></p>
+            </div>
+          </div>
+          <div id="epubParts" class="summary-field" hidden>
+            <label for="epubPart">Part</label><select id="epubPart"></select>
+          </div>
+          <div class="summary-field">
+            <label for="startSection">Start at</label
+            ><select id="startSection">
+              <option value="1">Beginning</option>
+            </select>
+          </div>
+          <p id="startPreview" class="start-preview" dir="auto"></p>
+          <p id="startNote" class="muted field-hint" hidden></p>
+          <div class="summary-field">
+            <span id="importViewLabel" class="summary-label">Show</span>
+            <div
+              id="importView"
+              class="voice-chips"
+              role="group"
+              aria-labelledby="importViewLabel"
+            >
+              <button
+                type="button"
+                class="voice-chip"
+                data-view="word"
+                aria-pressed="true"
+              >
+                One word</button
+              ><button
+                type="button"
+                class="voice-chip"
+                data-view="sentence"
+                aria-pressed="false"
+              >
+                A sentence
+              </button>
+            </div>
+          </div>
+          <p id="importNotes" class="muted field-hint" role="status"></p>
+          <label id="otherFile" class="other-file" for="bookFile"
+            >Choose a different file</label
+          >
+        </section>
+        <details id="textDetails" class="text-details" open>
+          <summary id="textDetailsSummary">Check or edit the text</summary>
+          <label for="textInput" id="textInputLabel">Or paste some text</label
+          ><textarea
+            dir="auto"
+            id="textInput"
+            required
+            placeholder="A chapter, an article, or a few paragraphs…"
+          ></textarea>
+          <div id="textCheck" class="text-check" role="status" hidden>
+            <p class="text-check-title">Worth a look before you read</p>
+            <ul id="textCheckList"></ul>
+          </div>
+        </details>
         <details id="moreOptions" class="more-options">
           <summary>More options</summary>
           <div class="field-grid">
@@ -961,6 +1026,29 @@
             >
           </div>
           <div class="inline-field">
+            <label for="startParagraph" class="inline-label"
+              >Start at paragraph</label
+            ><input id="startParagraph" type="number" min="1" value="1" />
+          </div>
+          <fieldset id="pdfOptions" hidden>
+            <legend>PDF pages to read</legend>
+            <div class="pdf-range">
+              <label
+                >From
+                <input id="pdfFrom" type="number" min="1" value="1" /></label
+              ><label
+                >To <input id="pdfTo" type="number" min="1" value="1" /></label
+              ><button type="button" id="applyPdfRange" class="outline">
+                Apply
+              </button>
+            </div>
+            <label class="check-label"
+              ><input id="pdfMargins" type="checkbox" checked /> Remove repeated
+              page headers and footers</label
+            >
+            <p id="pdfRangeStatus" class="muted" role="status"></p>
+          </fieldset>
+          <div class="inline-field">
             <label for="pdfLayout" class="inline-label">PDF reading order</label
             ><select id="pdfLayout">
               <option value="auto">Detect columns automatically</option>
@@ -969,26 +1057,10 @@
             </select>
           </div>
         </details>
-        <details id="startOptions">
-          <summary>Choose where to start</summary>
-          <label for="startSection">Section or chapter</label
-          ><select id="startSection">
-            <option value="1">Beginning</option></select
-          ><label for="startParagraph">Starting paragraph</label
-          ><input id="startParagraph" type="number" min="1" value="1" />
-          <p id="startPreview" class="muted"></p>
-          <p class="muted">
-            Earlier pages stay available in review and the original PDF.
-          </p>
-        </details>
-        <p class="muted">
-          Your readings and saved places stay on this device. Definitions come
-          from the included English dictionary.
-        </p>
         <div class="dialog-actions">
           <button type="button" id="sample" class="secondary">
             Pick a short read</button
-          ><button class="primary" type="submit">Open in reader</button>
+          ><button class="primary" type="submit">Start reading</button>
         </div>
       </form>
     </dialog>
@@ -1703,7 +1775,8 @@
         This website counts visits without cookies: one anonymous tally per
         visit, noting only whether it’s your first. Third-party licenses:
         <a href="vendor/pdfjs/LICENSE">PDF.js</a> ·
-        <a href="dictionary/LICENSE.txt">WordNet dictionary</a>
+        <a href="dictionary/LICENSE.txt">WordNet dictionary</a> ·
+        <a href="frequency/README.txt">wordfreq word frequencies</a>
       </p>
       <p id="appNotices">
         <a href="privacy.html">Privacy information (draft)</a> ·

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseText } from "../dist/engine.js";
+import { DEFAULT_VOICE_TIMING, spokenMs } from "../dist/spoken.js";
 import {
   wpmToRate,
   chunkEnd,
@@ -78,6 +79,9 @@ test("estimated word times keep the pace on average", () => {
   assert.ok(Math.abs(total - words.length * (60000 / 180)) < 1e-6);
   assert.ok(times[1] > times[0]);
   assert.ok(times[4] > times[2]);
+  // The same model as silent reading: the time to say it plus the pause.
+  const said = (w) => spokenMs(w) + (/\.$/.test(w) ? DEFAULT_VOICE_TIMING.stop : 0);
+  assert.ok(Math.abs(times[4] / times[2] - said("here.") / said("long")) < 1e-9);
   assert.deepEqual(estimateWordTimes([], 200), []);
 });
 
@@ -332,7 +336,7 @@ test("the timer learns how fast a voice without boundaries speaks", () => {
   h.advance(2000);
   assert.equal(h.player.index, 3);
   h.spoken[0].onend();
-  assert.equal(h.player.voicePace, 1.25);
+  assert.ok(Math.abs(h.player.voicePace - 1.25) < 1e-9);
   assert.equal(h.player.index, 4);
   // The next sentence's words move at the voice's measured speed: the second
   // word is not due until 25% later than the plain estimate.

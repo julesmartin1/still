@@ -1,9 +1,4 @@
-import { sentenceEnd } from "./engine.js";
-// A word that ends a sentence (not "Dr." or an initial like "J.").
-const end = (t) =>
-  sentenceEnd.test(t.text) &&
-  !/^(?:Mr|Mrs|Ms|Dr|Prof|St|vs|etc|e\.g|i\.e)\.$/i.test(t.text) &&
-  !/^\p{L}\.$/u.test(t.text);
+import { isSentenceEnd as end } from "./engine.js";
 export function previousSentence(tokens, index) {
   if (!tokens.length || index <= 0) return 0;
   let start = index;

@@ -16,6 +16,37 @@ const common = new Set(
 // including CJK corner brackets and full-width parentheses.
 export const sentenceEnd = /[.!?。！？][”’"')\]」』）】》]*$/u;
 export const clauseEnd = /[,;:、，；：][”’"')\]」』）】》]*$/u;
+// A full stop that doesn't end a sentence: after a title ("Mrs. Saville",
+// "St. Petersburgh", "e.g. London") or an initial ("J. R. R. Tolkien"), or
+// after a short form when a number or a word in lower case follows ("No. 5",
+// "Dec. 11th", "etc. and", "a.m. on", "so... and").
+const TITLES = new Set(
+  "mr mrs ms mx messrs dr st mt ft prof rev revd hon capt col gen lt sgt cpl maj cmdr adm gov pres sen rep insp supt fr sr sra srta dra mme mlle mons hr hrn cf vs viz e.g i.e z.b".split(
+    " ",
+  ),
+);
+const SHORT_FORMS = new Set(
+  "etc approx ca jr inc ltd co corp bros esq dept no nos nr vol vols p pp ch chap fig art sec jan feb mar apr jun jul aug sep sept oct nov dec".split(
+    " ",
+  ),
+);
+export function endsSentence(word, next = "") {
+  if (!sentenceEnd.test(word)) return false;
+  if (!word.endsWith(".")) return true;
+  const core = word.replace(/^[^\p{L}\p{N}]+/u, "").slice(0, -1);
+  const lower = core.toLowerCase();
+  const runsOn = /^[^\p{L}\p{N}]*[\p{Ll}\p{N}]/u.test(next);
+  return !(
+    TITLES.has(lower) ||
+    /^\p{Lu}$/u.test(core) ||
+    (runsOn &&
+      (SHORT_FORMS.has(lower) ||
+        /\p{L}\.\p{L}/u.test(core) ||
+        word.endsWith("...")))
+  );
+}
+// Tokens carry whether they end a sentence (`end`, from buildTokens).
+export const isSentenceEnd = (t) => t.end ?? endsSentence(t.text);
 
 // Scripts written without spaces between words. Chunks containing them are
 // split into words with Intl.Segmenter; everything else splits on whitespace.
@@ -89,7 +120,7 @@ export function buildTokens(wordParagraphs) {
       sentence.forEach((t) => (t.complexity = complexity));
       sentence = [];
     };
-    for (const word of words) {
+    words.forEach((word, k) => {
       const norm = cleanWord(word);
       const token = {
         text: word,
@@ -99,11 +130,12 @@ export function buildTokens(wordParagraphs) {
         rare: !common.has(norm) && norm.length > 5,
         complexity: 0,
         paragraphEnd: false,
+        end: endsSentence(word, words[k + 1]),
       };
       tokens.push(token);
       sentence.push(token);
-      if (sentenceEnd.test(word)) finish();
-    }
+      if (token.end) finish();
+    });
     finish();
     tokens.at(-1).paragraphEnd = true;
   });
@@ -149,33 +181,81 @@ export function recordLookup(profile, word) {
   return { ...profile, lookups };
 }
 // Relative weights allocate the paragraph's budget; they do not add time to it.
+// One model sets every word's share, from what reading research measures
+// about where the time goes when we read:
 //
-// How long a word takes to say sets most of its time on screen. A voice
-// spends a fixed time on any word plus a little per sound in it (spoken.js);
-// the natural voice measures both, and its pauses, as it reads aloud, and
-// `voice` carries what it measured. Against an average word:
-//   weight = 0.45 + 0.55 × spoken(word) / spoken(average word)
+//   weight = say + rare + wrap-up (+ difficulty, a recent lookup, a new view)
+//
+// say: how long the word takes to say. A voice spends a fixed time on any
+// word plus a little per sound in it (spoken.js); the natural voice measures
+// both, and its pauses, as it reads aloud, and `voice` carries what it
+// measured. Against an average word:
+//   say = 0.45 + 0.55 × spoken(word) / spoken(average word)
 // so "a" gets about 0.8, an average word 1 and "extraordinary" about 1.9.
-// The fixed part keeps short words on screen long enough to be seen. The
-// pause after a comma or a full stop adds half the voice's pause there.
+// The fixed part keeps short words on screen long enough to be seen.
+//
+// rare: how common the word is (see frequencyWeight). Uncommon words take
+// longer to recognise than common ones of the same length.
+//
+// wrap-up: readers linger at the end of a clause or sentence to put it
+// together, about where a voice pauses. A comma or full stop adds half the
+// voice's pause there, and the end of a paragraph a little more.
 export function wordWeight(
   token,
-  { profile = freshProfile(), now = Date.now(), voice = DEFAULT_VOICE_TIMING } = {},
+  {
+    profile = freshProfile(),
+    now = Date.now(),
+    voice = DEFAULT_VOICE_TIMING,
+    // (norm) → the word's Zipf frequency, or undefined when it isn't on the
+    // list; null when there is no list for the reading's language.
+    frequency = null,
+    seen = 0, // times the word came earlier in this reading
+  } = {},
 ) {
   const average = averageSpokenMs(voice);
   const said = spokenMs(token.text ?? token.norm, voice) / average;
   let weight = clamp(0.45 + 0.55 * said, 0.75, 2.2);
   weight += token.complexity || 0;
-  if (token.rare) weight += 0.16;
+  weight += rareWeight(token, frequency, seen);
   const looked = profile.lookups[token.norm];
   if (Number.isFinite(looked))
     weight += 0.25 * clamp(1 - (now - looked) / 86400000 / 30, 0, 1);
   if (clauseEnd.test(token.text)) weight += clamp((0.5 * voice.comma) / average, 0.2, 0.6);
-  if (sentenceEnd.test(token.text))
+  if (isSentenceEnd(token))
     weight += clamp((0.5 * voice.stop) / average, 0.4, 1.1);
   if (token.paragraphEnd) weight += 0.6;
   return weight;
 }
+// How much longer an uncommon word needs, on the Zipf scale (log10 of how
+// often it appears per billion words: "the" is 7.7, "house" 5.7, "quixotic"
+// 2.3). In eye-tracking studies the time spent on a word falls steadily with
+// its log frequency, by a few tens of milliseconds a step. Here each step
+// below 5 adds FREQUENCY_SLOPE of an average word's time (about 20 ms at 260
+// words a minute) and each step above takes as much away. The extra time
+// for a rare word fades each time it comes again in the same reading (a
+// character's name is slow the first time, not the tenth): it is divided by
+// √(1 + times seen).
+export const FREQUENCY_CENTER = 5;
+export const FREQUENCY_SLOPE = 0.09;
+// A word not on the list (the lists stop near Zipf 3) is taken as this.
+export const UNLISTED_ZIPF = 2.8;
+// Without a list for the language, a long word outside the common few
+// hundred counts as this rare.
+const RARE_ZIPF = 3.2;
+export function frequencyWeight(zipf, seen = 0) {
+  let extra = FREQUENCY_SLOPE * (FREQUENCY_CENTER - zipf);
+  if (extra > 0) extra /= Math.sqrt(1 + Math.max(0, seen));
+  return clamp(extra, -0.2, 0.4);
+}
+function rareWeight(token, frequency, seen) {
+  if (typeof frequency !== "function")
+    return token.rare ? frequencyWeight(RARE_ZIPF, seen) : 0;
+  const norm = token.norm ?? cleanWord(token.text);
+  if (!/\p{L}/u.test(norm || "")) return 0; // numbers: their length covers it
+  const zipf = frequency(norm);
+  return frequencyWeight(Number.isFinite(zipf) ? zipf : UNLISTED_ZIPF, seen);
+}
+export const VIEW_START = 0.5;
 // The slowest pace suits a new reader or someone learning the language
 // (a word every 1.5 s); the fastest is near the limit of comprehension.
 export const MIN_WPM = 40;
@@ -224,14 +304,23 @@ export function buildTimingPlan(
     replayParagraphs = null, // Set of paragraphs to replay slower
     now = Date.now(),
     voice = DEFAULT_VOICE_TIMING, // what the voice taught (spoken.js)
+    frequency = null, // see wordWeight
+    // Showing a sentence at a time: the indices where a new sentence comes
+    // on screen. Its first word gets VIEW_START more, for the eye to go back
+    // to the start of the line and take in the new view.
+    viewStarts = null,
   } = {},
 ) {
   const groups = new Map();
+  const seenCounts = new Map();
   tokens.forEach((token, index) => {
     if (!groups.has(token.paragraph)) groups.set(token.paragraph, []);
-    groups
-      .get(token.paragraph)
-      .push({ index, weight: wordWeight(token, { profile, now, voice }) });
+    const norm = token.norm ?? cleanWord(token.text);
+    const seen = seenCounts.get(norm) || 0;
+    seenCounts.set(norm, seen + 1);
+    let weight = wordWeight(token, { profile, now, voice, frequency, seen });
+    if (index && viewStarts?.has(index)) weight += VIEW_START;
+    groups.get(token.paragraph).push({ index, weight });
   });
   const durations = new Array(tokens.length);
   for (const [paragraph, words] of groups) {
@@ -349,4 +438,52 @@ export function planSums(plan) {
   const sums = new Float64Array(plan.length + 1);
   for (let i = 0; i < plan.length; i++) sums[i + 1] = sums[i] + (plan[i] || 0);
   return sums;
+}
+
+// ---- A sentence at a time ----
+// The stretches shown together when reading a sentence at a time: each
+// sentence, within one paragraph. A sentence too long for a phone screen
+// is split at its last clause end (a comma, semicolon, colon or dash) after
+// at least VIEW_MIN_WORDS words, or after VIEW_MAX_WORDS if it has none.
+// Returns [start, end] pairs (token indices, inclusive) covering every token.
+export const VIEW_MAX_WORDS = 32;
+export const VIEW_MIN_WORDS = 12;
+const viewClauseEnd = /(?:[,;:、，；：]|[—–])[”’"')\]」』）】》]*$/u;
+export function sentenceSpans(tokens, max = VIEW_MAX_WORDS) {
+  const spans = [];
+  let start = 0;
+  while (start < tokens.length) {
+    const limit = Math.min(tokens.length - 1, start + max - 1);
+    let end = -1,
+      clause = -1;
+    for (let i = start; i <= limit; i++) {
+      const t = tokens[i];
+      if (
+        t.paragraphEnd ||
+        isSentenceEnd(t) ||
+        tokens[i + 1]?.paragraph !== t.paragraph
+      ) {
+        end = i;
+        break;
+      }
+      if (i - start + 1 >= VIEW_MIN_WORDS && viewClauseEnd.test(t.text))
+        clause = i;
+    }
+    if (end < 0) end = limit === tokens.length - 1 ? limit : clause >= 0 ? clause : limit;
+    spans.push([start, end]);
+    start = end + 1;
+  }
+  return spans;
+}
+// The span (from sentenceSpans) holding token `index`.
+export function spanAt(spans, index) {
+  let low = 0,
+    high = spans.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    if (spans[mid][1] < index) low = mid + 1;
+    else if (spans[mid][0] > index) high = mid - 1;
+    else return spans[mid];
+  }
+  return null;
 }

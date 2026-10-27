@@ -34,6 +34,7 @@ const paths = [
   "licenses/Capacitor-SPM-LICENSE.txt",
   "dist/dictionary/LICENSE.txt",
   "dist/dictionary/README.txt",
+  "dist/frequency/README.txt",
   "node_modules/@capacitor/core/LICENSE",
   "node_modules/@capacitor/ios/LICENSE",
 ];
@@ -57,6 +58,6 @@ await writeFile(
   "dist/licenses.html",
   page(
     "Third-party notices",
-    `<p>Still uses Capacitor 8.5.2, PDF.js 6.3.289 and WordNet 3.1 data (transformed from wordnet-db 3.1.14). These notices preserve the upstream distribution terms. System fonts are used; no remote font service is loaded.</p><ul>${entries.join("")}</ul><p>Imported books remain the property of their rights holders. Import only files you are entitled to use. Still does not bypass DRM or provide publisher/library integrations.</p>`,
+    `<p>Still uses Capacitor 8.5.2, PDF.js 6.3.289 and WordNet 3.1 data (transformed from wordnet-db 3.1.14) and word frequency lists derived from wordfreq 3.1.1 (CC BY-SA 4.0). These notices preserve the upstream distribution terms. System fonts are used; no remote font service is loaded.</p><ul>${entries.join("")}</ul><p>Imported books remain the property of their rights holders. Import only files you are entitled to use. Still does not bypass DRM or provide publisher/library integrations.</p>`,
   ),
 );
