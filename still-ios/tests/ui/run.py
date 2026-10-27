@@ -30,6 +30,9 @@ PORT = int(os.environ.get("STILL_UI_PORT", "4199"))  # set it to run beside anot
 URL = f"http://127.0.0.1:{PORT}/"
 RESULTS = []
 TESTS = []
+# The longest check takes under a minute; one that hangs (a page that never
+# answers) fails at this limit instead of holding up the whole run.
+CHECK_SECONDS = 180
 
 
 def check(fn):
@@ -447,7 +450,19 @@ async def check_ins_can_be_turned_off(browser):
     await page.click("#play")
     # About 11 s of words (90 at 600 wpm, plus easing in); a busy CI runner
     # can take nearly twice that.
-    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=40000)
+    try:
+        await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=40000)
+    except Exception:
+        # It has failed now and then on CI only; say where playback stood.
+        state = await page.evaluate(
+            """() => ({
+                play: document.getElementById('play').textContent.trim(),
+                count: document.getElementById('count').textContent,
+                dialogs: [...document.querySelectorAll('dialog[open]')].map((d) => d.id),
+                hidden: document.hidden,
+            })"""
+        )
+        raise AssertionError(f"the reading didn't finish: {state}")
     assert not await dialog_open(page, "checkinDialog")
     await ctx.close()
 
@@ -1796,11 +1811,14 @@ async def main():
                 if only and not any(o in test.__name__ for o in only):
                     continue
                 try:
-                    await test(browser)
-                    print(f"ok   {test.__name__}")
+                    await asyncio.wait_for(test(browser), CHECK_SECONDS)
+                    print(f"ok   {test.__name__}", flush=True)
+                except asyncio.TimeoutError:
+                    failed += 1
+                    print(f"FAIL {test.__name__}: still running after {CHECK_SECONDS} s", flush=True)
                 except Exception as error:
                     failed += 1
-                    print(f"FAIL {test.__name__}: {error or type(error).__name__}")
+                    print(f"FAIL {test.__name__}: {error or type(error).__name__}", flush=True)
                     if os.environ.get("VERBOSE"):
                         traceback.print_exc()
             await browser.close()
