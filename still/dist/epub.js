@@ -1,4 +1,5 @@
 import { tidyPunctuation } from "./text-repair.js";
+import { contentsLists, findStart, isContentsTitle } from "./front-matter.js";
 const MAX_BOOK_CHARACTERS = 20000000;
 const decoder = new TextDecoder();
 function crc32(bytes) {
@@ -159,11 +160,13 @@ function chapter(value) {
     return new DOMParser().parseFromString(value, "text/html");
   }
 }
-// Parts of a book that aren't read straight through: title and copyright
-// pages, colophons, indexes, tables of contents, and notes. Note numbers in
-// the text ("ashamed.2") and the "↩" links back from notes go too, since a
-// reader can't follow them one word at a time.
+// Parts of a book that aren't read straight through: covers, title and
+// copyright pages, colophons, indexes, tables of contents, and notes. Note
+// numbers in the text ("ashamed.2"), the "↩" links back from notes and the
+// printed book's page numbers go too, since a reader can't follow them one
+// word at a time.
 const SKIPPED = new Set([
+  "cover",
   "titlepage",
   "halftitlepage",
   "imprint",
@@ -181,17 +184,47 @@ const SKIPPED = new Set([
   "rearnote",
   "noteref",
   "backlink",
+  "pagebreak",
 ]);
+// What the import dialog says was left out, by kind.
+const LEFT_OUT = {
+  cover: "the cover",
+  titlepage: "the title page",
+  halftitlepage: "the title page",
+  imprint: "the copyright page",
+  "copyright-page": "the copyright page",
+  colophon: "the copyright page",
+  toc: "the contents list",
+  index: "the index",
+  footnotes: "the notes",
+  endnotes: "the notes",
+  rearnotes: "the notes",
+  footnote: "the notes",
+  endnote: "the notes",
+  rearnote: "the notes",
+  pagebreak: "page numbers",
+};
 const NOTE_MARK = /^\s*(?:\[\s*\d{1,3}\s*\]|\d{1,3}|[*†‡§])\s*$/u;
-function skipped(el) {
-  const kinds =
-    `${el.getAttribute("epub:type") || ""} ${(el.getAttribute("role") || "").replace(/\bdoc-/g, "")}`
-      .toLowerCase()
-      .split(/\s+/);
-  if (kinds.some((k) => SKIPPED.has(k))) return true;
+const kindsOf = (el) =>
+  `${el.getAttribute("epub:type") || ""} ${(el.getAttribute("role") || "").replace(/\bdoc-/g, "")}`
+    .toLowerCase()
+    .split(/\s+/);
+function skipped(el, left = new Set()) {
+  const kind = kindsOf(el).find((k) => SKIPPED.has(k));
+  if (kind) {
+    // A page number marker is often empty; only say so when one was read.
+    if (LEFT_OUT[kind] && (kind !== "pagebreak" || el.textContent.trim()))
+      left.add(LEFT_OUT[kind]);
+    return true;
+  }
   // Project Gutenberg's header and licence.
-  if (/^pg-(?:header|footer)$/.test(el.getAttribute("id") || "")) return true;
-  if (/\bpg-boilerplate\b/.test(el.getAttribute("class") || "")) return true;
+  if (
+    /^pg-(?:header|footer)$/.test(el.getAttribute("id") || "") ||
+    /\bpg-boilerplate\b/.test(el.getAttribute("class") || "")
+  ) {
+    left.add("the Project Gutenberg header and licence");
+    return true;
+  }
   // A bare note number linking to a note ("<a href='#fn3'>3</a>") or
   // marking where one starts ("<a name='note1'>[1]</a>").
   if (el.localName?.toLowerCase() === "a" && NOTE_MARK.test(el.textContent)) {
@@ -268,9 +301,15 @@ export async function extractEpub(
       ]),
     );
   const paragraphs = [],
+    // Whether each paragraph is all a link into the book, as the lines of a
+    // contents list are.
+    links = [],
     sections = [],
-    anchors = new Map();
-  let characters = 0;
+    anchors = new Map(),
+    left = new Set();
+  let characters = 0,
+    // The first chapter file the book marks as its main text.
+    bodyPath = null;
   const spine = [...pkg.querySelectorAll("spine > itemref")].filter(
     (i) => i.getAttribute("linear") !== "no",
   );
@@ -284,23 +323,31 @@ export async function extractEpub(
     doc
       .querySelectorAll("script,style,nav,iframe,object,noscript")
       .forEach((e) => e.remove());
-    for (const el of doc.querySelectorAll("*")) if (skipped(el)) el.remove();
+    for (const el of doc.querySelectorAll("*"))
+      if (skipped(el, left)) el.remove();
     const body = doc.querySelector("body");
     if (!body) continue;
+    const marked = [body, ...body.children].some((el) =>
+      kindsOf(el).includes("bodymatter"),
+    );
     const first = paragraphs.length + 1;
     anchors.set(path, first);
     let pending = "",
-      ids = [];
+      ids = [],
+      linked = 0,
+      inLink = 0;
     const flush = () => {
       const text = pending.replace(/\s+/g, " ").trim();
       if (text) {
         for (const id of ids)
           anchors.set(path + "#" + id, paragraphs.length + 1);
         paragraphs.push(text);
+        links.push(linked >= 0.8 * text.replace(/\s/g, "").length);
         characters += text.length;
       }
       pending = "";
       ids = [];
+      linked = 0;
     };
     let visited = 0;
     const walk = (node, depth = 0) => {
@@ -309,6 +356,7 @@ export async function extractEpub(
       signal?.throwIfAborted();
       if (node.nodeType === 3) {
         pending += node.textContent;
+        if (inLink) linked += node.textContent.replace(/\s/g, "").length;
         return;
       }
       if (node.nodeType !== 1) return;
@@ -323,7 +371,12 @@ export async function extractEpub(
         anchors.set(path + "#" + id, paragraphs.length + 1);
         ids.push(id);
       }
+      // A link to another place in the book, not out of it.
+      const inside =
+        tag === "a" && !/^[a-z][\w+.-]*:/i.test(node.getAttribute("href") ?? "x:");
+      if (inside) inLink++;
       for (const child of node.childNodes) walk(child, depth + 1);
+      if (inside) inLink--;
       if (block) flush();
     };
     walk(body);
@@ -332,6 +385,7 @@ export async function extractEpub(
     if (paragraphs.length < first)
       for (const key of anchors.keys())
         if (key === path || key.startsWith(path + "#")) anchors.delete(key);
+    if (marked && paragraphs.length >= first) bodyPath ??= path;
     const heading = [...body.querySelectorAll("h1,h2,h3")]
       .map((h) => h.textContent.replace(/\s+/g, " ").trim())
       .find(Boolean);
@@ -356,8 +410,11 @@ export async function extractEpub(
   if (start >= 0 || end > 0) {
     const from = start + 1,
       to = end > from ? end : paragraphs.length;
+    left.add("the Project Gutenberg header and licence");
     paragraphs.splice(to);
     paragraphs.splice(0, from);
+    links.splice(to);
+    links.splice(0, from);
     for (const [key, value] of anchors) {
       if (value <= from || value > to) anchors.delete(key);
       else anchors.set(key, value - from);
@@ -373,7 +430,30 @@ export async function extractEpub(
   }
   if (!paragraphs.length)
     throw Error("No readable text was found in this EPUB.");
-  let toc = [];
+  // A contents list written out in the text (as Project Gutenberg's are)
+  // goes; links and sections that led to it lead on to what follows.
+  const drop = contentsLists(paragraphs, links);
+  if (drop.size) {
+    left.add("the contents list");
+    const next = [];
+    let kept = 0;
+    for (let i = 0; i < paragraphs.length; i++) {
+      next.push(kept + 1);
+      if (!drop.has(i)) paragraphs[kept++] = paragraphs[i];
+    }
+    paragraphs.length = kept;
+    for (const [key, value] of anchors) {
+      const moved = next[value - 1];
+      if (moved > kept) anchors.delete(key);
+      else anchors.set(key, moved);
+    }
+    for (let i = sections.length - 1; i >= 0; i--) {
+      sections[i].paragraph = next[sections[i].paragraph - 1];
+      if (sections[i].paragraph > kept) sections.splice(i, 1);
+    }
+  }
+  let toc = [],
+    landmark = null;
   const nav = [...manifest.values()].find((i) =>
     (i.getAttribute("properties") || "").split(/\s+/).includes("nav"),
   );
@@ -394,6 +474,13 @@ export async function extractEpub(
         title: tocTitle(a),
         ...resolvePath(path, a.getAttribute("href")),
       }));
+      // Where the landmarks say the main text starts.
+      const main = [...doc.querySelectorAll("nav a[href]")].find(
+        (a) =>
+          a.closest("nav") !== tocNav &&
+          kindsOf(a).includes("bodymatter"),
+      );
+      if (main) landmark = resolvePath(path, main.getAttribute("href"));
     } else if (ncx) {
       const path = resolvePath(packagePath, ncx.getAttribute("href")).path,
         doc = xml(await zip.read(path));
@@ -408,14 +495,30 @@ export async function extractEpub(
   } catch {
     /* Spine headings remain a usable fallback. */
   }
+  const at = (place) =>
+    place &&
+    (anchors.get(place.path + (place.anchor ? "#" + place.anchor : "")) ||
+      anchors.get(place.path));
   const mapped = toc
-    .map((t) => ({
-      title: t.title.slice(0, 120),
-      paragraph:
-        anchors.get(t.path + (t.anchor ? "#" + t.anchor : "")) ||
-        anchors.get(t.path),
-    }))
-    .filter((t) => t.title && t.paragraph);
+    .map((t) => ({ title: t.title.slice(0, 120), paragraph: at(t) }))
+    .filter((t) => t.title && t.paragraph && !isContentsTitle(t.title));
+  const chapters = sections.filter((s) => !isContentsTitle(s.title));
+  const guide = [...pkg.querySelectorAll("guide > reference")].find((r) =>
+    /^(?:text|start|bodymatter)$/i.test(r.getAttribute("type") || ""),
+  );
+  let guideAt = 0;
+  try {
+    guideAt =
+      (guide && at(resolvePath(packagePath, guide.getAttribute("href")))) || 0;
+  } catch {}
+  const opening = findStart(
+    paragraphs,
+    mapped.length ? mapped : chapters,
+    {
+      body: at(landmark) || (bodyPath && anchors.get(bodyPath)) || 0,
+      guide: guideAt,
+    },
+  );
   return {
     text: paragraphs.map(tidyPunctuation).join("\n\n"),
     title: (
@@ -424,10 +527,15 @@ export async function extractEpub(
     )
       .trim()
       .slice(0, 240),
-    sections: mapped.length ? mapped : sections,
+    sections: mapped.length ? mapped : chapters,
     // Where each chapter file starts, for splitting a long book into parts.
-    chapterStarts: sections,
+    chapterStarts: chapters,
     chapters: spine.length,
+    // Where the book's own text starts (a paragraph number, from 1), the
+    // front matter before it, and what was left out of the text.
+    start: opening.paragraph,
+    before: opening.before,
+    left: [...left],
   };
 }
 
@@ -486,11 +594,14 @@ export function bookParts(book, limit) {
       list
         .filter((s) => s.paragraph - 1 >= from && s.paragraph - 1 < to)
         .map((s) => ({ ...s, paragraph: s.paragraph - from }));
+    const start = (book.start || 1) - 1;
     parts.push({
       ...book,
       text: paragraphs.slice(from, to).join("\n\n"),
       sections: inPart(marks),
       chapterStarts: inPart(chapters),
+      start: start >= from && start < to ? start - from + 1 : 1,
+      before: start >= from && start < to ? book.before || [] : [],
     });
     from = to;
   }

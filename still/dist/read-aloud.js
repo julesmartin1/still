@@ -10,7 +10,13 @@
 // finished, play, pause, seek, retime, breakAfter/onBreak, onWord, onEnd), so
 // the app swaps one for the other and keeps its own handling of check-ins,
 // "Pause after each sentence" and the end of a reading.
-import { clamp, sentenceEnd, clauseEnd, cleanWord } from "./engine.js";
+import {
+  clamp,
+  clauseEnd,
+  cleanWord,
+  endsSentence,
+  isSentenceEnd,
+} from "./engine.js";
 import { DEFAULT_VOICE_TIMING, spokenMs } from "./spoken.js";
 
 // Most voices speak about 180 words a minute at rate 1. Browsers accept
@@ -46,7 +52,7 @@ export function chunkEnd(tokens, start, max = MAX_CHUNK_WORDS) {
   let clause = -1;
   for (let i = start; i <= limit; i++) {
     const t = tokens[i];
-    if (t.paragraphEnd || sentenceEnd.test(t.text)) return i;
+    if (t.paragraphEnd || isSentenceEnd(t)) return i;
     if (i - start + 1 >= MIN_SPLIT_WORDS && clauseEnd.test(t.text)) clause = i;
   }
   if (limit === last) return last;
@@ -123,9 +129,9 @@ export function wordAtChar(offsets, charIndex) {
 export function estimateWordTimes(words, wpm, voice = DEFAULT_VOICE_TIMING) {
   if (!words.length) return [];
   const perWord = 60000 / Math.max(1, wpm);
-  const weights = words.map((word) => {
+  const weights = words.map((word, i) => {
     let ms = spokenMs(word, voice);
-    if (sentenceEnd.test(word)) ms += voice.stop;
+    if (endsSentence(word, words[i + 1])) ms += voice.stop;
     else if (clauseEnd.test(word) || /[—–]$/.test(word)) ms += voice.comma;
     return ms;
   });

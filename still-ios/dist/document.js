@@ -156,6 +156,16 @@ export function detectSections(text, type = "other") {
     // Headings start with a capital or a number; a paragraph that starts
     // "part of the…" or "method provides…" is running text.
     if (!/^[\p{Lu}\d]/u.test(first)) return;
+    // A contents list set line under line in one paragraph ("Letter 1",
+    // "Letter 2", "Chapter 1"…) is not a heading.
+    if (
+      lines.length >= 3 &&
+      lines.filter((l) => l.trim().length <= 80 && heading(l.trim())).length >=
+        lines.length * 0.6
+    ) {
+      result.push({ paragraph: i + 1, contents: true });
+      return;
+    }
     // The page number of an entry that wraps comes after its last line.
     const tail = p.slice(-200).replace(/[ \t]*\n[ \t]*/g, " ");
     if (contents(first) || contents(tail)) {
@@ -213,6 +223,12 @@ export function detectSections(text, type = "other") {
   // entry ("LIVRE TROISIÈME." above its chapters' page numbers) is part of
   // the list too.
   const listed = new Set();
+  const words = (a) => a.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  // An entry for the heading, or a line of entries that starts with it
+  // ("Chapter 1 Chapter 2", two on a line in a PDF).
+  const same = (entry, heading) =>
+    words(entry) === words(heading) ||
+    words(entry).startsWith(words(heading) + " ");
   for (let i = 0; i < result.length; ) {
     let j = i;
     while (
@@ -222,7 +238,16 @@ export function detectSections(text, type = "other") {
       result[j + 1].paragraph === result[j].end + 1
     )
       j++;
-    if (j - i >= 2) for (let k = i; k <= j; k++) listed.add(k);
+    if (j - i >= 2) {
+      // The first chapter's own heading may follow the list straight on:
+      // it repeats an entry ("Chapter 1" after "… Chapter 61").
+      const last = result
+        .slice(i, j)
+        .some((r) => r.title && same(r.title, result[j].title || ""))
+        ? j - 1
+        : j;
+      for (let k = i; k <= last; k++) listed.add(k);
+    }
     i = j + 1;
   }
   result.forEach((r, i) => {

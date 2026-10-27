@@ -108,11 +108,12 @@ async def quick_settings(page):
 
 async def open_text(page, text, title="Test reading", kind=None, checkins=None):
     await add(page)
-    await page.fill("#textTitle", title)
+    # The title is asked for once there is text.
     await page.evaluate(
         "t => { const el = document.getElementById('textInput'); el.value = t; el.dispatchEvent(new Event('input')); }",
         text,
     )
+    await page.fill("#textTitle", title)
     if kind or checkins:
         await page.evaluate("document.getElementById('moreOptions').open = true")
     if kind:
@@ -455,11 +456,11 @@ async def check_ins_can_be_turned_off(browser):
 async def pdf_table_of_contents_becomes_chapters(browser):
     ctx, page = await fresh(browser)
     await add(page)
-    await page.set_input_files("#pdfFile", os.path.join(HERE, "..", "fixtures", "chapters.pdf"))
+    await page.set_input_files("#bookFile", os.path.join(HERE, "..", "fixtures", "chapters.pdf"))
     await page.wait_for_function(
-        "document.getElementById('pdfStatus').textContent.startsWith('Imported')", timeout=30000
+        "document.getElementById('importNotes').textContent.startsWith('Imported')", timeout=30000
     )
-    assert "Found 3 chapters" in await page.text_content("#pdfStatus")
+    assert "Found 3 chapters" in await page.text_content("#importNotes")
     options = await page.eval_on_selector_all("#startSection option", "o => o.map(x => x.textContent)")
     assert options == ["Beginning", "Chapter One: The River", "Chapter Two: The Bridge", "Chapter Three: Home"], options
     await page.click("#inputForm [type=submit]")
@@ -505,11 +506,11 @@ async def markdown_symbols_are_flagged_and_removed(browser):
     assert value == "Notes\n\nRead this and the paper.\n\nfirst\nsecond", value
     # A .md file has its symbols removed on import.
     await page.set_input_files(
-        "#textFile",
+        "#bookFile",
         files=[{"name": "notes.md", "mimeType": "text/markdown", "buffer": text.encode()}],
     )
     await page.wait_for_function(
-        "document.getElementById('textFileStatus').textContent.includes('Markdown')", timeout=5000
+        "document.getElementById('importNotes').textContent.includes('Markdown')", timeout=5000
     )
     assert (await page.input_value("#textInput")).startswith("Notes\n\nRead this")
     assert await page.input_value("#textTitle") == "notes"
@@ -525,22 +526,28 @@ async def markdown_symbols_are_flagged_and_removed(browser):
         text,
     )
     await page.wait_for_function(
-        "document.getElementById('textFileStatus').textContent.includes('formatting symbols')", timeout=5000
+        "document.getElementById('importNotes').textContent.includes('formatting symbols')", timeout=5000
     )
     assert (await page.input_value("#textInput")).startswith("Notes\n\nRead this")
     # A plain-text book's _italics_ lose their underscores on import.
     await page.set_input_files(
-        "#textFile",
+        "#bookFile",
         files=[{"name": "book.txt", "mimeType": "text/plain", "buffer": b"It was done _at\r\nonce_, and file_name stays."}],
     )
     await page.wait_for_function(
-        "document.getElementById('textFileStatus').textContent.includes('italics')", timeout=5000
+        "document.getElementById('importNotes').textContent.includes('italics')", timeout=5000
     )
     assert "_" not in (await page.input_value("#textInput")).replace("file_name", "")
     await ctx.close()
 
 
-def mini_epub(chapters):
+PART_ONE_NAV = (
+    '<li><a href="one.xhtml">Part One</a><ol>'
+    '<li><a href="one.xhtml#s1">I</a></li><li><a href="two.xhtml">II</a></li></ol></li>'
+)
+
+
+def mini_epub(chapters, nav=PART_ONE_NAV):
     """A small EPUB 3 book; chapters is a list of (file name, body XHTML)."""
     import io, zipfile
     buf = io.BytesIO()
@@ -565,8 +572,7 @@ def mini_epub(chapters):
         z.writestr(
             "OEBPS/nav.xhtml",
             '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>'
-            '<nav epub:type="toc"><ol><li><a href="one.xhtml">Part One</a><ol>'
-            '<li><a href="one.xhtml#s1">I</a></li><li><a href="two.xhtml">II</a></li></ol></li></ol></nav></body></html>',
+            f'<nav epub:type="toc"><ol>{nav}</ol></nav></body></html>',
         )
         for name, body in chapters:
             z.writestr(
@@ -597,11 +603,9 @@ async def epub_skips_front_matter_and_note_numbers(browser):
         ]
     )
     await page.set_input_files(
-        "#epubFile", files=[{"name": "small.epub", "mimeType": "application/epub+zip", "buffer": book}]
+        "#bookFile", files=[{"name": "small.epub", "mimeType": "application/epub+zip", "buffer": book}]
     )
-    await page.wait_for_function(
-        "document.getElementById('epubStatus').textContent.startsWith('Imported')", timeout=10000
-    )
+    await page.wait_for_selector("#importSummary", state="visible", timeout=10000)
     text = await page.input_value("#textInput")
     assert "mill. Nobody" in text, text
     assert "licence" not in text and "typeface" not in text and "A Novel" not in text, text
@@ -610,6 +614,75 @@ async def epub_skips_front_matter_and_note_numbers(browser):
     options = await page.eval_on_selector_all("#startSection option", "o => o.map(x => x.textContent)")
     assert "Part One · I" in options and "Part One · II" in options, options
     assert await page.is_hidden("#epubParts")
+    await ctx.close()
+
+
+@check
+async def a_book_opens_at_its_first_chapter(browser):
+    ctx, page = await fresh(browser)
+    await add(page)
+    para = "<p>" + "The river ran on past the mill and nobody watched it go by. " * 6 + "</p>"
+    contents = "".join(f'<p><a href="c{n}.xhtml">Chapter {n}</a></p>' for n in (1, 2, 3))
+    book = mini_epub(
+        [
+            ("front.xhtml", f"<h1>SMALL BOOK</h1><p>By Someone</p><h2>CONTENTS</h2>{contents}"),
+            ("preface.xhtml", "<h2>Preface</h2>" + para * 2),
+            *[(f"c{n}.xhtml", f"<h2>Chapter {n}</h2>" + para * 3) for n in (1, 2, 3)],
+        ],
+        nav='<li><a href="front.xhtml">Small Book</a></li><li><a href="preface.xhtml">Preface</a></li>'
+        + "".join(f'<li><a href="c{n}.xhtml">Chapter {n}</a></li>' for n in (1, 2, 3)),
+    )
+    await page.set_input_files(
+        "#bookFile", files=[{"name": "small.epub", "mimeType": "application/epub+zip", "buffer": book}]
+    )
+    await page.wait_for_selector("#importSummary", state="visible", timeout=10000)
+    # The file is summed up; its text waits, folded, to be checked.
+    assert await page.locator("#dropZone").is_hidden()
+    assert not await page.evaluate("document.getElementById('textDetails').open")
+    assert await page.input_value("#textTitle") == "Small Book"
+    assert "3 chapters" in await page.inner_text("#summaryFacts")
+    # The contents list is left out, and the start is chapter one.
+    text = await page.input_value("#textInput")
+    assert text.count("Chapter 1") == 1, text[:300]
+    assert "contents list" in await page.inner_text("#importNotes")
+    start = page.locator("#startSection")
+    assert await start.evaluate("s => s.selectedOptions[0].textContent") == "Chapter 1"
+    assert (await page.inner_text("#startPreview")).startswith("CHAPTER 1")
+    assert "Preface" in await page.inner_text("#startNote")
+    # Read a sentence at a time, from chapter one.
+    await page.click("#importView [data-view='sentence']")
+    await page.click("#inputForm [type=submit]")
+    await page.wait_for_selector("#sentence", state="visible")
+    assert (await page.inner_text("#sentence")).startswith("Chapter 1")
+    mode = await page.text_content("#mode")
+    assert mode == "3 of 5 · Chapter 1", mode
+    # The preface is still there to go back to, and can be the start.
+    await add(page)
+    await page.set_input_files(
+        "#bookFile", files=[{"name": "small.epub", "mimeType": "application/epub+zip", "buffer": book}]
+    )
+    await page.wait_for_selector("#importSummary", state="visible", timeout=10000)
+    await start.select_option(label="Preface")
+    assert (await page.inner_text("#startPreview")).startswith("PREFACE")
+    assert await page.locator("#startNote").is_hidden()
+    # The view is the one chosen last.
+    assert await page.get_attribute("#importView [data-view='sentence']", "aria-pressed") == "true"
+    await page.click("#inputForm [type=submit]")
+    await page.wait_for_selector("#sentence", state="visible")
+    assert (await page.inner_text("#sentence")).startswith("Preface")
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
+async def a_file_of_another_kind_is_turned_away(browser):
+    ctx, page = await fresh(browser)
+    await add(page)
+    await page.set_input_files(
+        "#bookFile", files=[{"name": "photo.jpg", "mimeType": "image/jpeg", "buffer": b"\xff\xd8\xff"}]
+    )
+    assert "EPUB books, PDFs and text files" in await page.inner_text("#importStatus")
+    assert await page.locator("#dropZone").is_visible()
     await ctx.close()
 
 
@@ -1208,6 +1281,54 @@ async def a_sentence_at_a_time_underlines_the_word_being_read(browser):
     await page.keyboard.press("Escape")
     assert await page.locator("#sentence").is_hidden()
     assert "sentence-mode" not in await page.get_attribute("#wordReader", "class")
+    await ctx.close()
+
+
+@check
+async def sentence_by_sentence_is_kept_per_reading(browser):
+    ctx, page = await fresh(browser, init=FAKE_SPEECH)
+    await open_text(page, "Alpha one two. Beta three four.\n\nGamma five six.", title="Poems")
+    shown = "document.getElementById('sentence').textContent"
+    await quick_settings(page)
+    assert await page.locator("#sentenceUnderline").is_hidden()
+    await page.click("#viewChoices [data-view='sentence']")
+    # Without the underline the sentence stays plain while it is read.
+    await page.uncheck("#sentenceUnderline")
+    assert "next one comes" in await page.inner_text("#viewHint")
+    await page.keyboard.press("Escape")
+    await page.click("#play")
+    await page.wait_for_function(f"{shown} === 'Beta three four.'", timeout=5000)
+    assert await page.locator("#sentence .now").count() == 0
+    await page.keyboard.press("Space")
+    # Side taps go on and back a sentence at a time; back from the middle of
+    # one starts it again.
+    box = await page.locator("#wordReader .stage").bounding_box()
+    y = box["y"] + box["height"] / 2
+    right, left = box["x"] + box["width"] * 0.9, box["x"] + box["width"] * 0.1
+    await page.mouse.click(right, y)
+    await page.wait_for_function(f"{shown} === 'Gamma five six.'")
+    assert (await page.inner_text("#count")).startswith("7 /")
+    await page.mouse.click(left, y)
+    await page.wait_for_function(f"{shown} === 'Beta three four.'")
+    assert (await page.inner_text("#count")).startswith("4 /")
+    await page.keyboard.press("ArrowLeft")
+    assert await page.evaluate(shown) == "Alpha one two."
+    # A new reading opens in the view chosen last; each keeps its own.
+    await open_text(page, "Delta seven. Epsilon eight.", title="Notes")
+    assert await page.evaluate(shown) == "Delta seven."
+    await quick_settings(page)
+    await page.click("#viewChoices [data-view='word']")
+    await page.keyboard.press("Escape")
+    assert await page.locator("#sentence").is_hidden()
+    await shelf(page)
+    await page.click("#libraryList .shelf-row:has-text('Poems') > button")
+    await page.wait_for_selector("#sentence", state="visible")
+    assert await page.evaluate(shown) == "Alpha one two."
+    await shelf(page)
+    await page.click("#libraryList .shelf-row:has-text('Notes') > button")
+    await page.wait_for_selector("#word", state="visible")
+    assert await page.locator("#sentence").is_hidden()
+    assert not page.errors, page.errors
     await ctx.close()
 
 

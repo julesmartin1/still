@@ -1,5 +1,6 @@
 import { native, storage, flushStorage, exportFile } from "./native-runtime.js";
 import { bookParts, extractEpub } from "./epub.js";
+import { displayTitle, findStart } from "./front-matter.js";
 import {
   previousSentence,
   nextSentence,
@@ -93,7 +94,7 @@ import {
   targetWpm,
   Playback,
   clamp,
-  sentenceEnd,
+  isSentenceEnd,
   MIN_WPM,
   MAX_WPM,
   warmUpFactor,
@@ -364,7 +365,12 @@ function readingFrequency() {
 // being read underlined. Playback still moves word by word (the voice's
 // words with read aloud, the timing plan without), so check-ins, "Pause
 // after each sentence", skips and time left all work as they do for words.
-const sentenceView = () => appearance.view === "sentence";
+// Each reading keeps the view it was last read in; a new one takes the
+// view chosen last.
+const sentenceView = () =>
+  (readingOptions.view || appearance.view) === "sentence";
+// Off, the sentence stays plain while it is read, then the next one comes.
+const underlineWords = () => appearance.underline !== false;
 let spansFor = { tokens: null, spans: [], starts: new Set() };
 function readingSpans() {
   if (spansFor.tokens !== data.tokens) {
@@ -586,7 +592,8 @@ function showSentence(index, { animate = false } = {}) {
       });
   }
   el.querySelector(".now")?.classList.remove("now");
-  el.querySelector(`[data-i="${index}"]`)?.classList.add("now");
+  if (underlineWords())
+    el.querySelector(`[data-i="${index}"]`)?.classList.add("now");
 }
 // The sentence's size: the reading size, made smaller until it fits.
 function fitSentence() {
@@ -609,23 +616,37 @@ function applyView() {
       "aria-pressed",
       String(chip.dataset.view === (on ? "sentence" : "word")),
     );
+  $("sentenceUnderlineRow").hidden = !on;
+  $("sentenceUnderline").checked = underlineWords();
   $("viewHint").textContent = !on
     ? "One word at a time, always in the same spot."
-    : readAloudOn()
-      ? "The whole sentence, with the word being read underlined."
-      : "The whole sentence, with a line under each word at your pace.";
+    : !underlineWords()
+      ? readAloudOn()
+        ? "The whole sentence is read to you, then the next one comes."
+        : "The whole sentence stays while you read it, then the next one comes."
+      : readAloudOn()
+        ? "The whole sentence, with the word being read underlined."
+        : "The whole sentence, with a line under each word at your pace.";
 }
 for (const chip of document.querySelectorAll("#viewChoices .voice-chip"))
-  chip.onclick = () => {
-    if ((chip.dataset.view === "sentence") === sentenceView()) return;
-    appearance = { ...appearance, view: chip.dataset.view };
-    applyAppearance();
-    if (reader) {
-      refreshTiming();
-      render();
-      if (!reader.playing) playbackUI();
-    }
-  };
+  chip.onclick = () => setView(chip.dataset.view);
+function setView(next) {
+  const view = next === "sentence" ? "sentence" : "word";
+  appearance = { ...appearance, view };
+  if (readingOptions.view === view && sentenceView() === (view === "sentence"))
+    return;
+  readingOptions = { ...readingOptions, view };
+  applyAppearance();
+  if (reader) {
+    refreshTiming();
+    render();
+    if (!reader.playing) playbackUI();
+  }
+}
+$("sentenceUnderline").oninput = (e) => {
+  appearance = { ...appearance, underline: e.target.checked };
+  applyAppearance();
+};
 let shownIndex = -1;
 function render() {
   if (sentenceView()) {
@@ -1083,7 +1104,7 @@ function createReader(index = 0) {
       return (
         checkinBreak ||
         (!!appearance.sentenceStop &&
-          (token.paragraphEnd || sentenceEnd.test(token.text)))
+          (token.paragraphEnd || isSentenceEnd(token)))
       );
     },
     onBreak: (i) => {
@@ -1533,6 +1554,7 @@ function load(nextText, nextTitle, existing = null, importedSource = null) {
   paragraphGroups = buildParagraphIndex(data.tokens);
   profile = { ...profile, rewinds: [] };
   replayParagraph = null;
+  applyView();
   createReader(
     Math.min(
       visibleIndex(data.tokens, filterAnchor),
@@ -1678,7 +1700,6 @@ $("newText").onclick = () => {
   pause();
   pdfDraft = null;
   epubDraft = null;
-  $("epubStatus").textContent = "";
   $("epubParts").hidden = true;
   lastPdfFile = null;
   importTypeManual = false;
@@ -1687,6 +1708,12 @@ $("newText").onclick = () => {
   $("textTitle").value = "";
   $("importType").value = "other";
   $("moreOptions").open = false;
+  setDraftSource("none");
+  showImportStatus("");
+  $("importNotes").textContent = "";
+  startAuto = true;
+  importView = sentenceView() ? "sentence" : "word";
+  showImportView();
   // Check-ins start from the reader's last choice (off until they pick one).
   try {
     $("importCheckins").value = String(
@@ -1696,15 +1723,101 @@ $("newText").onclick = () => {
   $("importSkipCitations").checked = false;
   $("importSkipReferences").checked = false;
   $("pdfOptions").hidden = true;
-  $("pdfStatus").hidden = true;
-  $("pdfErrorDetails").hidden = true;
-  $("retryPdf").hidden = true;
-  $("textFileStatus").textContent = "";
   $("duplicateNotice").hidden = true;
   $("startParagraph").value = 1;
   updateDraft();
   $("inputDialog").showModal();
 };
+// ---- Adding a reading ----
+// One place to choose a file (or drop one), or text pasted below. A file
+// is summed up at the top (its title, length, where it starts and how to
+// show it), with its text folded away to check; pasted text keeps its box
+// first and the summary follows it.
+let startAuto = true,
+  draftStart = null,
+  importView = "word";
+function setDraftSource(source) {
+  const form = $("inputForm");
+  if (form.dataset.source === source) return;
+  form.dataset.source = source;
+  $("dropZone").hidden = source === "file";
+  $("importSummary").hidden = source === "none";
+  // A file's text is there to check, not to read through here.
+  $("textDetails").open = source !== "file";
+  $("textInputLabel").classList.toggle("sr-only", source === "file");
+}
+// Progress and problems while a file is read; "" hides them.
+function showImportStatus(message, { busy = false, error = false } = {}) {
+  $("importProgress").hidden = !message;
+  $("importProgress").classList.toggle("busy", busy);
+  $("importProgress").classList.toggle("error", error);
+  $("importStatus").textContent = message;
+  if (!error) {
+    $("retryPdf").hidden = true;
+    $("pdfErrorDetails").hidden = true;
+  }
+}
+function showImportView() {
+  for (const chip of document.querySelectorAll("#importView .voice-chip"))
+    chip.setAttribute("aria-pressed", String(chip.dataset.view === importView));
+}
+for (const chip of document.querySelectorAll("#importView .voice-chip"))
+  chip.onclick = () => {
+    importView = chip.dataset.view;
+    showImportView();
+  };
+$("bookFile").onchange = () => {
+  const file = $("bookFile").files[0];
+  $("bookFile").value = "";
+  if (file) importFile(file);
+};
+function importFile(file) {
+  if (pdfController) return;
+  const name = file.name.toLowerCase();
+  if (file.type === "application/epub+zip" || name.endsWith(".epub"))
+    return importEpub(file);
+  if (file.type === "application/pdf" || name.endsWith(".pdf"))
+    return importPdf(file);
+  if (
+    /^text\//.test(file.type) ||
+    /\.(?:txt|text|md|markdown)$/.test(name) ||
+    !file.type
+  )
+    return importTextFile(file);
+  showImportStatus(
+    "Still reads EPUB books, PDFs and text files. Choose one of those.",
+    { error: true },
+  );
+}
+// A file dropped anywhere on the dialog is imported.
+{
+  const dialog = $("inputDialog");
+  const files = (e) => [...(e.dataTransfer?.types || [])].includes("Files");
+  let depth = 0;
+  dialog.addEventListener("dragenter", (e) => {
+    if (!files(e)) return;
+    e.preventDefault();
+    depth++;
+    $("dropZone").classList.add("dragging");
+  });
+  dialog.addEventListener("dragover", (e) => {
+    if (files(e)) e.preventDefault();
+  });
+  dialog.addEventListener("dragleave", () => {
+    if (--depth <= 0) {
+      depth = 0;
+      $("dropZone").classList.remove("dragging");
+    }
+  });
+  dialog.addEventListener("drop", (e) => {
+    if (!files(e)) return;
+    e.preventDefault();
+    depth = 0;
+    $("dropZone").classList.remove("dragging");
+    const file = e.dataTransfer.files[0];
+    if (file) importFile(file);
+  });
+}
 $("inputForm").onsubmit = (e) => {
   e.preventDefault();
   if (!$("textInput").value.trim()) {
@@ -1735,16 +1848,19 @@ $("inputForm").onsubmit = (e) => {
     start < 1 ||
     start > parseText(draftText).paragraphs.length
   ) {
-    $("startOptions").open = true;
+    $("moreOptions").open = true;
     $("startPreview").textContent = "Choose a valid starting paragraph.";
     return;
   }
+  // The view chosen here is this reading's, and the one the next starts in.
+  appearance = { ...appearance, view: importView };
   load(
     draftText,
     $("textTitle").value,
     {
       sourceIndex: paragraphAnchor(draftText, start),
       readingOptions: {
+        view: importView,
         documentType: kind,
         skipCitations: kind === "academic" && $("importSkipCitations").checked,
         skipReferences:
@@ -1755,10 +1871,13 @@ $("inputForm").onsubmit = (e) => {
     },
     imported,
   );
+  applyAppearance();
   $("inputDialog").close();
   returnToReader();
 };
 $("textInput").oninput = () => {
+  if ($("inputForm").dataset.source !== "file")
+    setDraftSource($("textInput").value.trim() ? "paste" : "none");
   updateDraft();
   $("textInput").setCustomValidity("");
   if (pdfDraft)
@@ -2268,7 +2387,7 @@ let pdfController = null,
 const pdfControls = [
   $("textTitle"),
   $("textInput"),
-  $("epubFile"),
+  $("bookFile"),
   $("sample"),
   $("pdfLayout"),
   $("applyPdfRange"),
@@ -2280,23 +2399,18 @@ const pdfControls = [
 function pdfBusy(busy) {
   pdfControls.forEach((el) => (el.disabled = busy));
   $("cancelPdf").hidden = !busy;
-  $("pdfFile").disabled = busy;
+  $("dropZone").classList.toggle("disabled", busy);
 }
 function cancelPdf() {
   if (pdfController) {
     pdfController.abort();
     pdfController = null;
     pdfBusy(false);
-    $("pdfStatus").textContent =
-      "Import cancelled. Your previous text is unchanged.";
+    showImportStatus("Import cancelled. Nothing was changed.");
   }
 }
 $("cancelPdf").onclick = cancelPdf;
 $("inputDialog").addEventListener("close", cancelPdf);
-$("pdfFile").onchange = () => {
-  const file = $("pdfFile").files[0];
-  if (file) importPdf(file);
-};
 $("retryPdf").onclick = () => {
   if (lastPdfFile) importPdf(lastPdfFile);
 };
@@ -2312,8 +2426,7 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
   const controller = new AbortController();
   pdfController = controller;
   pdfBusy(true);
-  $("pdfStatus").hidden = false;
-  $("pdfStatus").textContent = "Opening " + file.name + "…";
+  showImportStatus("Opening " + file.name + "…", { busy: true });
   try {
     const fingerprint = await fileFingerprint(file);
     if (!allowDuplicate) {
@@ -2323,9 +2436,8 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
         duplicatePending = { file, reading: duplicate };
         $("duplicateNotice").hidden = false;
         $("duplicateMessage").textContent =
-          `“${duplicate.title}” is already on your bookshelf.`;
-        $("pdfStatus").textContent =
-          "Choose whether to reopen it or import a separate copy.";
+          `“${duplicate.title}” is already on your bookshelf. Reopen it, or import a separate copy?`;
+        showImportStatus("");
         return;
       }
     }
@@ -2334,22 +2446,26 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
     const result = await extractPdf(file, {
       mode: $("pdfLayout").value,
       signal: controller.signal,
-      onProgress: (page, total) => {
-        $("pdfStatus").textContent = `Reading page ${page} of ${total}…`;
-      },
+      onProgress: (page, total) =>
+        showImportStatus(`Reading page ${page} of ${total}…`, { busy: true }),
     });
     if (pdfController !== controller || controller.signal.aborted) return;
-    $("pdfStatus").textContent = "Checking for mislabelled letters…";
+    showImportStatus("Checking for mislabelled letters…", { busy: true });
     const fixes = await repairPdfLines(result.pageModels, lookupWord, {
       signal: controller.signal,
     });
     if (pdfController !== controller || controller.signal.aborted) return;
-    $("pdfStatus").textContent = "Checking words split across lines…";
+    showImportStatus("Checking words split across lines…", { busy: true });
     const repaired = await markLineJoins(result.pageModels, lookupWord, {
       signal: controller.signal,
     });
     if (pdfController !== controller || controller.signal.aborted) return;
     pdfDraft = { ...result, file, fingerprint };
+    epubDraft = null;
+    importTypeManual = false;
+    startAuto = true;
+    setDraftSource("file");
+    $("summaryKind").textContent = "PDF";
     $("pdfOptions").hidden = false;
     $("pdfFrom").value = 1;
     $("pdfTo").value = result.pages;
@@ -2359,7 +2475,8 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
     applyPdfRange();
     const columns = result.pageModels.filter((p) => p.columns === 2).length;
     const chapters = pdfDraft.sections?.length || 0;
-    $("pdfStatus").textContent = [
+    showImportStatus("");
+    $("importNotes").textContent = [
       `Imported ${plural(result.pages, "page")}.`,
       result.blankPages &&
         `${plural(result.blankPages, "page had", "pages had")} no selectable text and ${result.blankPages === 1 ? "was" : "were"} skipped.`,
@@ -2370,13 +2487,12 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
         `${plural(columns, "page uses", "pages use")} two-column reading order.`,
       repaired && `${plural(repaired, "line-break split")} repaired.`,
       repairSummary(fixes).trim(),
-      "Check the text below, then open it in the reader.",
     ]
       .filter(Boolean)
       .join(" ");
   } catch (error) {
     if (!controller.signal.aborted && pdfController === controller) {
-      $("pdfStatus").textContent = pdfErrorMessage(error);
+      showImportStatus(pdfErrorMessage(error), { error: true });
       $("retryPdf").hidden = false;
       $("pdfErrorDetails").hidden = false;
       $("pdfErrorDetailText").textContent =
@@ -2387,7 +2503,6 @@ async function importPdf(file, { allowDuplicate = false } = {}) {
       pdfController = null;
       pdfBusy(false);
     }
-    $("pdfFile").value = "";
   }
 }
 
@@ -2631,6 +2746,9 @@ function renderTextCheck() {
   const box = $("textInput");
   const findings = checkText(box.value);
   $("textCheck").hidden = !findings.length;
+  $("textDetailsSummary").textContent = findings.length
+    ? `Check or edit the text · ${plural(findings.length, "thing")} worth a look`
+    : "Check or edit the text";
   $("textCheckList").replaceChildren(
     ...findings.map((finding) => {
       const item = document.createElement("li");
@@ -2678,13 +2796,38 @@ function updateDraft() {
   scheduleTextCheck();
   const value = $("textInput").value;
   if (!importTypeManual) $("importType").value = inferType(value);
-  $("importAcademic").hidden = $("importType").value !== "academic";
+  const type = $("importType").value;
+  $("importAcademic").hidden = type !== "academic";
   // Papers have choices worth seeing (citations, references).
-  if ($("importType").value === "academic") $("moreOptions").open = true;
-  const paragraphs = value.trim() ? parseText(value).paragraphs : [];
-  const headings =
-    draftSections(value) || detectSections(value, $("importType").value);
+  if (type === "academic") $("moreOptions").open = true;
+  const parsed = value.trim() ? parseText(value) : null;
+  const paragraphs = parsed?.paragraphs || [];
+  const headings = draftSections(value) || detectSections(value, type);
+  // Where the book's own text starts, past its title page and front
+  // matter (see front-matter.js), until the reader chooses somewhere else.
+  if (startAuto) {
+    draftStart =
+      epubDraft && epubDraft.text === value
+        ? { paragraph: epubDraft.start || 1, before: epubDraft.before || [] }
+        : type === "academic" || !paragraphs.length
+          ? { paragraph: 1, before: [] }
+          : findStart(paragraphs, headings, { book: type === "book" });
+    draftStart.skipped = wordsBefore(parsed, draftStart.paragraph);
+    $("startParagraph").value = draftStart.paragraph;
+  }
+  $("startParagraph").max = Math.max(1, paragraphs.length);
+  if (Number($("startParagraph").value) > paragraphs.length)
+    $("startParagraph").value = 1;
+  const start = Number($("startParagraph").value);
   const options = [{ title: "Beginning", paragraph: 1 }, ...headings];
+  if (Number.isInteger(start) && !options.some((o) => o.paragraph === start))
+    options.push({
+      title: start === draftStart?.paragraph
+        ? "Where the book begins"
+        : `Paragraph ${start}`,
+      paragraph: start,
+    });
+  options.sort((a, b) => a.paragraph - b.paragraph);
   $("startSection").replaceChildren(
     ...options.map((h) => {
       const o = document.createElement("option");
@@ -2693,23 +2836,81 @@ function updateDraft() {
       return o;
     }),
   );
-  $("startParagraph").max = Math.max(1, paragraphs.length);
-  if (Number($("startParagraph").value) > paragraphs.length)
-    $("startParagraph").value = 1;
-  previewStart();
+  $("startSection").value = String(start);
+  // Pasted text with nowhere else to start needs no choice, nor a preview
+  // of what is just above.
+  const choice =
+    options.length > 1 || $("inputForm").dataset.source === "file";
+  $("startSection").parentElement.hidden = !choice;
+  previewStart(parsed);
+  if (!choice) $("startPreview").hidden = true;
+  // Title, length and time: what's about to be read.
+  const words = parsed ? parsed.tokens.length - wordsBefore(parsed, start) : 0;
+  const partOf =
+    epubDraft && epubDraft.text === value && epubParts.length > 1
+      ? `Part ${epubParts.indexOf(epubDraft) + 1} of ${epubParts.length}`
+      : "";
+  // Chapters from the start on: not the title lines before it.
+  const chapters = headings.filter((h) => h.paragraph >= start).length;
+  const time = formatDuration((words / base) * 60000);
+  $("summaryFacts").textContent = [
+    partOf,
+    chapters >= 2 &&
+      plural(chapters, type === "academic" ? "section" : "chapter"),
+    plural(words, "word"),
+    words && `${/^\d/.test(time) ? "about " : ""}${time} at your pace`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
-function previewStart() {
-  const paragraphs = $("textInput").value.trim()
-    ? parseText($("textInput").value).paragraphs
+function wordsBefore(parsed, paragraph) {
+  if (!parsed) return 0;
+  const at = parsed.tokens.findIndex((t) => t.paragraph >= paragraph - 1);
+  return at < 0 ? parsed.tokens.length : at;
+}
+// The first lines from the chosen start, and what the start leaves out.
+function previewStart(parsed = null) {
+  const value = $("textInput").value;
+  const paragraphs = value.trim()
+    ? (parsed || parseText(value)).paragraphs
     : [];
   const n = Number($("startParagraph").value);
-  $("startPreview").textContent =
-    (paragraphs[n - 1]
-      ? paragraphs
-          .slice(n - 1, n + 1)
-          .join("\n\n")
-          .slice(0, 500)
-      : "") || "Add text or a PDF to preview your starting point.";
+  const first = paragraphs[n - 1] || "";
+  const preview = $("startPreview");
+  preview.replaceChildren();
+  if (first) {
+    // A heading reads as one, above the text that follows it.
+    const heading = first.length <= 80 && paragraphs[n];
+    let text = "";
+    for (let i = heading ? n : n - 1; i < paragraphs.length && text.length < 220; i++)
+      text += (text ? " " : "") + paragraphs[i];
+    if (heading) {
+      const head = document.createElement("span");
+      head.className = "preview-head";
+      head.textContent = first;
+      preview.append(head);
+    }
+    preview.append(text.length > 220 ? text.slice(0, 220) + "…" : text);
+  }
+  preview.hidden = !first;
+  const note = $("startNote");
+  const auto = draftStart && draftStart.paragraph > 1 && n === draftStart.paragraph;
+  note.hidden = !auto;
+  // Front matter that is a chapter in the list can be picked there.
+  const listed = (title) =>
+    [...$("startSection").options].some(
+      (o) => displayTitle(o.textContent) === title,
+    );
+  if (auto)
+    note.textContent = draftStart.before.length
+      ? `Skips the opening pages: ${listWords(draftStart.before)}. ${
+          draftStart.before.every(listed)
+            ? "Pick one above to start there instead."
+            : "Pick “Beginning” to read them."
+        }`
+      : draftStart.skipped >= 300
+        ? `Skips ${plural(draftStart.skipped, "word")} of opening pages before it. Pick “Beginning” to read them.`
+        : "Skips the title and other opening lines before it.";
 }
 $("importCheckins").onchange = () => {
   try {
@@ -2718,13 +2919,18 @@ $("importCheckins").onchange = () => {
 };
 $("importType").onchange = () => {
   importTypeManual = true;
+  startAuto = true;
   updateDraft();
 };
 $("startSection").onchange = () => {
+  startAuto = false;
   $("startParagraph").value = $("startSection").value;
+  updateDraft();
+};
+$("startParagraph").oninput = () => {
+  startAuto = false;
   previewStart();
 };
-$("startParagraph").oninput = previewStart;
 $("readingSettings").onclick = () => {
   pause();
   $("readingTitle").value = title;
@@ -3124,14 +3330,14 @@ function sentenceAround(tokens, i) {
     start > 0 &&
     i - start < 60 &&
     same(start - 1) &&
-    !sentenceEnd.test(tokens[start - 1].text)
+    !isSentenceEnd(tokens[start - 1])
   )
     start--;
   while (
     end < tokens.length - 1 &&
     end - i < 60 &&
     same(end + 1) &&
-    !sentenceEnd.test(tokens[end].text)
+    !isSentenceEnd(tokens[end])
   )
     end++;
   return [start, end];
@@ -3187,17 +3393,20 @@ function skipWords(count) {
     }
     reader.seek(index);
   }
+  showSkipHint(count < 0 ? `‹ ${-count}` : `${count} ›`, count < 0);
+  if (playing) play();
+  checkpoint();
+}
+function showSkipHint(label, back) {
   const hint = $("skipHint");
-  hint.textContent = count < 0 ? `‹ ${-count}` : `${count} ›`;
-  hint.dataset.side = count < 0 === wordIsRtl() ? "right" : "left";
+  hint.textContent = label;
+  hint.dataset.side = back === wordIsRtl() ? "right" : "left";
   hint.hidden = false;
   hint.classList.remove("show");
   void hint.offsetWidth; // restart the fade
   hint.classList.add("show");
   clearTimeout(skipHintTimer);
   skipHintTimer = setTimeout(() => (hint.hidden = true), 700);
-  if (playing) play();
-  checkpoint();
 }
 function wordIsRtl() {
   try {
@@ -3228,7 +3437,14 @@ function wordIsRtl() {
   });
   stage.addEventListener("pointerup", () => {
     clearTimeout(holdTimer);
-    if (tap && !peekState) side ? skipWords(side * SKIP_WORDS) : toggle();
+    if (tap && !peekState)
+      !side
+        ? toggle()
+        : sentenceView()
+          ? side < 0
+            ? rewindSentence()
+            : skipSentence()
+          : skipWords(side * SKIP_WORDS);
     tap = false;
     hidePeek();
   });
@@ -3244,11 +3460,16 @@ function wordIsRtl() {
   });
   window.addEventListener("blur", hidePeek);
 }
+// In the sentence view these go by what is on screen: back to the start of
+// this sentence (or the one before, from its start), or on to the next.
 function rewindSentence() {
   if (!data.tokens.length) return;
   const playing = reader.playing;
   pause();
-  const index = previousSentence(data.tokens, reader.index);
+  const index = sentenceView() && !normalMode
+    ? viewBefore(reader.index)
+    : previousSentence(data.tokens, reader.index);
+  if (sentenceView() && !normalMode) showSkipHint("‹", true);
   if (index < reader.index) {
     replayParagraph = data.tokens[index].paragraph;
     profile = recordRewind(profile, replayParagraph);
@@ -3571,6 +3792,7 @@ function chooseEpubPart(index) {
   const part = epubParts[index];
   if (!part) return;
   epubDraft = part;
+  startAuto = true;
   $("textTitle").value =
     epubParts.length > 1
       ? `${part.title} (part ${index + 1} of ${epubParts.length})`
@@ -3580,25 +3802,25 @@ function chooseEpubPart(index) {
   updateDraft();
 }
 $("epubPart").onchange = () => chooseEpubPart(Number($("epubPart").value));
-$("epubFile").onchange = async () => {
-  const file = $("epubFile").files[0];
-  if (!file || pdfController) return;
+async function importEpub(file) {
+  if (pdfController) return;
   const controller = new AbortController();
   pdfController = controller;
   pdfBusy(true);
-  $("epubStatus").textContent = "Opening EPUB…";
+  lastPdfFile = null;
+  showImportStatus("Opening " + file.name + "…", { busy: true });
   try {
     const result = await extractEpub(file, {
       signal: controller.signal,
       onProgress: (n, total) =>
-        ($("epubStatus").textContent = `Reading chapter ${n} of ${total}…`),
+        showImportStatus(`Reading chapter ${n} of ${total}…`, { busy: true }),
     });
     if (controller.signal.aborted) return;
     pdfDraft = null;
     importTypeManual = true;
+    startAuto = true;
     $("importType").value = "book";
     $("pdfOptions").hidden = true;
-    $("pdfStatus").hidden = true;
     epubParts = bookParts(result, MAX_READING_CHARACTERS);
     const select = $("epubPart");
     select.replaceChildren(
@@ -3618,23 +3840,41 @@ $("epubFile").onchange = async () => {
       }),
     );
     $("epubParts").hidden = epubParts.length < 2;
-    chooseEpubPart(0);
-    $("epubStatus").textContent =
-      epubParts.length > 1
-        ? `Imported ${plural(result.chapters, "chapter")}. This book is too long for one reading, so it is split into ${epubParts.length} parts. Part 1 is ready; choose another part below.`
-        : `Imported ${plural(result.chapters, "chapter")} with ${plural(result.sections.length, "table-of-contents entry", "table-of-contents entries")}. Choose a starting point below.`;
+    // The part where the book's own text starts (the first, nearly always).
+    const first = Math.max(
+      0,
+      epubParts.findIndex((part) => part.start > 1 || part.before?.length),
+    );
+    $("epubPart").value = String(first);
+    setDraftSource("file");
+    $("summaryKind").textContent = "EPUB";
+    showImportStatus("");
+    chooseEpubPart(first);
+    $("importNotes").textContent = [
+      epubParts.length > 1 &&
+        `This book is too long for one reading, so it comes in ${epubParts.length} parts.`,
+      result.left?.length && `Left out ${listWords(result.left)}.`,
+    ]
+      .filter(Boolean)
+      .join(" ");
   } catch (error) {
     if (!controller.signal.aborted)
-      $("epubStatus").textContent =
-        error.message || "This EPUB could not be read.";
+      showImportStatus(error.message || "This EPUB could not be read.", {
+        error: true,
+      });
   } finally {
     if (pdfController === controller) {
       pdfController = null;
       pdfBusy(false);
     }
-    $("epubFile").value = "";
   }
-};
+}
+// "a, b and c"
+function listWords(items) {
+  return items.length > 1
+    ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`
+    : items[0] || "";
+}
 if (native) {
   $("prepareOffline").hidden = true;
   $("offlineStatus").textContent =
@@ -3746,18 +3986,16 @@ $("textInput").addEventListener("paste", (e) => {
     const summary =
       (plain !== before ? "Removed formatting symbols (like # and **). " : "") +
       repairSummary(fixed);
-    if (summary) $("textFileStatus").textContent = summary.trim();
+    if (summary) $("importNotes").textContent = summary.trim();
   });
 });
-$("textFile").onchange = async () => {
-  const file = $("textFile").files[0];
-  if (!file) return;
+async function importTextFile(file) {
   try {
     // UTF-8 uses up to 4 bytes per character, so check characters after reading.
     if (file.size > MAX_READING_CHARACTERS * 4)
       throw Error("This text file is too large to read in Still.");
     // Long books take a few seconds to check; say so before the work starts.
-    $("textFileStatus").textContent = `Opening ${file.name}…`;
+    showImportStatus(`Opening ${file.name}…`, { busy: true });
     await new Promise((resolve) => setTimeout(resolve, 30));
     const value = decodeText(await file.arrayBuffer());
     if (!value.trim()) throw Error("This text file is empty.");
@@ -3786,24 +4024,25 @@ $("textFile").onchange = async () => {
       gutenberg?.title || file.name.replace(/\.[^.]+$/, "")
     ).slice(0, 240);
     $("pdfOptions").hidden = true;
-    $("pdfStatus").hidden = true;
-    $("textFileStatus").textContent = "Finding chapters and paragraphs…";
+    showImportStatus("Finding chapters and paragraphs…", { busy: true });
     await new Promise((resolve) => setTimeout(resolve, 30));
+    importTypeManual = false;
+    startAuto = true;
+    setDraftSource("file");
+    $("summaryKind").textContent = markdown ? "MD" : "Text";
     updateDraft();
-    $("textFileStatus").textContent =
+    showImportStatus("");
+    $("importNotes").textContent =
       "Text imported. " +
       (markdown ? "Removed Markdown symbols. " : "") +
       (gutenberg ? "Skipped the Project Gutenberg header and licence. " : "") +
       (italics ? "Removed the underscores marking italics. " : "") +
       (unwrap ? "Joined lines that were wrapped for print. " : "") +
-      repairSummary(fixed) +
-      "Check it before opening.";
+      repairSummary(fixed);
   } catch (e) {
-    $("textFileStatus").textContent = e.message;
-  } finally {
-    $("textFile").value = "";
+    showImportStatus(e.message, { error: true });
   }
-};
+}
 // The privacy/help pages are generated for the iOS app only; the web build
 // links straight to the bundled third-party licenses instead.
 // Waitlist and feedback (web only) go to Netlify Forms: a plain post to
@@ -4282,10 +4521,22 @@ function skipSentence() {
   if (!data.tokens.length) return;
   const playing = reader.playing;
   pause();
-  reader.seek(nextSentence(data.tokens, reader.index));
+  if (sentenceView() && !normalMode) {
+    const span = spanAt(readingSpans().spans, reader.index);
+    sentenceBreakAt = -1;
+    reader.seek(Math.min(span ? span[1] + 1 : 0, data.tokens.length - 1));
+    showSkipHint("›", false);
+  } else reader.seek(nextSentence(data.tokens, reader.index));
   if (normalMode) renderNormal();
   if (playing) play();
   checkpoint();
+}
+function viewBefore(index) {
+  const spans = readingSpans().spans;
+  const span = spanAt(spans, index);
+  if (!span) return 0;
+  if (index > span[0]) return span[0];
+  return spanAt(spans, span[0] - 1)?.[0] ?? 0;
 }
 // First run: what Still is, a daily goal, then (optionally) Find my pace.
 function openWelcome(step) {

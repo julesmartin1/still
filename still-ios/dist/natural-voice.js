@@ -10,7 +10,7 @@
 // way. It speaks one sentence (chunk) at a time, fetches the next one while
 // the current one plays, and moves the shown word by an estimate of when each
 // word is said, since the voice gives no word timings.
-import { clamp, sentenceEnd, clauseEnd } from "./engine.js";
+import { clamp, endsSentence, clauseEnd, isSentenceEnd } from "./engine.js";
 import { chunkEnd, utteranceText, estimateWordTimes } from "./read-aloud.js";
 import { spokenBeats } from "./spoken.js";
 
@@ -131,7 +131,7 @@ export function naturalWordStarts(
     x = Math.max(1, x);
     // The pause after the last word is the clip's own trailing silence.
     if (i < n - 1) {
-      if (sentenceEnd.test(word)) x += SENTENCE_PAUSE;
+      if (endsSentence(word, words[i + 1])) x += SENTENCE_PAUSE;
       else if (clauseEnd.test(word) || /[—–]$/.test(word)) x += CLAUSE_PAUSE;
     }
     return x;
@@ -202,8 +202,8 @@ export function speechGaps(
   return gaps.filter((g) => g.to <= last * FRAME_MS);
 }
 // Whether the voice is likely to pause after `word`, and how strongly.
-const pauseAfter = (word) =>
-  sentenceEnd.test(word) ? 2 : clauseEnd.test(word) || /[—–]$/.test(word) ? 1 : 0;
+const pauseAfter = (word, next) =>
+  endsSentence(word, next) ? 2 : clauseEnd.test(word) || /[—–]$/.test(word) ? 1 : 0;
 // Matches gaps to word boundaries (dynamic programming, in order): a gap
 // near where a boundary is expected, after punctuation, is the best match; a
 // long gap left unmatched, or punctuation with no pause, costs a little.
@@ -216,12 +216,12 @@ export function matchGaps(words, expected, gaps, durationMs, span = {}) {
     end = durationMs - (span.tail || 0);
   const skipGap = (g) =>
     0.8 + 2.4 * clamp((g.to - g.from - MIN_GAP_MS) / 230, 0, 1);
-  const skipWord = (b) => [0, 0.35, 0.8][pauseAfter(words[b - 1])];
+  const skipWord = (b) => [0, 0.35, 0.8][pauseAfter(words[b - 1], words[b])];
   const pair = (b, g) => {
     // The guess gets less sure away from the clip's two ends.
     const sure = 110 + 0.22 * Math.min(expected[b] - lead, end - expected[b]);
     const off = Math.abs(expected[b] - g.to) / sure;
-    return off > 3 ? Infinity : off + [0.9, 0, -0.3][pauseAfter(words[b - 1])];
+    return off > 3 ? Infinity : off + [0.9, 0, -0.3][pauseAfter(words[b - 1], words[b])];
   };
   // cost[i][b]: first i gaps placed among boundaries before b (1..n-1).
   const INF = Infinity;
@@ -319,7 +319,7 @@ export function firstChunkEnd(tokens, start) {
   const limit = Math.min(tokens.length - 1, start + FIRST_CHUNK_WORDS - 1);
   for (let i = start; i <= limit; i++) {
     const t = tokens[i];
-    if (t.paragraphEnd || sentenceEnd.test(t.text)) return i;
+    if (t.paragraphEnd || isSentenceEnd(t)) return i;
     if (
       i - start + 1 >= FIRST_CHUNK_MIN_WORDS &&
       (clauseEnd.test(t.text) || /[—–]$/.test(t.text))

@@ -16,6 +16,37 @@ const common = new Set(
 // including CJK corner brackets and full-width parentheses.
 export const sentenceEnd = /[.!?。！？][”’"')\]」』）】》]*$/u;
 export const clauseEnd = /[,;:、，；：][”’"')\]」』）】》]*$/u;
+// A full stop that doesn't end a sentence: after a title ("Mrs. Saville",
+// "St. Petersburgh", "e.g. London") or an initial ("J. R. R. Tolkien"), or
+// after a short form when a number or a word in lower case follows ("No. 5",
+// "Dec. 11th", "etc. and", "a.m. on", "so... and").
+const TITLES = new Set(
+  "mr mrs ms mx messrs dr st mt ft prof rev revd hon capt col gen lt sgt cpl maj cmdr adm gov pres sen rep insp supt fr sr sra srta dra mme mlle mons hr hrn cf vs viz e.g i.e z.b".split(
+    " ",
+  ),
+);
+const SHORT_FORMS = new Set(
+  "etc approx ca jr inc ltd co corp bros esq dept no nos nr vol vols p pp ch chap fig art sec jan feb mar apr jun jul aug sep sept oct nov dec".split(
+    " ",
+  ),
+);
+export function endsSentence(word, next = "") {
+  if (!sentenceEnd.test(word)) return false;
+  if (!word.endsWith(".")) return true;
+  const core = word.replace(/^[^\p{L}\p{N}]+/u, "").slice(0, -1);
+  const lower = core.toLowerCase();
+  const runsOn = /^[^\p{L}\p{N}]*[\p{Ll}\p{N}]/u.test(next);
+  return !(
+    TITLES.has(lower) ||
+    /^\p{Lu}$/u.test(core) ||
+    (runsOn &&
+      (SHORT_FORMS.has(lower) ||
+        /\p{L}\.\p{L}/u.test(core) ||
+        word.endsWith("...")))
+  );
+}
+// Tokens carry whether they end a sentence (`end`, from buildTokens).
+export const isSentenceEnd = (t) => t.end ?? endsSentence(t.text);
 
 // Scripts written without spaces between words. Chunks containing them are
 // split into words with Intl.Segmenter; everything else splits on whitespace.
@@ -89,7 +120,7 @@ export function buildTokens(wordParagraphs) {
       sentence.forEach((t) => (t.complexity = complexity));
       sentence = [];
     };
-    for (const word of words) {
+    words.forEach((word, k) => {
       const norm = cleanWord(word);
       const token = {
         text: word,
@@ -99,11 +130,12 @@ export function buildTokens(wordParagraphs) {
         rare: !common.has(norm) && norm.length > 5,
         complexity: 0,
         paragraphEnd: false,
+        end: endsSentence(word, words[k + 1]),
       };
       tokens.push(token);
       sentence.push(token);
-      if (sentenceEnd.test(word)) finish();
-    }
+      if (token.end) finish();
+    });
     finish();
     tokens.at(-1).paragraphEnd = true;
   });
@@ -189,7 +221,7 @@ export function wordWeight(
   if (Number.isFinite(looked))
     weight += 0.25 * clamp(1 - (now - looked) / 86400000 / 30, 0, 1);
   if (clauseEnd.test(token.text)) weight += clamp((0.5 * voice.comma) / average, 0.2, 0.6);
-  if (sentenceEnd.test(token.text))
+  if (isSentenceEnd(token))
     weight += clamp((0.5 * voice.stop) / average, 0.4, 1.1);
   if (token.paragraphEnd) weight += 0.6;
   return weight;
@@ -428,7 +460,7 @@ export function sentenceSpans(tokens, max = VIEW_MAX_WORDS) {
       const t = tokens[i];
       if (
         t.paragraphEnd ||
-        sentenceEnd.test(t.text) ||
+        isSentenceEnd(t) ||
         tokens[i + 1]?.paragraph !== t.paragraph
       ) {
         end = i;

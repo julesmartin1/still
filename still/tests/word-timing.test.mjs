@@ -12,6 +12,7 @@ import {
   sentenceSpans,
   spanAt,
   VIEW_MAX_WORDS,
+  endsSentence,
 } from "../dist/engine.js";
 import {
   parseFrequencies,
@@ -137,6 +138,31 @@ test("a sentence at a time: each sentence is one view", () => {
   assert.deepEqual(spanAt(spans, 10), [5, 10]);
   assert.equal(spanAt(spans, 11), null);
   assert.deepEqual(sentenceSpans([]), []);
+});
+
+test("titles, initials and short forms don't end a sentence", () => {
+  const text = (span, tokens) =>
+    tokens.slice(span[0], span[1] + 1).map((t) => t.text).join(" ");
+  const { tokens } = parseText(
+    "To Mrs. Saville, St. Petersburgh, Dec. 11th, 17—. J. R. R. Tolkien wrote it, e.g. The Hobbit, etc. and more. No. Not again? Yes.",
+  );
+  assert.deepEqual(
+    sentenceSpans(tokens).map((span) => text(span, tokens)),
+    [
+      "To Mrs. Saville, St. Petersburgh, Dec. 11th, 17—.",
+      "J. R. R. Tolkien wrote it, e.g. The Hobbit, etc. and more.",
+      "No.",
+      "Not again?",
+      "Yes.",
+    ],
+  );
+  assert.ok(endsSentence("Bennet.", "Rig-a-dig"));
+  assert.ok(endsSentence("home.", "then"), "only short forms run on");
+  assert.ok(endsSentence("it.”", "she"), "a closing quote ends one");
+  assert.ok(!endsSentence("Dr.", "Rose"));
+  assert.ok(!endsSentence("“Mr.", "Darcy"));
+  assert.ok(endsSentence("Dec.", "Then"), "a month without a date may end one");
+  assert.ok(!endsSentence("p.", "12"));
 });
 
 test("a long sentence is split at a clause end that fits on screen", () => {
