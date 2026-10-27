@@ -4093,16 +4093,42 @@ async function importTextFile(file) {
 }
 // The privacy/help pages are generated for the iOS app only; the web build
 // links straight to the bundled third-party licenses instead.
-// Waitlist and feedback (web only) go to Netlify Forms: a plain post to
-// Still's Netlify site, with no third-party scripts and no cookies. From
-// another host (GitHub Pages) the form's reply can't be read, so the voice
-// function is asked first: it answers across origins only while the
+// Waitlist and feedback (web only). With a FORMS_KEY they go to Web3Forms,
+// which emails each one to Still's inbox and keeps nothing else; it works
+// from any host, needs no server of our own, and says whether a post landed.
+// Without one they go to Netlify Forms: a plain post to Still's Netlify
+// site. From another host (GitHub Pages) that reply can't be read, so the
+// voice function is asked first: it answers across origins only while the
 // Netlify site is up (not paused, say, for running out of credits), and a
 // post only counts as sent when it does.
+const FORMS_KEY = "";
+const FORMS_ENDPOINT = "https://api.web3forms.com/submit";
 const WAITLISTED = "still-waitlisted";
 async function postForm(name, data) {
   const body = new URLSearchParams(data);
   if (body.get("company")) return; // a bot filled the hidden field
+  if (FORMS_KEY) {
+    body.delete("company");
+    const fields = Object.fromEntries(body);
+    const res = await fetch(FORMS_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        access_key: FORMS_KEY,
+        subject: name === "feedback" ? "Still feedback" : "Still waitlist",
+        from_name: "Still",
+        form: name,
+        ...fields,
+      }),
+    });
+    const reply = await res.json().catch(() => ({}));
+    if (!res.ok || !reply.success)
+      throw Error(`Form post failed: ${res.status}`);
+    return;
+  }
   body.set("form-name", name);
   const server = serverBase();
   if (server) await fetch(server + "/api/speak", { cache: "no-store" });
