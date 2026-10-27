@@ -1228,7 +1228,7 @@ async def read_aloud_moves_words_with_the_voice(browser):
 
 
 @check
-async def a_sentence_at_a_time_underlines_the_word_being_read(browser):
+async def a_sentence_at_a_time_highlights_the_word_being_read(browser):
     ctx, page = await fresh(browser, init=FAKE_SPEECH)
     await open_text(page, "One two three four. Five six seven eight.\n\nNine ten.")
     now = "document.querySelector('#sentence .now')?.textContent"
@@ -1239,15 +1239,25 @@ async def a_sentence_at_a_time_underlines_the_word_being_read(browser):
     assert "whole sentence" in await page.inner_text("#viewHint")
     await page.keyboard.press("Escape")
     assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).view") == "sentence"
-    # The whole sentence replaces the word, with the current word underlined.
+    # The whole sentence replaces the word, with the current word highlighted.
     assert await page.is_visible("#sentence")
     assert not await page.is_visible("#word")
     assert await page.evaluate(shown) == "One two three four."
     assert await page.evaluate(now) == "One"
+    # (after its short fade in)
+    await page.wait_for_function(
+        "getComputedStyle(document.querySelector('#sentence .now')).backgroundColor"
+        " === 'rgb(255, 164, 122)'",
+        timeout=1000,
+    )
     assert "tap the sentence" in (await page.inner_text("#status")).lower()
-    # Silent: the line moves word by word at the pace.
+    # Silent: the highlight moves word by word at the pace, and the words
+    # stay where they are.
+    two = "document.querySelector('#sentence [data-i=\"1\"]').getBoundingClientRect().left"
+    left = await page.evaluate(two)
     await page.click("#play")
     await page.wait_for_function(f"{now} === 'two'", timeout=3000)
+    assert abs(await page.evaluate(two) - left) < 0.5
     await page.keyboard.press("Space")
     await page.click("#quickRewind")
     assert await page.evaluate(now) == "One"
@@ -1285,15 +1295,51 @@ async def a_sentence_at_a_time_underlines_the_word_being_read(browser):
 
 
 @check
+async def short_words_can_be_shown_together(browser):
+    ctx, page = await fresh(browser)
+    await open_text(page, "It was a dark and stormy night.\n\nAnd so on.")
+    word = "document.getElementById('word').textContent"
+    assert await page.evaluate(word) == "It"
+    await quick_settings(page)
+    assert await page.locator("#sentenceHighlightRow").is_hidden()
+    await page.check("#groupWords")
+    await page.keyboard.press("Escape")
+    assert await page.evaluate("JSON.parse(localStorage.getItem('still-appearance')).groupWords") is True
+    assert await page.evaluate(word) == "It was"
+    # The group stays while playback moves through its words, one at a time.
+    await page.click("#play")
+    await page.wait_for_function(f"{word} === 'a dark'", timeout=4000)
+    await page.wait_for_function("document.getElementById('count').textContent.startsWith('4 /')", timeout=4000)
+    assert await page.evaluate(word) == "a dark"
+    await page.wait_for_function(f"{word} === 'and stormy'", timeout=4000)
+    await page.wait_for_function(f"{word} === 'And so on.'", timeout=6000)
+    await page.wait_for_function("document.getElementById('play').textContent.includes('Read again')", timeout=6000)
+    if await dialog_open(page, "paceDialog"):
+        await page.keyboard.press("Escape")
+    # The box is for one word at a time; a sentence has its highlight box.
+    await quick_settings(page)
+    await page.click("#viewChoices [data-view='sentence']")
+    assert await page.locator("#groupWordsRow").is_hidden()
+    assert await page.locator("#sentenceHighlightRow").is_visible()
+    await page.click("#viewChoices [data-view='word']")
+    await page.uncheck("#groupWords")
+    await page.keyboard.press("Escape")
+    await page.click("#quickRewind")
+    assert " " not in await page.evaluate(word)
+    assert not page.errors, page.errors
+    await ctx.close()
+
+
+@check
 async def sentence_by_sentence_is_kept_per_reading(browser):
     ctx, page = await fresh(browser, init=FAKE_SPEECH)
     await open_text(page, "Alpha one two. Beta three four.\n\nGamma five six.", title="Poems")
     shown = "document.getElementById('sentence').textContent"
     await quick_settings(page)
-    assert await page.locator("#sentenceUnderline").is_hidden()
+    assert await page.locator("#sentenceHighlight").is_hidden()
     await page.click("#viewChoices [data-view='sentence']")
     # Without the underline the sentence stays plain while it is read.
-    await page.uncheck("#sentenceUnderline")
+    await page.uncheck("#sentenceHighlight")
     assert "next one comes" in await page.inner_text("#viewHint")
     await page.keyboard.press("Escape")
     await page.click("#play")

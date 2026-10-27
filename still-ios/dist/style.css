@@ -1739,7 +1739,7 @@ html[data-theme="dark"] .text-check li .text-button {
 
 /* ---- A sentence at a time (Settings › Show) ----
    The whole sentence, with the word being read (or due, reading silently)
-   underlined. It fills the stage and shrinks to fit (see fitSentence). */
+   highlighted. It fills the stage and shrinks to fit (see fitSentence). */
 .sentence-view {
   position: absolute;
   inset: 0;
@@ -1762,12 +1762,26 @@ html[data-theme="dark"] .text-check li .text-button {
 #wordReader.done .sentence-view {
   display: none;
 }
+/* The highlight's padding is taken back by a margin, so words never shift
+   as it moves. */
+.sentence-view [data-i] {
+  padding: 0.04em 0.14em;
+  margin: 0 -0.14em;
+  border-radius: 0.22em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition:
+    background-color 60ms ease-out,
+    color 60ms ease-out;
+}
 .sentence-view .now {
-  text-decoration: underline;
-  text-decoration-color: #ffa47a; /* 8.4:1 on the reader's navy */
-  text-decoration-thickness: 3px;
-  text-underline-offset: 0.28em;
-  text-decoration-skip-ink: none;
+  background: #ffa47a;
+  color: #172137; /* 8.3:1 on the highlight */
+}
+@media (prefers-reduced-motion: reduce) {
+  .sentence-view [data-i] {
+    transition: none;
+  }
 }
 #wordReader.sentence-mode #word,
 #wordReader.sentence-mode .focal-line {
@@ -3207,6 +3221,9 @@ dialog[open]::backdrop {
 .sheet-card .field-hint {
   margin: -6px 0 12px;
 }
+.sheet-card > .check-label {
+  margin: 0 0 14px !important;
+}
 .sheet-label {
   font-size: 14px;
   font-weight: 500;
@@ -3377,7 +3394,8 @@ html[data-theme="light"][data-card="paper"] .focal-line {
   background: #c3ccdb;
 }
 html[data-theme="light"][data-card="paper"] .sentence-view .now {
-  text-decoration-color: #c2410c; /* 5.2:1 on white */
+  background: #ffc9a8;
+  color: var(--paper-ink); /* 10:1 on the highlight */
 }
 html[data-theme="light"][data-card="paper"] #word.focus-mode .focus,
 html[data-theme="light"][data-card="paper"] .peek mark {
