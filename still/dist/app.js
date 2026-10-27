@@ -102,6 +102,7 @@ import {
   planSums,
   sentenceSpans,
   spanAt,
+  wordGroups,
 } from "./engine.js";
 import { loadFrequencies } from "./word-frequency.js";
 import {
@@ -362,7 +363,7 @@ function readingFrequency() {
 }
 // ---- A sentence at a time (Settings › Show) ----
 // The stage shows the whole sentence instead of one word, with the word
-// being read underlined. Playback still moves word by word (the voice's
+// being read highlighted. Playback still moves word by word (the voice's
 // words with read aloud, the timing plan without), so check-ins, "Pause
 // after each sentence", skips and time left all work as they do for words.
 // Each reading keeps the view it was last read in; a new one takes the
@@ -370,7 +371,10 @@ function readingFrequency() {
 const sentenceView = () =>
   (readingOptions.view || appearance.view) === "sentence";
 // Off, the sentence stays plain while it is read, then the next one comes.
-const underlineWords = () => appearance.underline !== false;
+// (Earlier versions underlined the word and saved the choice as
+// `underline`.)
+const highlightWords = () =>
+  (appearance.highlight ?? appearance.underline) !== false;
 let spansFor = { tokens: null, spans: [], starts: new Set() };
 function readingSpans() {
   if (spansFor.tokens !== data.tokens) {
@@ -383,6 +387,22 @@ function readingSpans() {
   }
   return spansFor;
 }
+// One word at a time can show short words together ("so on", "of the"; see
+// wordGroups). Off unless chosen.
+const groupWords = () => !sentenceView() && appearance.groupWords === true;
+let groupsFor = { tokens: null, spans: [] };
+// The words on screen with token `index`: [start, end].
+function shownGroup(index) {
+  if (!groupWords()) return [index, index];
+  if (groupsFor.tokens !== data.tokens)
+    groupsFor = { tokens: data.tokens, spans: wordGroups(data.tokens) };
+  return spanAt(groupsFor.spans, index) || [index, index];
+}
+const groupText = ([start, end]) =>
+  data.tokens
+    .slice(start, end + 1)
+    .map((t) => t.text)
+    .join(" ");
 // Check-ins are chosen per reading (see checkins.js); off unless chosen.
 const checkinMode = () => checkinSpacing(readingOptions.checkinEvery);
 function sectionStarts() {
@@ -592,7 +612,7 @@ function showSentence(index, { animate = false } = {}) {
       });
   }
   el.querySelector(".now")?.classList.remove("now");
-  if (underlineWords())
+  if (highlightWords())
     el.querySelector(`[data-i="${index}"]`)?.classList.add("now");
 }
 // The sentence's size: the reading size, made smaller until it fits.
@@ -616,17 +636,19 @@ function applyView() {
       "aria-pressed",
       String(chip.dataset.view === (on ? "sentence" : "word")),
     );
-  $("sentenceUnderlineRow").hidden = !on;
-  $("sentenceUnderline").checked = underlineWords();
+  $("sentenceHighlightRow").hidden = !on;
+  $("sentenceHighlight").checked = highlightWords();
+  $("groupWordsRow").hidden = on;
+  $("groupWords").checked = appearance.groupWords === true;
   $("viewHint").textContent = !on
     ? "One word at a time, always in the same spot."
-    : !underlineWords()
+    : !highlightWords()
       ? readAloudOn()
         ? "The whole sentence is read to you, then the next one comes."
         : "The whole sentence stays while you read it, then the next one comes."
       : readAloudOn()
-        ? "The whole sentence, with the word being read underlined."
-        : "The whole sentence, with a line under each word at your pace.";
+        ? "The whole sentence, with the word being read highlighted."
+        : "The whole sentence, with each word highlighted at your pace.";
 }
 for (const chip of document.querySelectorAll("#viewChoices .voice-chip"))
   chip.onclick = () => setView(chip.dataset.view);
@@ -643,28 +665,48 @@ function setView(next) {
     if (!reader.playing) playbackUI();
   }
 }
-$("sentenceUnderline").oninput = (e) => {
-  appearance = { ...appearance, underline: e.target.checked };
+$("sentenceHighlight").oninput = (e) => {
+  appearance = { ...appearance, highlight: e.target.checked };
   applyAppearance();
 };
-let shownIndex = -1;
+$("groupWords").oninput = (e) => {
+  appearance = { ...appearance, groupWords: e.target.checked };
+  applyAppearance();
+};
+let shownIndex = -1,
+  shownWords = null;
 function render() {
+  const t = data.tokens[reader.index];
   if (sentenceView()) {
     shownIndex = reader.index;
     showSentence(reader.index, { animate: reader.playing });
+  } else {
+    // A group stays on screen while playback moves through its words.
+    const group = shownGroup(reader.index);
+    const text = data.tokens.length ? groupText(group) : "No visible words";
+    const showing =
+      reader.playing &&
+      shownWords?.text === text &&
+      shownWords.start === group[0] &&
+      shownIndex >= group[0] &&
+      shownIndex < reader.index;
+    if (!showing) {
+      const previous =
+        reader.playing && shownIndex === group[0] - 1
+          ? shownWords?.text
+          : null;
+      let durationMs = 0;
+      for (let j = group[0]; j <= group[1]; j++)
+        durationMs += timingPlan[j] || 0;
+      showWord(text, {
+        animate: reader.playing,
+        durationMs,
+        blankMs: repeatGap(previous, text, timingPlan[group[0]]),
+      });
+      shownWords = { text, start: group[0] };
+    }
+    shownIndex = reader.index;
   }
-  const t = data.tokens[reader.index];
-  const previous =
-    reader.playing && shownIndex === reader.index - 1
-      ? data.tokens[shownIndex]?.text
-      : null;
-  shownIndex = reader.index;
-  if (!sentenceView())
-    showWord(t?.text || "No visible words", {
-      animate: reader.playing,
-      durationMs: timingPlan[reader.index],
-      blankMs: repeatGap(previous, t?.text, timingPlan[reader.index]),
-    });
   $("count").textContent =
     `${data.tokens.length ? reader.index + 1 : 0} / ${plural(data.tokens.length, "word")}`;
   updateModeLabel();
@@ -3727,7 +3769,13 @@ function applyAppearance() {
   applyView();
   if (reader) {
     if (sentenceView()) showSentence(reader.index);
-    else showWord(data.tokens[reader.index]?.text || "No visible words");
+    else {
+      const text = data.tokens.length
+        ? groupText(shownGroup(reader.index))
+        : "No visible words";
+      shownWords = { text, start: shownGroup(reader.index)[0] };
+      showWord(text);
+    }
   }
 }
 for (const id of [

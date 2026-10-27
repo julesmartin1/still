@@ -13,6 +13,7 @@ import {
   spanAt,
   VIEW_MAX_WORDS,
   endsSentence,
+  wordGroups,
 } from "../dist/engine.js";
 import {
   parseFrequencies,
@@ -158,11 +159,77 @@ test("titles, initials and short forms don't end a sentence", () => {
   );
   assert.ok(endsSentence("Bennet.", "Rig-a-dig"));
   assert.ok(endsSentence("home.", "then"), "only short forms run on");
-  assert.ok(endsSentence("it.”", "she"), "a closing quote ends one");
+  assert.ok(endsSentence("it.”", "She"), "a closing quote ends one");
+  // …unless its speaker follows.
+  assert.ok(!endsSentence("it?”", "she"));
+  assert.ok(!endsSentence("it.’", "said"));
+  assert.ok(endsSentence("Oh!", "My"));
+  assert.ok(!endsSentence("XVI.", "of"), "a numeral");
+  assert.ok(!endsSentence("26s.", "4d."), "money");
+  assert.ok(!endsSentence("cent.", "within"));
   assert.ok(!endsSentence("Dr.", "Rose"));
   assert.ok(!endsSentence("“Mr.", "Darcy"));
   assert.ok(endsSentence("Dec.", "Then"), "a month without a date may end one");
   assert.ok(!endsSentence("p.", "12"));
+});
+
+test("short words are shown with the word they lean on", () => {
+  const groups = (text) => {
+    const { tokens } = parseText(text);
+    return wordGroups(tokens).map(([a, b]) =>
+      tokens
+        .slice(a, b + 1)
+        .map((t) => t.text)
+        .join(" "),
+    );
+  };
+  assert.deepEqual(groups("It was a dark and stormy night."), [
+    "It was",
+    "a dark",
+    "and stormy",
+    "night.",
+  ]);
+  assert.deepEqual(groups("Pens, pencils, and so on. Go on!"), [
+    "Pens,",
+    "pencils,",
+    "and so on.",
+    "Go on!",
+  ]);
+  // Short words lean on the word they belong to; a long word stands alone.
+  assert.deepEqual(groups("He looked out of the window at the end of the day."), [
+    "He looked",
+    "out of",
+    "the window",
+    "at the end",
+    "of the day.",
+  ]);
+  // An article or preposition goes with its word; other short words stay
+  // together.
+  assert.deepEqual(groups("Try to be supplied. That he is considered."), [
+    "Try",
+    "to be",
+    "supplied.",
+    "That",
+    "he is",
+    "considered.",
+  ]);
+  // Never past punctuation, a paragraph or an opening quote; "Mr." isn't
+  // the end of anything; a short word of meaning ("man") stands alone.
+  assert.deepEqual(groups("Mr. Darcy said, “so be it.”\n\nA man in"), [
+    "Mr. Darcy",
+    "said,",
+    "“so be it.”",
+    "A man",
+    "in",
+  ]);
+  // Every word is in exactly one group, in order.
+  const { tokens } = parseText("a b c d e f g h i j k l m n o p.");
+  const spans = wordGroups(tokens);
+  assert.equal(spans[0][0], 0);
+  assert.equal(spans.at(-1)[1], tokens.length - 1);
+  for (let k = 1; k < spans.length; k++)
+    assert.equal(spans[k][0], spans[k - 1][1] + 1);
+  assert.deepEqual(wordGroups([]), []);
 });
 
 test("a long sentence is split at a clause end that fits on screen", () => {

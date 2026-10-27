@@ -18,30 +18,34 @@ export const sentenceEnd = /[.!?。！？][”’"')\]」』）】》]*$/u;
 export const clauseEnd = /[,;:、，；：][”’"')\]」』）】》]*$/u;
 // A full stop that doesn't end a sentence: after a title ("Mrs. Saville",
 // "St. Petersburgh", "e.g. London") or an initial ("J. R. R. Tolkien"), or
-// after a short form when a number or a word in lower case follows ("No. 5",
-// "Dec. 11th", "etc. and", "a.m. on", "so... and").
+// when a number or a word in lower case follows a short form ("No. 5",
+// "Dec. 11th", "etc. and", "a.m. on", "so... and", "Louis XVI. of France",
+// "7s. 6d."). A question, an exclamation or a quotation followed by a word
+// in lower case runs on into its speaker ("“Is it?” she asked.").
 const TITLES = new Set(
   "mr mrs ms mx messrs dr st mt ft prof rev revd hon capt col gen lt sgt cpl maj cmdr adm gov pres sen rep insp supt fr sr sra srta dra mme mlle mons hr hrn cf vs viz e.g i.e z.b".split(
     " ",
   ),
 );
 const SHORT_FORMS = new Set(
-  "etc approx ca jr inc ltd co corp bros esq dept no nos nr vol vols p pp ch chap fig art sec jan feb mar apr jun jul aug sep sept oct nov dec".split(
+  "etc approx ca jr inc ltd co corp bros esq dept no nos nr vol vols p pp ch chap fig art sec cent mss lb lbs oz yd yds hr hrs sq jan feb mar apr jun jul aug sep sept oct nov dec".split(
     " ",
   ),
 );
 export function endsSentence(word, next = "") {
   if (!sentenceEnd.test(word)) return false;
-  if (!word.endsWith(".")) return true;
+  const lowerNext = /^[^\p{L}\p{N}]*\p{Ll}/u.test(next);
+  if (!word.endsWith(".")) return !lowerNext;
+  const runsOn = lowerNext || /^[^\p{L}\p{N}]*\p{N}/u.test(next);
   const core = word.replace(/^[^\p{L}\p{N}]+/u, "").slice(0, -1);
   const lower = core.toLowerCase();
-  const runsOn = /^[^\p{L}\p{N}]*[\p{Ll}\p{N}]/u.test(next);
   return !(
     TITLES.has(lower) ||
     /^\p{Lu}$/u.test(core) ||
     (runsOn &&
       (SHORT_FORMS.has(lower) ||
         /\p{L}\.\p{L}/u.test(core) ||
+        /^(?:[IVXLC]+|\p{N}+\p{L}{0,2})$/u.test(core) ||
         word.endsWith("...")))
   );
 }
@@ -486,4 +490,78 @@ export function spanAt(spans, index) {
     else return spans[mid];
   }
   return null;
+}
+
+// ---- Short words together (Settings › Show › One word) ----
+// In ordinary reading the eye skips most short function words ("of", "the",
+// "so"): it takes them in along with the next word. Showing them together
+// does the same. A word of one or two letters, or a three-letter function
+// word, is shown with the word after it when the two fit in
+// GROUP_MAX_CHARS, about what the eye takes in at one glance ("of the",
+// "a dark", "Mr. Darcy", "go on"). Two of them take a third word when all
+// three fit ("in the end", "and so on."), but not a third short word
+// mid-phrase ("it was · a dark"). When only an article or preposition
+// second fits with what follows, the first stands alone and the second goes
+// with its word ("of · the window", "in · at once"); otherwise the first two
+// stay together ("he is · considered"). A group never runs past
+// punctuation, a paragraph or an opening quote. Returns [start, end] pairs
+// like sentenceSpans; playback still moves word by word underneath, so a
+// group stays on screen for its words' time.
+export const GROUP_MAX_CHARS = 13;
+// Three-letter function words in the languages Still has word lists for.
+const SHORT_FUNCTION = new Set(
+  "the and but for nor yet not are was has had did can may his her its our you she him who how why all any off out too per via let now mrs les des une est aux par pas sur qui que son ses mon mes ton tes nos vos ils lui moi toi car ces cet los las del una por con sin sus mis tus más muy era fue hay der die das den dem ein und ist war mit von zum zur auf aus bei für wir ihr als wie wer nur hat mir dir uns nel gli che non sul dei suo sua mio mia più dos uma com não mas sem seu foi het een van met dat wat aan ook uit bij nog dan hij zij wij ons mij".split(
+    " ",
+  ),
+);
+// Short words that belong with the word after them.
+const LEANS = new Set(
+  "a an the of to in on at by for as his her its my our your mr mrs ms dr st".split(
+    " ",
+  ),
+);
+const groupCloser = /[—–…”’"')\]」』）】》]$/u;
+const groupOpener = /^[\p{Ps}\p{Pi}"'「『（【《]/u;
+const isShortWord = (t) => {
+  const norm = t.norm ?? cleanWord(t.text);
+  return (
+    !!norm &&
+    !noSpaceScript.test(t.text) &&
+    (norm.length <= 2 || SHORT_FUNCTION.has(norm))
+  );
+};
+// Nothing joins a word that ends a sentence or clause.
+const closesGroup = (t) =>
+  t.paragraphEnd ||
+  isSentenceEnd(t) ||
+  clauseEnd.test(t.text) ||
+  groupCloser.test(t.text);
+export function wordGroups(tokens, max = GROUP_MAX_CHARS) {
+  const spans = [];
+  // Short word `a` (with `chars` characters shown so far) takes `b` after it.
+  const joins = (a, b, chars) =>
+    !!b &&
+    isShortWord(a) &&
+    !closesGroup(a) &&
+    b.paragraph === a.paragraph &&
+    !groupOpener.test(b.text) &&
+    chars + 1 + b.text.length <= max;
+  for (let i = 0; i < tokens.length; ) {
+    const [a, b, c] = [tokens[i], tokens[i + 1], tokens[i + 2]];
+    let end = i;
+    if (joins(a, b, a.text.length)) {
+      end = i + 1;
+      if (joins(b, c, a.text.length + 1 + b.text.length))
+        end = isShortWord(c) && !closesGroup(c) ? i + 1 : i + 2;
+      else if (
+        LEANS.has(b.norm ?? cleanWord(b.text)) &&
+        joins(b, c, b.text.length) &&
+        (!isShortWord(c) || closesGroup(c))
+      )
+        end = i;
+    }
+    spans.push([i, end]);
+    i = end + 1;
+  }
+  return spans;
 }
