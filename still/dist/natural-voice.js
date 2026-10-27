@@ -48,7 +48,15 @@ export function serverBase(scope = globalThis) {
     ? ""
     : SERVER_SITE;
 }
-export const SPEAK_ENDPOINT = serverBase() + "/api/speak";
+// The voice itself can also run on Cloudflare Workers (workers/voice), which
+// needs no Netlify credits; when VOICE_SITE is set, the app off Netlify and
+// localhost uses it instead of SERVER_SITE.
+export const VOICE_SITE = "";
+export function speakBase(scope = globalThis) {
+  const base = serverBase(scope);
+  return base && VOICE_SITE ? VOICE_SITE : base;
+}
+export const SPEAK_ENDPOINT = speakBase() + "/api/speak";
 
 // Everything the natural voice needs from the browser: Web Audio to play the
 // clips, and fetch to get them.

@@ -11,8 +11,12 @@ export const MAX_CHARS = 1200;
 // or any more). OPENAI_TTS_MODEL overrides the first choice.
 export const MODELS = ["gpt-4o-mini-tts-2025-12-15", "gpt-4o-mini-tts"];
 const SPEECH_URL = "https://api.openai.com/v1/audio/speech";
-// The app's other home, which calls this site across origins.
-export const OTHER_ORIGINS = ["https://julesmartin1.github.io"];
+// The app's other homes, which call this server across origins (it also
+// runs on Cloudflare Workers; see workers/voice).
+export const OTHER_ORIGINS = [
+  "https://julesmartin1.github.io",
+  "https://still123.netlify.app",
+];
 
 // How the voice should read: like an unhurried audiobook narrator, a little
 // slower or quicker to match the reader's pace, and in one even voice: left

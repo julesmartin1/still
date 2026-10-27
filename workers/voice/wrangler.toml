@@ -1,0 +1,16 @@
+# The natural voice server on Cloudflare Workers (worker.mjs). Deployed by
+# .github/workflows/voice-worker.yml, which also sets the OPENAI_API_KEY
+# secret from the repository's GitHub secrets.
+name = "still-voice"
+main = "worker.mjs"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# About one request every two seconds is plenty to read aloud at any pace,
+# so each reader (by IP) gets 40 a minute, as on Netlify.
+[[ratelimits]]
+name = "SPEAK_LIMIT"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 40
+  period = 60

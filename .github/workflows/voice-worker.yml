@@ -1,0 +1,32 @@
+# Deploys read aloud's natural voice server (workers/voice) to Cloudflare
+# Workers when it changes on main, or when run by hand. Needs these
+# repository secrets: CLOUDFLARE_API_TOKEN (an "Edit Cloudflare Workers"
+# token), CLOUDFLARE_ACCOUNT_ID and OPENAI_API_KEY.
+name: Deploy the voice server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - workers/voice/**
+      - netlify/functions/speak.mjs
+      - .github/workflows/voice-worker.yml
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy
+        working-directory: workers/voice
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          npx --yes wrangler@4.149.0 deploy
+          printf '%s' "$OPENAI_API_KEY" | npx --yes wrangler@4.149.0 secret put OPENAI_API_KEY
